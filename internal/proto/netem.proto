@@ -1,0 +1,110 @@
+
+syntax = "proto3";
+option go_package = "github.com/mroy31/gonetem/internal/proto";
+
+package netem;
+import "google/protobuf/empty.proto";
+
+service Netem {
+    rpc GetVersion(google.protobuf.Empty) returns (VersionResponse) {}
+
+    // Project actions
+    rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
+    rpc OpenProject(OpenRequest) returns (PrjOpenResponse) {}
+    rpc CloseProject(ProjectRequest) returns (AckResponse) {}
+    rpc SaveProject(ProjectRequest) returns (FileResponse) {}
+    rpc GetProjectStatus(ProjectRequest) returns (StatusResponse) {}
+
+    // Read/Write network topology
+    rpc ReadNetworkFile(ProjectRequest) returns (FileResponse) {}
+    rpc WriteNetworkFile(WNetworkRequest) returns (AckResponse) {}
+
+    // topology actions
+    rpc Reload(ProjectRequest) returns (AckResponse) {}
+    rpc Run(ProjectRequest) returns (AckResponse) {}
+
+    // Node actions
+    rpc Console(stream ConsoleStream) returns (stream ConsoleStream) {}
+
+}
+
+// Stream messages
+
+message ConsoleStream {
+    string prjId = 1;
+    string node = 2;
+    bytes data = 3;
+    string error = 4;
+}
+
+// Request messages
+
+message ProjectRequest {
+    string id = 1;
+}
+
+message WNetworkRequest {
+    string id = 1;
+    bytes data = 2;
+}
+
+message OpenRequest {
+    string name = 1;
+    bytes data = 2;
+}
+
+// Response messages
+
+enum StatusCode {
+    OK = 0;
+    ERROR = 1;
+}
+
+message Status {
+    StatusCode code = 1;
+    string error = 2;
+}
+
+message AckResponse {
+    Status status = 1;
+}
+
+message FileResponse {
+    Status status = 1;
+    bytes data = 2;
+}
+
+message VersionResponse {
+    Status status = 1;
+    string version = 2;
+}
+
+message StatusResponse {
+    message NodeStatus {
+        string name = 1;
+        bool running = 2;
+    }
+
+    Status status = 1;
+    string name = 2;
+    string id = 3;
+    string openAt = 4;
+    bool running = 5;
+    repeated NodeStatus nodes = 10;
+}
+
+message PrjListResponse {
+    message Info {
+        string id = 1;
+        string name = 2;
+        string openAt = 3;
+    }
+
+    Status status = 1;
+    repeated Info projects = 2;
+}
+
+message PrjOpenResponse {
+    Status status = 1;
+    string id = 2;
+}
