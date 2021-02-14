@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/utils"
 )
@@ -292,6 +293,95 @@ func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
 		return "", errors.New(msg)
 	}
 	return string(stdout), nil
+}
+
+func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+	config := types.ExecConfig{
+		AttachStderr: true,
+		AttachStdout: true,
+		AttachStdin:  true,
+		Tty:          true,
+		Cmd:          cmd,
+	}
+
+	ctx := context.Background()
+	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{
+		Tty: config.Tty,
+	})
+	if err != nil {
+		return err
+	}
+	defer resp.Close()
+
+	// read the output
+	outputDone := make(chan error)
+	go func() {
+		_, err = io.Copy(out, resp.Reader)
+		outputDone <- err
+	}()
+
+	// write the input
+	inputDone := make(chan error)
+	go func() {
+		_, err := io.Copy(resp.Conn, in)
+		inputDone <- err
+	}()
+
+	// resize TTY goroutine
+	go func() {
+		for {
+			ws, ok := <-resizeCh
+			if !ok { // channel has been closed
+				return
+			}
+
+			if err := c.cli.ContainerExecResize(ctx, execID.ID, types.ResizeOptions{
+				Height: uint(ws.Height),
+				Width:  uint(ws.Width),
+			}); err != nil {
+				logger.Error("msg", "unable to resize TTY", "error", err)
+			}
+		}
+	}()
+
+	select {
+	case err := <-outputDone:
+		if err != nil {
+			return err
+		}
+		break
+
+	case <-inputDone:
+		// Input stream has closed.
+		// Wait for output to complete streaming.
+		select {
+		case err := <-outputDone:
+			if err != nil {
+				return err
+			}
+			break
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	res, err := c.cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return err
+	}
+
+	if res.ExitCode != 0 {
+		return fmt.Errorf("ExecTty: exit code %d", res.ExitCode)
+	}
+	return nil
 }
 
 func (c *DockerClient) AttachInterface(containerId, ifName, targetName string) error {

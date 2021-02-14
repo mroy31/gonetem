@@ -21,15 +21,17 @@ const (
 	Connect
 	Open
 	Create
+	Console
 )
 
 var (
-	action     Action = 0
-	server            = flag.String("server", "unix:////tmp/gonetem.ctl", "Server connection")
-	createPrj         = flag.String("create", "", "Specify the path of the new project")
-	openPrj           = flag.String("open", "", "Specify the path of the project to open")
-	listPrj           = flag.Bool("list", false, "List running projects on the server")
-	connectPrj        = flag.Bool("connect", false, "Connect to a running project")
+	action      Action = 0
+	server             = flag.String("server", "unix:////tmp/gonetem.ctl", "Server connection")
+	createPrj          = flag.String("create", "", "Specify the path of the new project")
+	openPrj            = flag.String("open", "", "Specify the path of the project to open")
+	listPrj            = flag.Bool("list", false, "List running projects on the server")
+	connectPrj         = flag.Bool("connect", false, "Connect to a running project")
+	openConsole        = flag.String("console", "", "Open a console to the specified node")
 )
 
 func NewPrompt(prjID, prjPath string) {
@@ -63,6 +65,9 @@ func main() {
 	}
 	if *openPrj != "" {
 		action |= Open
+	}
+	if *openConsole != "" {
+		action |= Console
 	}
 
 	if action == List {
@@ -102,6 +107,10 @@ func main() {
 		}
 		NewPrompt(prjID, prjPath)
 
+	} else if action == Console {
+		if err := console.StartRemoteConsole(*server, *openConsole); err != nil {
+			console.Fatal("Console to node %s returns an error: %v", *openConsole, err)
+		}
 	} else {
 		console.Fatal("No action or several actions have been specified ")
 	}

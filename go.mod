@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/Microsoft/hcsshim v0.8.14 // indirect
-	github.com/briandowns/spinner v1.12.0 // indirect
+	github.com/briandowns/spinner v1.12.0
 	github.com/c-bata/go-prompt v0.2.5
 	github.com/containerd/containerd v1.4.3 // indirect
 	github.com/containerd/continuity v0.0.0-20210208174643-50096c924a4e // indirect
@@ -17,9 +17,8 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/hashicorp/go-multierror v1.1.0
 	github.com/moby/sys/mount v0.2.0 // indirect
-	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
+	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect

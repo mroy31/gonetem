@@ -2,8 +2,10 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 
+	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/docker"
 )
 
@@ -14,6 +16,7 @@ type INetemNode interface {
 	Start() error
 	Stop() error
 	LoadConfig(confPath string) error
+	Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
 	Save(dstPath string) error
 	Close() error
 }

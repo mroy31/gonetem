@@ -24,17 +24,37 @@ service Netem {
     rpc Run(ProjectRequest) returns (AckResponse) {}
 
     // Node actions
-    rpc Console(stream ConsoleStream) returns (stream ConsoleStream) {}
+    rpc Console(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
 
 }
 
 // Stream messages
 
-message ConsoleStream {
-    string prjId = 1;
-    string node = 2;
+message ConsoleCltMsg {
+    enum Code {
+        INIT = 0;
+        DATA = 1;
+        RESIZE = 2;
+    }
+
+    Code code = 1;
+    string prjId = 2;
+    string node = 3;
+    int32 ttyWidth = 4;
+    int32 ttyHeight = 5;
+    bytes data = 6;
+}
+
+message ConsoleSrvMsg {
+    enum Code {
+        STDOUT = 0;
+        STDERR = 1;
+        ERROR = 2;
+        CLOSE = 3;
+    }
+
+    Code code = 1;
     bytes data = 3;
-    string error = 4;
 }
 
 // Request messages

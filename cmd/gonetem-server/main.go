@@ -54,6 +54,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(interrupt)
 
+	netemServer := server.NewServer()
 	go func() {
 		socket, err := net.Listen("unix", options.ServerConfig.Listen)
 		if err != nil {
@@ -62,7 +63,7 @@ func main() {
 		}
 
 		grpcServer = grpc.NewServer()
-		pb.RegisterNetemServer(grpcServer, server.NewServer())
+		pb.RegisterNetemServer(grpcServer, netemServer)
 		err = grpcServer.Serve(socket)
 		if err != nil {
 			logger.Error("msg", "Error in grpc server", "error", err)
@@ -79,6 +80,10 @@ func main() {
 
 	logger.Warn("msg", "Received shutdown signal")
 	cancel()
+
+	if err := netemServer.Close(); err != nil {
+		logger.Error("msg", "Error when close server", "error", err)
+	}
 
 	if grpcServer != nil {
 		grpcServer.GracefulStop()

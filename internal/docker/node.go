@@ -3,9 +3,11 @@ package docker
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 
+	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/options"
 )
@@ -74,6 +76,28 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 
 	return nil
+}
+
+func (n *DockerNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+	if !n.Running {
+		return errors.New("Not running")
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	var cmd []string
+	switch n.Type {
+	case "router":
+		cmd = []string{"/usr/bin/vtysh"}
+	default:
+		cmd = []string{"/bin/bash"}
+	}
+
+	return client.ExecTty(n.ID, cmd, in, out, resizeCh)
 }
 
 func (n *DockerNode) Start() error {

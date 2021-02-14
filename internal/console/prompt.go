@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/google/shlex"
@@ -24,9 +26,10 @@ func Fatal(msg string, a ...interface{}) {
 }
 
 type NetemPrompt struct {
-	server  string
-	prjID   string
-	prjPath string
+	server    string
+	prjID     string
+	prjPath   string
+	processes []*exec.Cmd
 }
 
 func (p *NetemPrompt) Execute(s string) {
@@ -37,15 +40,32 @@ func (p *NetemPrompt) Execute(s string) {
 
 	if s == "quit" || s == "exit" {
 		p.Close()
+		return
 	}
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		Fatal("Unable to connect to gonetem server: %v", err)
+		redPrintf("Unable to connect to gonetem server: %v", err)
+		return
 	}
 	defer client.Conn.Close()
 
-	switch s {
+	args, err := shlex.Split(s)
+	if err != nil {
+		redPrintf("Bad command line: %v", err)
+		return
+	}
+
+	cmd := args[0]
+	var cmdArgs []string
+	if len(args) > 1 {
+		cmdArgs = args[1:]
+	}
+
+	switch cmd {
+	case "console":
+		p.Console(client.Client, cmdArgs)
+
 	case "edit":
 		p.Edit(client.Client)
 
@@ -67,14 +87,37 @@ func (p *NetemPrompt) Execute(s string) {
 			Fatal("Unable to get version: %v", err)
 		}
 		fmt.Println(response.GetVersion())
-	default:
-		_, err := shlex.Split(s)
-		if err != nil {
-			Fatal("Unable to parse command line: %v", err)
-		}
 
+	default:
 		fmt.Println("Unknown command, enter help for details")
 	}
+}
+
+func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
+	if len(cmdArgs) != 1 {
+		redPrintf("Wrong console invocation: console <node>")
+		return
+	}
+
+	// search term command
+	termPath, err := exec.LookPath("xterm")
+	if err != nil {
+		redPrintf("xterm is not installed")
+		return
+	}
+
+	node := fmt.Sprintf("%s.%s", p.prjID, cmdArgs[0])
+	termArgs := []string{
+		"-xrm", "XTerm.vt100.allowTitleOps: false",
+		"-title", cmdArgs[0],
+		"-e", "gonetem-emulator -console " + node}
+	cmd := exec.Command(termPath, termArgs...)
+	if err := cmd.Start(); err != nil {
+		redPrintf("Error when starting console: %v", err)
+		return
+	}
+
+	p.processes = append(p.processes, cmd)
 }
 
 func (p *NetemPrompt) Save(client proto.NetemClient, dstPath string) {
@@ -167,9 +210,23 @@ func (p *NetemPrompt) Reload(client proto.NetemClient) {
 }
 
 func (p *NetemPrompt) Close() {
+	// First, stop all running processes (console, capture...)
+	for _, cmd := range p.processes {
+		done := make(chan interface{})
+		go func() {
+			done <- cmd.Wait()
+		}()
+		select {
+		case <-time.After(100 * time.Millisecond):
+			cmd.Process.Kill()
+		case <-done:
+		}
+	}
+
 	client, err := NewClient(p.server)
 	if err != nil {
-		redPrintf("Unable to connect to gonetem server: %v", err)
+		redPrintf("Unable to connect to gonetem server: %v\n", err)
+		os.Exit(1)
 	} else {
 		_, err = client.Client.CloseProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 		if err != nil {
@@ -183,5 +240,5 @@ func (p *NetemPrompt) Close() {
 }
 
 func NewNetemPrompt(server, prjID, prjPath string) *NetemPrompt {
-	return &NetemPrompt{server, prjID, prjPath}
+	return &NetemPrompt{server, prjID, prjPath, make([]*exec.Cmd, 0)}
 }

@@ -2,12 +2,16 @@ package server
 
 import (
 	context "context"
+	"fmt"
+	"io"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
+	"golang.org/x/sync/errgroup"
 )
 
 type netemServer struct {
@@ -170,7 +174,114 @@ func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest)
 }
 
 func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
-	return nil
+	// read first msg from client
+	resp, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+
+	// get project
+	project := GetProject(resp.GetPrjId())
+	if project == nil {
+		return stream.Send(&proto.ConsoleSrvMsg{
+			Code: proto.ConsoleSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Project %s not found", resp.PrjId)),
+		})
+	}
+
+	// get node
+	node := project.Topology.GetNode(resp.GetNode())
+	if node == nil {
+		return stream.Send(&proto.ConsoleSrvMsg{
+			Code: proto.ConsoleSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Node %s not found in project %s", resp.GetNode(), resp.GetPrjId())),
+		})
+	}
+
+	rIn, wIn := io.Pipe()
+	rOut, wOut := io.Pipe()
+
+	resizeCh := make(chan term.Winsize)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		defer close(resizeCh)
+
+		for {
+			in, err := stream.Recv()
+			if err == io.EOF {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			switch in.GetCode() {
+			case proto.ConsoleCltMsg_DATA:
+				wIn.Write(in.GetData())
+			case proto.ConsoleCltMsg_RESIZE:
+				resizeCh <- term.Winsize{
+					Width:  uint16(in.GetTtyWidth()),
+					Height: uint16(in.GetTtyHeight()),
+				}
+			}
+		}
+	})
+
+	g.Go(func() error {
+		data := make([]byte, 32)
+		for {
+			n, err := rOut.Read(data)
+			if err != nil {
+				if err == io.EOF {
+					return nil
+				}
+				return err
+			} else if n == 0 {
+				continue
+			}
+
+			if err := stream.Send(&proto.ConsoleSrvMsg{
+				Code: proto.ConsoleSrvMsg_STDOUT,
+				Data: data[:n],
+			}); err != nil {
+				return err
+			}
+		}
+	})
+
+	if err := node.Console(rIn, wOut, resizeCh); err != nil {
+		stream.Send(&proto.ConsoleSrvMsg{
+			Code: proto.ConsoleSrvMsg_ERROR,
+			Data: []byte(err.Error()),
+		})
+	} else {
+		stream.Send(&proto.ConsoleSrvMsg{
+			Code: proto.ConsoleSrvMsg_CLOSE,
+		})
+	}
+
+	wOut.Close()
+	defer wIn.Close()
+
+	return g.Wait()
+}
+
+func (s *netemServer) Close() error {
+	g := new(errgroup.Group)
+
+	for _, project := range GetAllProjects() {
+		prjId := project.Id
+		g.Go(func() error {
+			err := CloseProject(prjId)
+			if err != nil {
+				return fmt.Errorf("Error when closing project %s: %v", prjId, err)
+			}
+			return err
+		})
+	}
+
+	return g.Wait()
 }
 
 func NewServer() *netemServer {

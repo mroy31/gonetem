@@ -144,8 +144,8 @@ func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Net
 }
 
 type Netem_ConsoleClient interface {
-	Send(*ConsoleStream) error
-	Recv() (*ConsoleStream, error)
+	Send(*ConsoleCltMsg) error
+	Recv() (*ConsoleSrvMsg, error)
 	grpc.ClientStream
 }
 
@@ -153,12 +153,12 @@ type netemConsoleClient struct {
 	grpc.ClientStream
 }
 
-func (x *netemConsoleClient) Send(m *ConsoleStream) error {
+func (x *netemConsoleClient) Send(m *ConsoleCltMsg) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *netemConsoleClient) Recv() (*ConsoleStream, error) {
-	m := new(ConsoleStream)
+func (x *netemConsoleClient) Recv() (*ConsoleSrvMsg, error) {
+	m := new(ConsoleSrvMsg)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -422,8 +422,8 @@ func _Netem_Console_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Netem_ConsoleServer interface {
-	Send(*ConsoleStream) error
-	Recv() (*ConsoleStream, error)
+	Send(*ConsoleSrvMsg) error
+	Recv() (*ConsoleCltMsg, error)
 	grpc.ServerStream
 }
 
@@ -431,12 +431,12 @@ type netemConsoleServer struct {
 	grpc.ServerStream
 }
 
-func (x *netemConsoleServer) Send(m *ConsoleStream) error {
+func (x *netemConsoleServer) Send(m *ConsoleSrvMsg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *netemConsoleServer) Recv() (*ConsoleStream, error) {
-	m := new(ConsoleStream)
+func (x *netemConsoleServer) Recv() (*ConsoleCltMsg, error) {
+	m := new(ConsoleCltMsg)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
