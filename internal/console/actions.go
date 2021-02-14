@@ -72,3 +72,17 @@ func OpenProject(server, prjPath string) (string, error) {
 
 	return response.GetId(), nil
 }
+
+func StartProject(server, prjID string) error {
+	client, err := NewClient(server)
+	if err != nil {
+		return fmt.Errorf("Server not responding")
+	}
+	defer client.Conn.Close()
+
+	if _, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID}); err != nil {
+		return err
+	}
+
+	return nil
+}

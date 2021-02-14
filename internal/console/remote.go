@@ -138,7 +138,7 @@ func monitorTty(stream proto.Netem_ConsoleClient, terminalFd uintptr) {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGWINCH)
 	go func() {
-		for _ = range sigchan {
+		for range sigchan {
 			resizeTty(stream, terminalFd)
 		}
 	}()

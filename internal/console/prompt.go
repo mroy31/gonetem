@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	redPrintf = color.New(color.FgRed).PrintfFunc()
+	RedPrintf = color.New(color.FgRed).PrintfFunc()
 )
 
 func Fatal(msg string, a ...interface{}) {
-	redPrintf(msg+"\n", a...)
+	RedPrintf(msg+"\n", a...)
 	os.Exit(1)
 }
 
@@ -45,14 +45,14 @@ func (p *NetemPrompt) Execute(s string) {
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		redPrintf("Unable to connect to gonetem server: %v", err)
+		RedPrintf("Unable to connect to gonetem server: %v", err)
 		return
 	}
 	defer client.Conn.Close()
 
 	args, err := shlex.Split(s)
 	if err != nil {
-		redPrintf("Bad command line: %v", err)
+		RedPrintf("Bad command line: %v", err)
 		return
 	}
 
@@ -95,14 +95,14 @@ func (p *NetemPrompt) Execute(s string) {
 
 func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 	if len(cmdArgs) != 1 {
-		redPrintf("Wrong console invocation: console <node>")
+		RedPrintf("Wrong console invocation: console <node>")
 		return
 	}
 
 	// search term command
 	termPath, err := exec.LookPath("xterm")
 	if err != nil {
-		redPrintf("xterm is not installed")
+		RedPrintf("xterm is not installed")
 		return
 	}
 
@@ -113,7 +113,7 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 		"-e", "gonetem-emulator -console " + node}
 	cmd := exec.Command(termPath, termArgs...)
 	if err := cmd.Start(); err != nil {
-		redPrintf("Error when starting console: %v", err)
+		RedPrintf("Error when starting console: %v", err)
 		return
 	}
 
@@ -123,21 +123,21 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 func (p *NetemPrompt) Save(client proto.NetemClient, dstPath string) {
 	response, err := client.SaveProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		redPrintf("Unable to save project: %v\n", err)
+		RedPrintf("Unable to save project: %v\n", err)
 		return
 	}
 
 	if dstPath == "" {
-		redPrintf("Project path is empty, set it in save command")
+		RedPrintf("Project path is empty, set it in save command")
 	} else if err := ioutil.WriteFile(dstPath, response.GetData(), 0644); err != nil {
-		redPrintf("Unable to write saved project to %s: %v", dstPath, err)
+		RedPrintf("Unable to write saved project to %s: %v", dstPath, err)
 	}
 }
 
 func (p *NetemPrompt) Status(client proto.NetemClient) {
 	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		redPrintf("Unable to get project status: %v\n", err)
+		RedPrintf("Unable to get project status: %v\n", err)
 		return
 	}
 
@@ -165,25 +165,25 @@ func (p *NetemPrompt) Status(client proto.NetemClient) {
 func (p *NetemPrompt) Edit(client proto.NetemClient) {
 	response, err := client.ReadNetworkFile(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		redPrintf("Unable to get network file: %v\n", err)
+		RedPrintf("Unable to get network file: %v\n", err)
 		return
 	}
 	// write temp file for edition
 	tempFilename := path.Join("/tmp", "gonetem-network-"+p.prjID)
 	if err := ioutil.WriteFile(tempFilename, response.GetData(), 0644); err != nil {
-		redPrintf("Unable to write temp file for edition: %v\n", err)
+		RedPrintf("Unable to write temp file for edition: %v\n", err)
 		return
 	}
 	defer os.Remove(tempFilename)
 
 	if err := EditFile(tempFilename, "vim"); err != nil {
-		redPrintf("Unable to edit temp file: %v\n", err)
+		RedPrintf("Unable to edit temp file: %v\n", err)
 		return
 	}
 
 	data, err := ioutil.ReadFile(tempFilename)
 	if err != nil {
-		redPrintf("Unable to read edited network file: %v\n", err)
+		RedPrintf("Unable to read edited network file: %v\n", err)
 		return
 	}
 
@@ -197,14 +197,14 @@ func (p *NetemPrompt) Edit(client proto.NetemClient) {
 
 func (p *NetemPrompt) Run(client proto.NetemClient) {
 	if _, err := client.Run(context.Background(), &proto.ProjectRequest{Id: p.prjID}); err != nil {
-		redPrintf("Unable to run the project: %v\n", err)
+		RedPrintf("Unable to run the project: %v\n", err)
 		return
 	}
 }
 
 func (p *NetemPrompt) Reload(client proto.NetemClient) {
 	if _, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID}); err != nil {
-		redPrintf("Unable to reload the project: %v\n", err)
+		RedPrintf("Unable to reload the project: %v\n", err)
 		return
 	}
 }
@@ -225,12 +225,12 @@ func (p *NetemPrompt) Close() {
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		redPrintf("Unable to connect to gonetem server: %v\n", err)
+		RedPrintf("Unable to connect to gonetem server: %v\n", err)
 		os.Exit(1)
 	} else {
 		_, err = client.Client.CloseProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 		if err != nil {
-			redPrintf("Unable to close project: %v", err)
+			RedPrintf("Unable to close project: %v", err)
 		}
 	}
 	defer client.Conn.Close()

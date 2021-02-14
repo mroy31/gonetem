@@ -32,6 +32,7 @@ var (
 	listPrj            = flag.Bool("list", false, "List running projects on the server")
 	connectPrj         = flag.Bool("connect", false, "Connect to a running project")
 	openConsole        = flag.String("console", "", "Open a console to the specified node")
+	disableRun         = flag.Bool("disable-start", false, "Just load the project without start it")
 )
 
 func NewPrompt(prjID, prjPath string) {
@@ -105,8 +106,19 @@ func main() {
 		if err != nil {
 			console.Fatal("Unable to open project: %v", err)
 		}
-		NewPrompt(prjID, prjPath)
 
+		if !*disableRun {
+			s.Prefix = "Start project " + filepath.Base(prjPath) + " :"
+			s.Start()
+
+			err := console.StartProject(*server, prjID)
+			s.Stop()
+			if err != nil {
+				console.RedPrintf("Error when starting the project: %v\n", err)
+			}
+		}
+
+		NewPrompt(prjID, prjPath)
 	} else if action == Console {
 		if err := console.StartRemoteConsole(*server, *openConsole); err != nil {
 			console.Fatal("Console to node %s returns an error: %v", *openConsole, err)

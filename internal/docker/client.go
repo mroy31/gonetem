@@ -333,12 +333,7 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 
 	// resize TTY goroutine
 	go func() {
-		for {
-			ws, ok := <-resizeCh
-			if !ok { // channel has been closed
-				return
-			}
-
+		for ws := range resizeCh {
 			if err := c.cli.ContainerExecResize(ctx, execID.ID, types.ResizeOptions{
 				Height: uint(ws.Height),
 				Width:  uint(ws.Width),
