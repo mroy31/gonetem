@@ -8,8 +8,8 @@ import (
 	"path"
 
 	"github.com/moby/term"
-	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/options"
+	"github.com/sirupsen/logrus"
 )
 
 type DockerNodeOptions struct {
@@ -32,6 +32,7 @@ type DockerNode struct {
 	Running      bool
 	ConfigLoaded bool
 	Mpls         bool
+	Logger       *logrus.Entry
 }
 
 func (n *DockerNode) GetName() string {
@@ -70,7 +71,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 	defer client.Close()
 
-	containerName := fmt.Sprintf("%s.%s", n.PrjID, n.Name)
+	containerName := fmt.Sprintf("ntm%s.%s", n.PrjID, n.Name)
 	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6); err != nil {
 		return err
 	}
@@ -137,7 +138,7 @@ func (n *DockerNode) Stop() error {
 
 func (n *DockerNode) LoadConfig(confPath string) error {
 	if !n.Running {
-		logger.Warn("msg", "LoadConfig: node not running", "node", n.Name)
+		n.Logger.Warn("LoadConfig: node not running")
 		return nil
 	}
 
@@ -183,7 +184,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 
 func (n *DockerNode) Save(dstPath string) error {
 	if !n.Running || !n.ConfigLoaded {
-		logger.Warn("msg", "Save: node not running", "node", n.Name)
+		n.Logger.Warn("Save: node not running")
 		return nil
 	}
 
@@ -236,7 +237,7 @@ func (n *DockerNode) Save(dstPath string) error {
 
 func (n *DockerNode) CopyFrom(source, dest string) error {
 	if !n.Running {
-		logger.Warn("msg", "CopyFrom: node not running", "node", n.Name)
+		n.Logger.Warn("CopyFrom: node not running")
 		return nil
 	}
 
@@ -251,7 +252,7 @@ func (n *DockerNode) CopyFrom(source, dest string) error {
 
 func (n *DockerNode) CopyTo(source, dest string) error {
 	if !n.Running {
-		logger.Warn("msg", "CopyTo: node not running", "node", n.Name)
+		n.Logger.Warn("CopyTo: node not running")
 		return nil
 	}
 
@@ -313,6 +314,10 @@ func CreateDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, 
 		Name:  dockerOpts.Name,
 		Type:  dockerOpts.Type,
 		Mpls:  dockerOpts.Mpls,
+		Logger: logrus.WithFields(logrus.Fields{
+			"project": prjID,
+			"node":    dockerOpts.Name,
+		}),
 	}
 
 	if err := node.Create(imgName, dockerOpts.Ipv6); err != nil {

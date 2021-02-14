@@ -6,3 +6,8 @@ proto: internal/proto/netem.proto
 
 build-emulator:
 	go build -o ./gonetem-emulator cmd/gonetem-emulator/main.go
+
+build-server:
+	go build -o ./gonetem-server cmd/gonetem-server/main.go
+
+build: build-emulator build-server

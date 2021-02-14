@@ -7,10 +7,10 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
-	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -19,7 +19,6 @@ type netemServer struct {
 }
 
 func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*proto.VersionResponse, error) {
-	logger.Debug("msg", "Receive GetVersion RPC")
 	return &proto.VersionResponse{
 		Status: &proto.Status{
 			Code: proto.StatusCode_OK,
@@ -198,6 +197,12 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 		})
 	}
 
+	logger := logrus.WithFields(logrus.Fields{
+		"project": project.Id,
+		"node":    node.GetName(),
+	})
+	logger.Debug("Start console stream")
+
 	rIn, wIn := io.Pipe()
 	rOut, wOut := io.Pipe()
 
@@ -264,6 +269,7 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	wOut.Close()
 	defer wIn.Close()
 
+	logger.Debug("Close console stream")
 	return g.Wait()
 }
 

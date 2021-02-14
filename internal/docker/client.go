@@ -17,8 +17,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/term"
-	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/utils"
+	"github.com/sirupsen/logrus"
 )
 
 type DockerClient struct {
@@ -122,7 +122,6 @@ func (c *DockerClient) Stop(containerId string) error {
 		return c.cli.ContainerStop(context.Background(), containerId, &timeout)
 	}
 
-	logger.Warn("msg", "docker: you try to stop a not running container")
 	return nil
 }
 
@@ -344,7 +343,10 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 				Height: uint(ws.Height),
 				Width:  uint(ws.Width),
 			}); err != nil {
-				logger.Error("msg", "unable to resize TTY", "error", err)
+				logrus.WithField(
+					"container",
+					containerId,
+				).Errorf("unable to resize TTY", "error", err)
 			}
 		}
 	}()

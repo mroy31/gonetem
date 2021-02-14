@@ -10,7 +10,7 @@ import (
 
 	"github.com/docker/docker/pkg/system"
 	"github.com/mroy31/gonetem/internal/docker"
-	"github.com/mroy31/gonetem/internal/logger"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v2"
 )
@@ -62,6 +62,7 @@ type NetemTopologyManager struct {
 	topology NetemTopology
 	nodes    []INetemNode
 	running  bool
+	logger   *logrus.Entry
 }
 
 func (t *NetemTopologyManager) Load() error {
@@ -79,7 +80,8 @@ func (t *NetemTopologyManager) Load() error {
 	// Create nodes
 	t.nodes = make([]INetemNode, len(t.topology.Nodes))
 	for idx, nConfig := range t.topology.Nodes {
-		logger.Debug("msg", fmt.Sprintf("Create node %s", nConfig.Name))
+		t.logger.Debugf("Create node %s", nConfig.Name)
+
 		t.nodes[idx], err = CreateNode(t.prjID, nConfig)
 		if err != nil {
 			return fmt.Errorf("Unable to create node %s: %w", nConfig.Name, err)
@@ -105,7 +107,7 @@ func (t *NetemTopologyManager) Reload() error {
 
 func (t *NetemTopologyManager) Run() error {
 	if t.running {
-		logger.Warn("msg", "Topology is already running", "project", t.prjID)
+		t.logger.Warn("Topology is already running")
 		return nil
 	}
 
@@ -269,9 +271,10 @@ func (t *NetemTopologyManager) Close() error {
 
 func LoadTopology(prjID, prjPath string) (*NetemTopologyManager, error) {
 	topo := &NetemTopologyManager{
-		prjID: prjID,
-		path:  prjPath,
-		nodes: make([]INetemNode, 0),
+		prjID:  prjID,
+		path:   prjPath,
+		nodes:  make([]INetemNode, 0),
+		logger: logrus.WithField("project", prjID),
 	}
 	if err := topo.Load(); err != nil {
 		return topo, fmt.Errorf("Unable to load the topology:\n\t%w", err)

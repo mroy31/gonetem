@@ -3,17 +3,15 @@ package main
 import (
 	"context"
 	"flag"
-	stdlog "log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/mroy31/gonetem/internal/logger"
 	"github.com/mroy31/gonetem/internal/options"
 	pb "github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/server"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 )
 
@@ -29,22 +27,24 @@ func main() {
 	flag.Parse()
 	options.InitServerConfig()
 
-	// init logger
+	// init log
 	logWriter := os.Stderr
 	if *logFile != "" {
 		f, err := os.Create(*logFile)
 		if err != nil {
-			stdlog.Fatalf("Unable to create log file %s: %v", *logFile, err)
+			logrus.Fatalf("Unable to create log file %s: %v", *logFile, err)
 		}
 		defer f.Close()
 
 		logWriter = f
 	}
-	logger.InitLogger(logWriter, level.AllowError(), level.AllowWarn(), level.AllowInfo())
+	logrus.SetFormatter(&logrus.TextFormatter{})
+	logrus.SetOutput(logWriter)
+	logrus.SetLevel(logrus.InfoLevel)
 	if *verbose {
-		logger.AddFilters(level.AllowDebug())
+		logrus.SetLevel(logrus.DebugLevel)
 	}
-	logger.Info("msg", "Starting gonetem daemon", "version", options.VERSION)
+	logrus.Info("Starting gonetem daemon - version " + options.VERSION)
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -58,7 +58,7 @@ func main() {
 	go func() {
 		socket, err := net.Listen("unix", options.ServerConfig.Listen)
 		if err != nil {
-			logger.Error("msg", "Unable to listen on socket", "error", err)
+			logrus.Errorf("Unable to listen on socket: %v", err)
 			os.Exit(2)
 		}
 
@@ -66,7 +66,7 @@ func main() {
 		pb.RegisterNetemServer(grpcServer, netemServer)
 		err = grpcServer.Serve(socket)
 		if err != nil {
-			logger.Error("msg", "Error in grpc server", "error", err)
+			logrus.Errorf("Error in grpc server: %v", err)
 			cancel()
 		}
 	}()
@@ -78,11 +78,11 @@ func main() {
 		break
 	}
 
-	logger.Warn("msg", "Received shutdown signal")
+	logrus.Warn("Received shutdown signal")
 	cancel()
 
 	if err := netemServer.Close(); err != nil {
-		logger.Error("msg", "Error when close server", "error", err)
+		logrus.Errorf("Error when close server %v", err)
 	}
 
 	if grpcServer != nil {
