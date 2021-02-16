@@ -110,7 +110,7 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 	termArgs := []string{
 		"-xrm", "XTerm.vt100.allowTitleOps: false",
 		"-title", cmdArgs[0],
-		"-e", "gonetem-emulator -console " + node}
+		"-e", "gonetem-console console " + node}
 	cmd := exec.Command(termPath, termArgs...)
 	if err := cmd.Start(); err != nil {
 		RedPrintf("Error when starting console: %v", err)

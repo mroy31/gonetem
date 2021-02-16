@@ -4,10 +4,10 @@ proto: internal/proto/netem.proto
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		internal/proto/netem.proto
 
-build-emulator:
-	go build -o ./gonetem-emulator cmd/gonetem-emulator/main.go
+build-console:
+	go build -o ./gonetem-console cmd/gonetem-console/main.go
 
 build-server:
 	go build -o ./gonetem-server cmd/gonetem-server/main.go
 
-build: build-emulator build-server
+build: build-console build-server
