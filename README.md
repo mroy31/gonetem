@@ -9,3 +9,6 @@ keywords
 
 Prompt :
 - https://github.com/c-bata/go-prompt
+
+CLI :
+- https://cobra.dev/

@@ -22,6 +22,8 @@ var (
 	simpleNetwork = TopologyTestData{
 		network: `
 nodes:
+- name: switch
+  type: ovs
 - name: R1
   type: docker.router
   ipv6: true
@@ -32,6 +34,10 @@ nodes:
 			name string
 			kind string
 		}{
+			{
+				name: "switch",
+				kind: "ovs",
+			},
 			{
 				name: "R1",
 				kind: "docker",

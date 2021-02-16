@@ -47,7 +47,7 @@ func TestDockerNode_StartStop(t *testing.T) {
 				Mpls: tt.mpls,
 			}
 
-			node, err := CreateDockerNode(prjID, config)
+			node, err := NewDockerNode(prjID, config)
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("An error is expected but it is not occurred")
@@ -86,7 +86,7 @@ func TestDockerNode_Copy(t *testing.T) {
 		Type: "router",
 	}
 
-	node, err := CreateDockerNode(prjID, config)
+	node, err := NewDockerNode(prjID, config)
 	if err != nil {
 		t.Errorf("Unable to create docker node: %v", err)
 		return
@@ -160,7 +160,7 @@ func TestDockerNode_Save(t *testing.T) {
 				Mpls: tt.mpls,
 			}
 
-			node, err := CreateDockerNode(prjID, config)
+			node, err := NewDockerNode(prjID, config)
 			if err != nil {
 				t.Errorf("Unable to create docker node: %v", err)
 				return

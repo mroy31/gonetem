@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/docker/pkg/system"
 	"github.com/mroy31/gonetem/internal/docker"
+	"github.com/mroy31/gonetem/internal/ovs"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v2"
@@ -57,10 +58,12 @@ type NetemTopology struct {
 }
 
 type NetemTopologyManager struct {
-	prjID    string
-	path     string
+	prjID string
+	path  string
+
 	topology NetemTopology
 	nodes    []INetemNode
+	ovswitch *ovs.OvsProjectInstance
 	running  bool
 	logger   *logrus.Entry
 }
@@ -75,6 +78,12 @@ func (t *NetemTopologyManager) Load() error {
 	err = yaml.Unmarshal(data, &t.topology)
 	if err != nil {
 		return fmt.Errorf("Unable to read topology file '%s':\n\t%w", filepath, err)
+	}
+
+	// Create openvswitch instance for this project
+	t.ovswitch, err = ovs.NewOvsInstance(t.prjID)
+	if err != nil {
+		return err
 	}
 
 	// Create nodes
@@ -112,7 +121,10 @@ func (t *NetemTopologyManager) Run() error {
 	}
 
 	g := new(errgroup.Group)
-	// 1 - start all nodes
+	// 1 - start ovswitch container
+	t.ovswitch.Start()
+
+	// 2 - start all nodes
 	for _, node := range t.nodes {
 		node := node
 		g.Go(func() error { return node.Start() })
@@ -121,10 +133,10 @@ func (t *NetemTopologyManager) Run() error {
 		return err
 	}
 
-	// 2 - create links
+	// 3 - create links
 	// TODO
 
-	// 3 - load configs
+	// 4 - load configs
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
@@ -263,9 +275,15 @@ func (t *NetemTopologyManager) Copy(source, dest string) error {
 func (t *NetemTopologyManager) Close() error {
 	for _, node := range t.nodes {
 		if node != nil {
-			node.Close()
+			if err := node.Close(); err != nil {
+				t.logger.Errorf("Error when closing node %s: %v", node.GetName(), err)
+			}
 		}
 	}
+	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
+		t.logger.Errorf("Error when closing ovwitch instance: %v", err)
+	}
+
 	return nil
 }
 

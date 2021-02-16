@@ -16,6 +16,7 @@ docker:
     server: mroy31/pynetem-server
     host: mroy31/pynetem-host
     router: mroy31/pynetem-frr
+    ovs: mroy31/gonetem-ovs
 `
 )
 
@@ -26,6 +27,7 @@ type NetemServerConfig struct {
 			Server string
 			Host   string
 			Router string
+			Ovs    string
 		}
 	}
 }

@@ -71,11 +71,25 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 	defer client.Close()
 
+	present, err := client.IsImagePresent(imgName)
+	if err != nil {
+		return err
+	} else if !present {
+		return fmt.Errorf("Docker image %s not present", imgName)
+	}
+
 	containerName := fmt.Sprintf("ntm%s.%s", n.PrjID, n.Name)
 	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (n *DockerNode) CanRunConsole() error {
+	if !n.Running {
+		return errors.New("Not running")
+	}
 	return nil
 }
 
@@ -286,7 +300,7 @@ func (n *DockerNode) Close() error {
 	return nil
 }
 
-func CreateDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, error) {
+func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, error) {
 	imgName := dockerOpts.ImgName
 	if imgName == "" {
 		// use default image
