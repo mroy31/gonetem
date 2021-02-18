@@ -56,7 +56,7 @@ func main() {
 
 	netemServer := server.NewServer()
 	go func() {
-		socket, err := net.Listen("unix", options.ServerConfig.Listen)
+		socket, err := net.Listen("tcp", options.ServerConfig.Listen)
 		if err != nil {
 			logrus.Errorf("Unable to listen on socket: %v", err)
 			os.Exit(2)

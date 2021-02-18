@@ -150,6 +150,25 @@ func (n *DockerNode) Stop() error {
 	return nil
 }
 
+func (n *DockerNode) AttachInterface(ifName string, index int) error {
+	if !n.Running {
+		n.Logger.Warn("AttachInterface: node not running")
+		return nil
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if err := client.AttachInterface(n.ID, ifName, fmt.Sprintf("eth%d", index)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (n *DockerNode) LoadConfig(confPath string) error {
 	if !n.Running {
 		n.Logger.Warn("LoadConfig: node not running")
@@ -250,11 +269,6 @@ func (n *DockerNode) Save(dstPath string) error {
 }
 
 func (n *DockerNode) CopyFrom(source, dest string) error {
-	if !n.Running {
-		n.Logger.Warn("CopyFrom: node not running")
-		return nil
-	}
-
 	client, err := NewDockerClient()
 	if err != nil {
 		return err
@@ -265,11 +279,6 @@ func (n *DockerNode) CopyFrom(source, dest string) error {
 }
 
 func (n *DockerNode) CopyTo(source, dest string) error {
-	if !n.Running {
-		n.Logger.Warn("CopyTo: node not running")
-		return nil
-	}
-
 	client, err := NewDockerClient()
 	if err != nil {
 		return err

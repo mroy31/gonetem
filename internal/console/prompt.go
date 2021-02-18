@@ -95,7 +95,7 @@ func (p *NetemPrompt) Execute(s string) {
 
 func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 	if len(cmdArgs) != 1 {
-		RedPrintf("Wrong console invocation: console <node>")
+		RedPrintf("Wrong console invocation: console <node>\n")
 		return
 	}
 

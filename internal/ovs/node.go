@@ -47,6 +47,14 @@ func (o *OvsNode) Stop() error {
 	return nil
 }
 
+func (o *OvsNode) AttachInterface(ifName string, ifIndex int) error {
+	if !o.Running {
+		return nil
+	}
+
+	return o.OvsInstance.AttachInterface(o.Name, ifName, ifIndex)
+}
+
 func (o *OvsNode) LoadConfig(confPath string) error {
 	return nil
 }

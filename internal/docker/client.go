@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/term"
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -341,7 +342,7 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 				logrus.WithField(
 					"container",
 					containerId,
-				).Errorf("unable to resize TTY", "error", err)
+				).Errorf("unable to resize TTY: %s", err)
 			}
 		}
 	}()
@@ -382,17 +383,13 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 }
 
 func (c *DockerClient) AttachInterface(containerId, ifName, targetName string) error {
-	cmd := []string{"ip", "link", "set", ifName, "name", targetName}
-	if _, err := c.Exec(containerId, cmd); err != nil {
+	// get container pid
+	pid, err := c.Pid(containerId)
+	if err != nil {
 		return err
 	}
 
-	cmd = []string{"ip", "link", "set", targetName, "up"}
-	if _, err := c.Exec(containerId, cmd); err != nil {
-		return err
-	}
-
-	return nil
+	return link.AttachToPid(pid, ifName, targetName)
 }
 
 func NewDockerClient() (*DockerClient, error) {

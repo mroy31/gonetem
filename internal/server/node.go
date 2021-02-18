@@ -16,6 +16,7 @@ type INetemNode interface {
 	IsRunning() bool
 	Start() error
 	Stop() error
+	AttachInterface(ifName string, index int) error
 	LoadConfig(confPath string) error
 	CanRunConsole() error
 	Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error

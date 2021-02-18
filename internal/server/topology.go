@@ -6,15 +6,31 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/docker/docker/pkg/system"
 	"github.com/mroy31/gonetem/internal/docker"
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/ovs"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v2"
 )
+
+func shortName(name string) string {
+	if len(name) <= 2 {
+		return name
+	}
+
+	return name[len(name)-3 : len(name)-1]
+}
+
+func genIfName(prjId, hostName string, hostIfIndex int, peerName string, peerIfIndex int) string {
+	return fmt.Sprintf(
+		"%s%s%d.%s%d", prjId,
+		shortName(hostName), hostIfIndex,
+		shortName(peerName), peerIfIndex)
+}
 
 func splitCopyArg(arg string) (container, path string) {
 	if system.IsAbs(arg) {
@@ -53,42 +69,58 @@ type NodeConfig struct {
 	Mpls       bool
 }
 
+type LinkConfig struct {
+	Peer1 string
+	Peer2 string
+}
+
 type NetemTopology struct {
 	Nodes []NodeConfig
+	Links []LinkConfig
+}
+
+type NetemLinkPeer struct {
+	Node    INetemNode
+	IfIndex int
+}
+
+type NetemLink struct {
+	Peer1 NetemLinkPeer
+	Peer2 NetemLinkPeer
 }
 
 type NetemTopologyManager struct {
 	prjID string
 	path  string
 
-	topology NetemTopology
-	nodes    []INetemNode
-	ovswitch *ovs.OvsProjectInstance
-	running  bool
-	logger   *logrus.Entry
+	nodes       []INetemNode
+	ovsInstance *ovs.OvsProjectInstance
+	links       []*NetemLink
+	running     bool
+	logger      *logrus.Entry
 }
 
 func (t *NetemTopologyManager) Load() error {
 	filepath := path.Join(t.path, networkFilename)
-	data, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return fmt.Errorf("Unable to read topology file '%s':\n\t%w", filepath, err)
+	topology, errors := CheckTopology(filepath)
+	if len(errors) > 0 {
+		msg := ""
+		for _, err := range errors {
+			msg += "\n\t" + err.Error()
+		}
+		return fmt.Errorf("Topology if not valid:%s\n", msg)
 	}
 
-	err = yaml.Unmarshal(data, &t.topology)
-	if err != nil {
-		return fmt.Errorf("Unable to read topology file '%s':\n\t%w", filepath, err)
-	}
-
+	var err error
 	// Create openvswitch instance for this project
-	t.ovswitch, err = ovs.NewOvsInstance(t.prjID)
+	t.ovsInstance, err = ovs.NewOvsInstance(t.prjID)
 	if err != nil {
 		return err
 	}
 
 	// Create nodes
-	t.nodes = make([]INetemNode, len(t.topology.Nodes))
-	for idx, nConfig := range t.topology.Nodes {
+	t.nodes = make([]INetemNode, len(topology.Nodes))
+	for idx, nConfig := range topology.Nodes {
 		t.logger.Debugf("Create node %s", nConfig.Name)
 
 		t.nodes[idx], err = CreateNode(t.prjID, nConfig)
@@ -96,6 +128,27 @@ func (t *NetemTopologyManager) Load() error {
 			return fmt.Errorf("Unable to create node %s: %w", nConfig.Name, err)
 		}
 	}
+
+	// Create links
+	for _, lConfig := range topology.Links {
+		peer1 := strings.Split(lConfig.Peer1, ".")
+		peer2 := strings.Split(lConfig.Peer2, ".")
+
+		peer1Idx, _ := strconv.Atoi(peer1[1])
+		peer2Idx, _ := strconv.Atoi(peer2[1])
+
+		t.links = append(t.links, &NetemLink{
+			Peer1: NetemLinkPeer{
+				Node:    t.GetNode(peer1[0]),
+				IfIndex: peer1Idx,
+			},
+			Peer2: NetemLinkPeer{
+				Node:    t.GetNode(peer2[0]),
+				IfIndex: peer2Idx,
+			},
+		})
+	}
+
 	return nil
 }
 
@@ -115,14 +168,18 @@ func (t *NetemTopologyManager) Reload() error {
 }
 
 func (t *NetemTopologyManager) Run() error {
+	var err error
 	if t.running {
 		t.logger.Warn("Topology is already running")
 		return nil
 	}
 
 	g := new(errgroup.Group)
-	// 1 - start ovswitch container
-	t.ovswitch.Start()
+	// 1 - start ovswitch container and init p2pSwitch
+	t.ovsInstance.Start()
+	if err != nil {
+		return err
+	}
 
 	// 2 - start all nodes
 	for _, node := range t.nodes {
@@ -134,7 +191,22 @@ func (t *NetemTopologyManager) Run() error {
 	}
 
 	// 3 - create links
-	// TODO
+	for _, l := range t.links {
+		veth, err := link.CreateVethLink(
+			genIfName(t.prjID, l.Peer1.Node.GetName(), l.Peer1.IfIndex, l.Peer2.Node.GetName(), l.Peer2.IfIndex),
+			genIfName(t.prjID, l.Peer2.Node.GetName(), l.Peer2.IfIndex, l.Peer1.Node.GetName(), l.Peer1.IfIndex),
+		)
+		if err != nil {
+			return err
+		}
+
+		if err := l.Peer1.Node.AttachInterface(veth.Name, l.Peer1.IfIndex); err != nil {
+			return err
+		}
+		if err := l.Peer2.Node.AttachInterface(veth.PeerName, l.Peer2.IfIndex); err != nil {
+			return err
+		}
+	}
 
 	// 4 - load configs
 	configPath := path.Join(t.path, configDir)
@@ -280,9 +352,12 @@ func (t *NetemTopologyManager) Close() error {
 			}
 		}
 	}
+	t.nodes = make([]INetemNode, 0)
+
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
 		t.logger.Errorf("Error when closing ovwitch instance: %v", err)
 	}
+	t.ovsInstance = nil
 
 	return nil
 }

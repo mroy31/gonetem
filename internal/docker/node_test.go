@@ -100,7 +100,7 @@ func TestDockerNode_Copy(t *testing.T) {
 		return
 	}
 	stat, err := os.Stat(localFile)
-	if !stat.Mode().IsRegular() {
+	if err != nil || !stat.Mode().IsRegular() {
 		t.Errorf("The local file has not bee created")
 		return
 	}

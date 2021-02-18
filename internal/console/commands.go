@@ -222,7 +222,7 @@ var consoleCmd = &cobra.Command{
 }
 
 func Init() {
-	rootCmd.PersistentFlags().StringVarP(&server, "server", "s", "unix:////tmp/gonetem.ctl", "Server uri for connection")
+	rootCmd.PersistentFlags().StringVarP(&server, "server", "s", "localhost:10110", "Server uri for connection")
 	createCmd.Flags().BoolVar(&disableRun, "disable-start", false, "Create a project without start it")
 	openCmd.Flags().BoolVar(&disableRun, "disable-start", false, "Create a project without start it")
 

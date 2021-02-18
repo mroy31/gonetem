@@ -93,6 +93,26 @@ func (o *OvsProjectInstance) DelBr(brName string) error {
 	return nil
 }
 
+func (o *OvsProjectInstance) AttachInterface(brName, ifName string, ifIndex int) error {
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	name := fmt.Sprintf("%s.%d", brName, ifIndex)
+	if err := client.AttachInterface(o.containerId, ifName, name); err != nil {
+		return err
+	}
+
+	cmd := []string{"ovs-vsctl", "add-port", brName, name}
+	if _, err := client.Exec(o.containerId, cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (o *OvsProjectInstance) Close() error {
 	client, err := docker.NewDockerClient()
 	if err != nil {

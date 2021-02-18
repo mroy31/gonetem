@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/utils"
+	"github.com/vishvananda/netlink"
 )
 
 func initClient() (*DockerClient, error) {
@@ -230,5 +232,45 @@ func TestDockerClient_Pid(t *testing.T) {
 	}
 	if err = client.Rm(cID); err != nil {
 		t.Errorf("Unable to remove the container: %v", err)
+	}
+}
+
+func TestDockerClient_AttachInterface(t *testing.T) {
+	client, err := initClient()
+	if err != nil {
+		t.Errorf("Unable to init docker client: %v", err)
+		return
+	}
+
+	// create a container
+	img := fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Router, options.VERSION)
+	name := utils.RandString(10)
+	cID, err := client.Create(img, name, name, true)
+	if err != nil {
+		t.Errorf("Unable to create the container: %v", err)
+		return
+	}
+	defer func() {
+		client.Stop(cID)
+		client.Rm(cID)
+	}()
+
+	// start container
+	if err = client.Start(cID); err != nil {
+		t.Errorf("Unable to start the container: %v", err)
+		return
+	}
+
+	// create veth if
+	myVeth, err := link.CreateVethLink(utils.RandString(4), utils.RandString(4))
+	if err != nil {
+		t.Errorf("Unable to create veth: %v", err)
+		return
+	}
+	defer netlink.LinkDel(myVeth)
+
+	if err := client.AttachInterface(cID, myVeth.PeerName, "eth0"); err != nil {
+		t.Errorf("Unable to attach if %s to container: %v", myVeth.PeerName, err)
+		return
 	}
 }

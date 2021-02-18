@@ -10,7 +10,7 @@ const (
 	VERSION               = "0.15.0"
 	GLOBAL_CONFIG_FILE    = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
-listen: /tmp/gonetem.ctl
+listen: "localhost:10110"
 docker:
   images:
     server: mroy31/pynetem-server

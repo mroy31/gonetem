@@ -23,6 +23,8 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/cobra v1.1.3
+	github.com/vishvananda/netlink v1.1.0
+	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	golang.org/x/sys v0.0.0-20210216163648-f7da38b97c65 // indirect
