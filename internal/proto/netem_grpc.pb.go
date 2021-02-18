@@ -30,6 +30,7 @@ type NetemClient interface {
 	ReadNetworkFile(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
 	WriteNetworkFile(ctx context.Context, in *WNetworkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// topology actions
+	Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
@@ -116,6 +117,15 @@ func (c *netemClient) WriteNetworkFile(ctx context.Context, in *WNetworkRequest,
 	return out, nil
 }
 
+func (c *netemClient) Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/Check", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
 	err := c.cc.Invoke(ctx, "/netem.Netem/Reload", in, out, opts...)
@@ -180,6 +190,7 @@ type NetemServer interface {
 	ReadNetworkFile(context.Context, *ProjectRequest) (*FileResponse, error)
 	WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error)
 	// topology actions
+	Check(context.Context, *ProjectRequest) (*AckResponse, error)
 	Reload(context.Context, *ProjectRequest) (*AckResponse, error)
 	Run(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
@@ -214,6 +225,9 @@ func (UnimplementedNetemServer) ReadNetworkFile(context.Context, *ProjectRequest
 }
 func (UnimplementedNetemServer) WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteNetworkFile not implemented")
+}
+func (UnimplementedNetemServer) Check(context.Context, *ProjectRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Check not implemented")
 }
 func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Reload not implemented")
@@ -381,6 +395,24 @@ func _Netem_WriteNetworkFile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_Check_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).Check(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/Check",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).Check(ctx, req.(*ProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Netem_Reload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProjectRequest)
 	if err := dec(in); err != nil {
@@ -481,6 +513,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WriteNetworkFile",
 			Handler:    _Netem_WriteNetworkFile_Handler,
+		},
+		{
+			MethodName: "Check",
+			Handler:    _Netem_Check_Handler,
 		},
 		{
 			MethodName: "Reload",

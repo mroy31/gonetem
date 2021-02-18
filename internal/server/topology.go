@@ -100,6 +100,20 @@ type NetemTopologyManager struct {
 	logger      *logrus.Entry
 }
 
+func (t *NetemTopologyManager) Check() error {
+	filepath := path.Join(t.path, networkFilename)
+	_, errors := CheckTopology(filepath)
+	if len(errors) > 0 {
+		msg := ""
+		for _, err := range errors {
+			msg += "\n\t" + err.Error()
+		}
+		return fmt.Errorf("Topology if not valid:%s\n", msg)
+	}
+
+	return nil
+}
+
 func (t *NetemTopologyManager) Load() error {
 	filepath := path.Join(t.path, networkFilename)
 	topology, errors := CheckTopology(filepath)

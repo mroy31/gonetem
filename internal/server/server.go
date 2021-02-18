@@ -172,6 +172,26 @@ func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest)
 	}, nil
 }
 
+func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetId()}
+	}
+
+	if err := project.Topology.Check(); err != nil {
+		return &proto.AckResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: err.Error(),
+			},
+		}, nil
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
 func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	// read first msg from client
 	resp, err := stream.Recv()

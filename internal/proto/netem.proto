@@ -20,6 +20,7 @@ service Netem {
     rpc WriteNetworkFile(WNetworkRequest) returns (AckResponse) {}
 
     // topology actions
+    rpc Check(ProjectRequest) returns (AckResponse) {}
     rpc Reload(ProjectRequest) returns (AckResponse) {}
     rpc Run(ProjectRequest) returns (AckResponse) {}
 

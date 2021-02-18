@@ -32,7 +32,7 @@ func isNodeExist(nodes []string, node string) bool {
 func isPeerValid(nodes, peers []string, peer string) error {
 	re := regexp.MustCompile(`^\w+.[0-9]+$`)
 	if !re.MatchString(peer) {
-		return fmt.Errorf("Link: invalid format for peer '%s' (<mode>.<if> required)", peer)
+		return fmt.Errorf("Link: invalid format for peer '%s' (<node>.<ifIndex> required)", peer)
 	}
 
 	for _, p := range peers {

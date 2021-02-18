@@ -63,6 +63,9 @@ func (p *NetemPrompt) Execute(s string) {
 	}
 
 	switch cmd {
+	case "check":
+		p.Check(client.Client, cmdArgs)
+
 	case "console":
 		p.Console(client.Client, cmdArgs)
 
@@ -90,6 +93,24 @@ func (p *NetemPrompt) Execute(s string) {
 
 	default:
 		fmt.Println("Unknown command, enter help for details")
+	}
+}
+
+func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
+	if len(cmdArgs) != 0 {
+		RedPrintf("check command does not take arguments\n")
+		return
+	}
+
+	ack, err := client.Check(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		RedPrintf(err.Error() + "\n")
+	} else {
+		if ack.Status.Code == proto.StatusCode_OK {
+			fmt.Println(color.GreenString("Network is OK"))
+		} else {
+			RedPrintf(ack.Status.Error + "\n")
+		}
 	}
 }
 
