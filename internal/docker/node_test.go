@@ -7,9 +7,16 @@ import (
 	"path"
 	"testing"
 
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/utils"
 )
+
+func skipUnlessRoot(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("Test requires root privileges.")
+	}
+}
 
 func TestDockerNode_StartStop(t *testing.T) {
 	options.InitServerConfig()
@@ -199,5 +206,59 @@ func TestDockerNode_Save(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDockerNode_AttachLink(t *testing.T) {
+	skipUnlessRoot(t)
+
+	options.InitServerConfig()
+	prjID := utils.RandString(4)
+	// Create 2 nodes and create a link between
+	config := DockerNodeOptions{
+		Name: utils.RandString(3),
+		Type: "router",
+	}
+	node1, err := NewDockerNode(prjID, config)
+	if err != nil {
+		t.Fatalf("Unable to create docker node: %v", err)
+	}
+	defer node1.Close()
+
+	config = DockerNodeOptions{
+		Name: utils.RandString(3),
+		Type: "host",
+	}
+	node2, err := NewDockerNode(prjID, config)
+	if err != nil {
+		t.Fatalf("Unable to create docker node: %v", err)
+	}
+	defer node2.Close()
+
+	for _, node := range []*DockerNode{node1, node2} {
+		if err := node.Start(); err != nil {
+			t.Fatalf("Unable to start docker node %s: %v", node.GetName(), err)
+		}
+	}
+
+	// create link
+	node1Netns, err := node1.GetNetns()
+	if err != nil {
+		t.Fatalf("Unable to get netns for node 1: %v", err)
+	}
+	defer node1Netns.Close()
+
+	node2Netns, err := node2.GetNetns()
+	if err != nil {
+		t.Fatalf("Unable to get netns for node 2: %v", err)
+	}
+	defer node2Netns.Close()
+
+	_, err = link.CreateVethLink(
+		node1.GetInterfaceName(0), node1Netns,
+		node2.GetInterfaceName(0), node2Netns,
+	)
+	if err != nil {
+		t.Fatalf("Unable to create veth: %v", err)
 	}
 }

@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/proto"
@@ -17,7 +19,8 @@ import (
 )
 
 var (
-	RedPrintf = color.New(color.FgRed).PrintfFunc()
+	RedPrintf     = color.New(color.FgRed).PrintfFunc()
+	MagentaPrintf = color.New(color.FgMagenta).PrintfFunc()
 )
 
 func Fatal(msg string, a ...interface{}) {
@@ -39,8 +42,17 @@ func (p *NetemPrompt) Execute(s string) {
 	}
 
 	if s == "quit" || s == "exit" {
-		p.Close()
-		return
+		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+		s.Prefix = "Close project " + filepath.Base(p.prjPath) + " : "
+		s.Start()
+
+		err := p.Close()
+		s.Stop()
+		if err != nil {
+			RedPrintf(err.Error() + "\n")
+		}
+
+		os.Exit(0)
 	}
 
 	client, err := NewClient(p.server)
@@ -75,11 +87,20 @@ func (p *NetemPrompt) Execute(s string) {
 	case "reload":
 		p.Reload(client.Client)
 
+	case "restart":
+		p.Restart(client.Client, cmdArgs)
+
 	case "run":
 		p.Run(client.Client)
 
 	case "save":
 		p.Save(client.Client, p.prjPath)
+
+	case "start":
+		p.Start(client.Client, cmdArgs)
+
+	case "stop":
+		p.Stop(client.Client, cmdArgs)
 
 	case "status":
 		p.Status(client.Client)
@@ -155,6 +176,54 @@ func (p *NetemPrompt) Save(client proto.NetemClient, dstPath string) {
 	}
 }
 
+func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
+	if len(cmdArgs) != 1 {
+		RedPrintf("start command requires exactly 1 argument: <node>\n")
+		return
+	}
+
+	ack, err := client.Start(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	if err != nil {
+		RedPrintf("Unable to start node: %v\n", err)
+	} else {
+		if ack.Status.Code == proto.StatusCode_ERROR {
+			MagentaPrintf(ack.Status.Error + "\n")
+		}
+	}
+}
+
+func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
+	if len(cmdArgs) != 1 {
+		RedPrintf("stop command requires exactly 1 argument: <node>\n")
+		return
+	}
+
+	ack, err := client.Stop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	if err != nil {
+		RedPrintf("Unable to stop node: %v\n", err)
+	} else {
+		if ack.Status.Code == proto.StatusCode_ERROR {
+			MagentaPrintf(ack.Status.Error + "\n")
+		}
+	}
+}
+
+func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
+	if len(cmdArgs) != 1 {
+		RedPrintf("restart command requires exactly 1 argument: <node>\n")
+		return
+	}
+
+	ack, err := client.Restart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	if err != nil {
+		RedPrintf("Unable to restart node: %v\n", err)
+	} else {
+		if ack.Status.Code == proto.StatusCode_ERROR {
+			MagentaPrintf(ack.Status.Error + "\n")
+		}
+	}
+}
+
 func (p *NetemPrompt) Status(client proto.NetemClient) {
 	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
@@ -177,7 +246,7 @@ func (p *NetemPrompt) Status(client proto.NetemClient) {
 			if nodeInfo.GetRunning() {
 				fmt.Print(color.GreenString("Running\n"))
 			} else {
-				fmt.Print(color.YellowString("Not Running\n"))
+				fmt.Print(color.MagentaString("Not Running\n"))
 			}
 		}
 	}
@@ -230,7 +299,7 @@ func (p *NetemPrompt) Reload(client proto.NetemClient) {
 	}
 }
 
-func (p *NetemPrompt) Close() {
+func (p *NetemPrompt) Close() error {
 	// First, stop all running processes (console, capture...)
 	for _, cmd := range p.processes {
 		done := make(chan interface{})
@@ -246,18 +315,17 @@ func (p *NetemPrompt) Close() {
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Unable to connect to server: %v", err)
 	} else {
+		defer client.Conn.Close()
+
 		_, err = client.Client.CloseProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 		if err != nil {
-			RedPrintf("Unable to close project: %v", err)
+			return fmt.Errorf("Unable to close project: %v", err)
 		}
 	}
-	defer client.Conn.Close()
 
-	fmt.Println("Bye!")
-	os.Exit(0)
+	return nil
 }
 
 func NewNetemPrompt(server, prjID, prjPath string) *NetemPrompt {

@@ -29,7 +29,12 @@ nodes:
   ipv6: true
   mpls: true
 - name: host
-  type: docker.host`,
+  type: docker.host
+links:
+- peer1: R1.0
+  peer2: switch.0
+- peer1: host.0
+  peer2: switch.1`,
 		nodes: []struct {
 			name string
 			kind string

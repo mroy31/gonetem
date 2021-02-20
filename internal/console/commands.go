@@ -69,7 +69,7 @@ func OpenProject(prjPath string) (string, error) {
 	defer client.Conn.Close()
 
 	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-	s.Prefix = "Open project " + filepath.Base(prjPath) + " :"
+	s.Prefix = "Open project " + filepath.Base(prjPath) + " : "
 	s.Start()
 
 	response, err := client.Client.OpenProject(context.Background(), &proto.OpenRequest{
@@ -84,7 +84,7 @@ func OpenProject(prjPath string) (string, error) {
 
 	prjID := response.GetId()
 	if !disableRun {
-		s.Prefix = "Start project " + filepath.Base(prjPath) + " :"
+		s.Prefix = "Start project " + filepath.Base(prjPath) + " : "
 		s.Start()
 
 		_, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
@@ -169,23 +169,26 @@ var connectCmd = &cobra.Command{
 }
 
 var createCmd = &cobra.Command{
-	Use:       "create",
-	Short:     "Create a project",
-	Long:      `Create a new project, start it and launch console on it"`,
-	ValidArgs: []string{"project-path"},
-	Args:      cobra.ExactArgs(1),
+	Use:   "create",
+	Short: "Create a project",
+	Long:  `Create a new project, start it and launch console on it"`,
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		if filepath.Ext(args[0]) != ".gnet" {
+			Fatal("gonetem accepts only project with .gnet extension")
+		}
+
 		if _, err := os.Stat(args[0]); err == nil {
 			Fatal("Project %s already exist", args[0])
 		}
 
 		if err := CreateProject(args[0]); err != nil {
-			Fatal("Unable to create project %s: %v", args[0], err)
+			Fatal("Unable to create project %s: \n\t%v\n", args[0], err)
 		}
 
 		prjID, err := OpenProject(args[0])
 		if err != nil {
-			RedPrintf("Error when starting project: %v", err)
+			RedPrintf("Error when starting project: \n\t%v\n", err)
 		}
 		if prjID != "" {
 			NewPrompt(prjID, args[0])
@@ -199,9 +202,13 @@ var openCmd = &cobra.Command{
 	Long:  `Open a project, start it and launch console on it"`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		if filepath.Ext(args[0]) != ".gnet" {
+			Fatal("gonetem accepts only project with .gnet extension")
+		}
+
 		prjID, err := OpenProject(args[0])
 		if err != nil {
-			RedPrintf("Error when starting project: %v", err)
+			RedPrintf("Error when starting project: \n\t%v\n", err)
 		}
 		if prjID != "" {
 			NewPrompt(prjID, args[0])
@@ -229,6 +236,7 @@ func Init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(createCmd)
+	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(consoleCmd)
 }

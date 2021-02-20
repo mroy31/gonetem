@@ -17,7 +17,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/term"
-	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/sirupsen/logrus"
 )
@@ -380,16 +379,6 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 		return fmt.Errorf("ExecTty: exit code %d", res.ExitCode)
 	}
 	return nil
-}
-
-func (c *DockerClient) AttachInterface(containerId, ifName, targetName string) error {
-	// get container pid
-	pid, err := c.Pid(containerId)
-	if err != nil {
-		return err
-	}
-
-	return link.AttachToPid(pid, ifName, targetName)
 }
 
 func NewDockerClient() (*DockerClient, error) {

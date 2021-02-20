@@ -35,6 +35,9 @@ type NetemClient interface {
 	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
 	Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error)
+	Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 }
 
 type netemClient struct {
@@ -175,6 +178,33 @@ func (x *netemConsoleClient) Recv() (*ConsoleSrvMsg, error) {
 	return m, nil
 }
 
+func (c *netemClient) Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/Start", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/Stop", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/Restart", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetemServer is the server API for Netem service.
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
@@ -195,6 +225,9 @@ type NetemServer interface {
 	Run(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
 	Console(Netem_ConsoleServer) error
+	Start(context.Context, *NodeRequest) (*AckResponse, error)
+	Stop(context.Context, *NodeRequest) (*AckResponse, error)
+	Restart(context.Context, *NodeRequest) (*AckResponse, error)
 	mustEmbedUnimplementedNetemServer()
 }
 
@@ -237,6 +270,15 @@ func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*AckRespo
 }
 func (UnimplementedNetemServer) Console(Netem_ConsoleServer) error {
 	return status.Errorf(codes.Unimplemented, "method Console not implemented")
+}
+func (UnimplementedNetemServer) Start(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Start not implemented")
+}
+func (UnimplementedNetemServer) Stop(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Stop not implemented")
+}
+func (UnimplementedNetemServer) Restart(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Restart not implemented")
 }
 func (UnimplementedNetemServer) mustEmbedUnimplementedNetemServer() {}
 
@@ -475,6 +517,60 @@ func (x *netemConsoleServer) Recv() (*ConsoleCltMsg, error) {
 	return m, nil
 }
 
+func _Netem_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).Start(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/Start",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).Start(ctx, req.(*NodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Netem_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).Stop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/Stop",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).Stop(ctx, req.(*NodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Netem_Restart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).Restart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/Restart",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).Restart(ctx, req.(*NodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Netem_ServiceDesc is the grpc.ServiceDesc for Netem service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -525,6 +621,18 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Run",
 			Handler:    _Netem_Run_Handler,
+		},
+		{
+			MethodName: "Start",
+			Handler:    _Netem_Start_Handler,
+		},
+		{
+			MethodName: "Stop",
+			Handler:    _Netem_Stop_Handler,
+		},
+		{
+			MethodName: "Restart",
+			Handler:    _Netem_Restart_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

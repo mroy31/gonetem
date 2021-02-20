@@ -26,6 +26,9 @@ service Netem {
 
     // Node actions
     rpc Console(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
+    rpc Start(NodeRequest) returns (AckResponse) {}
+    rpc Stop(NodeRequest) returns (AckResponse) {}
+    rpc Restart(NodeRequest) returns (AckResponse) {}
 
 }
 
@@ -59,6 +62,11 @@ message ConsoleSrvMsg {
 }
 
 // Request messages
+
+message NodeRequest {
+    string prjId = 1;
+    string node = 2;
+}
 
 message ProjectRequest {
     string id = 1;

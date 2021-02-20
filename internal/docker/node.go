@@ -8,8 +8,10 @@ import (
 	"path"
 
 	"github.com/moby/term"
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netns"
 )
 
 type DockerNodeOptions struct {
@@ -25,14 +27,16 @@ type DockerNodeStatus struct {
 }
 
 type DockerNode struct {
-	PrjID        string
-	ID           string
-	Name         string
-	Type         string
-	Running      bool
-	ConfigLoaded bool
-	Mpls         bool
-	Logger       *logrus.Entry
+	PrjID          string
+	ID             string
+	Name           string
+	Type           string
+	Interfaces     []string
+	LocalNetnsName string
+	Running        bool
+	ConfigLoaded   bool
+	Mpls           bool
+	Logger         *logrus.Entry
 }
 
 func (n *DockerNode) GetName() string {
@@ -65,6 +69,17 @@ func (n *DockerNode) IsRunning() bool {
 }
 
 func (n *DockerNode) Create(imgName string, ipv6 bool) error {
+	var err error
+
+	// first created local named ns to detach interface without delete it
+	nsName := fmt.Sprintf("%s%s", n.PrjID, n.Name)
+	ns, err := netns.NewNamed(nsName)
+	if err != nil {
+		return fmt.Errorf("Error when creating node netns '%s': %v", nsName, err)
+	}
+	ns.Close()
+	n.LocalNetnsName = nsName
+
 	client, err := NewDockerClient()
 	if err != nil {
 		return err
@@ -82,6 +97,34 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (n *DockerNode) GetNetns() (netns.NsHandle, error) {
+	if !n.Running {
+		return netns.NsHandle(0), fmt.Errorf("Node %s Not running", n.GetName())
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return netns.NsHandle(0), err
+	}
+	defer client.Close()
+
+	pid, err := client.Pid(n.ID)
+	if err != nil {
+		return netns.NsHandle(0), err
+	}
+	return netns.GetFromPid(pid)
+}
+
+func (n *DockerNode) GetInterfaceName(ifIndex int) string {
+	return fmt.Sprintf("eth%d", ifIndex)
+}
+
+func (n *DockerNode) AddInterface(ifIndex int) error {
+	n.Interfaces = append(n.Interfaces, n.GetInterfaceName(ifIndex))
 
 	return nil
 }
@@ -127,6 +170,23 @@ func (n *DockerNode) Start() error {
 			return err
 		}
 		n.Running = true
+
+		// Attach existing interfaces
+		currentNS, err := netns.GetFromName(n.LocalNetnsName)
+		if err != nil {
+			return fmt.Errorf("Unable to get netns associated to node %s: %v", n.Name, err)
+		}
+		defer currentNS.Close()
+
+		targetNS, err := n.GetNetns()
+		if err != nil {
+			return err
+		}
+		defer targetNS.Close()
+
+		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
+			return fmt.Errorf("Unable to attach interfaces: %v", err)
+		}
 	}
 
 	return nil
@@ -140,30 +200,29 @@ func (n *DockerNode) Stop() error {
 		}
 		defer client.Close()
 
+		// Detach interfaces
+		currentNS, err := n.GetNetns()
+		if err != nil {
+			return fmt.Errorf("Unable to get netns associated to node %s: %v", n.Name, err)
+		}
+		defer currentNS.Close()
+
+		targetNS, err := netns.GetFromName(n.LocalNetnsName)
+		if err != nil {
+			return err
+		}
+		defer targetNS.Close()
+
+		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
+			return fmt.Errorf("Unable to attach interfaces: %v", err)
+		}
+
 		if err := client.Stop(n.ID); err != nil {
 			return err
 		}
 		n.Running = false
 		n.ConfigLoaded = false
-	}
 
-	return nil
-}
-
-func (n *DockerNode) AttachInterface(ifName string, index int) error {
-	if !n.Running {
-		n.Logger.Warn("AttachInterface: node not running")
-		return nil
-	}
-
-	client, err := NewDockerClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	if err := client.AttachInterface(n.ID, ifName, fmt.Sprintf("eth%d", index)); err != nil {
-		return err
 	}
 
 	return nil
@@ -187,6 +246,14 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 			switch n.Type {
 			case "router":
 				configFiles[n.Name+".frr.conf"] = "/etc/frr/frr.conf"
+			case "host":
+				configFiles[n.Name+".net.conf"] = "/tmp/custom.net.conf"
+				configFiles[n.Name+".ntp.conf"] = "/etc/ntp.conf"
+			case "server":
+				configFiles[n.Name+".net.conf"] = "/tmp/custom.net.conf"
+				configFiles[n.Name+".ntp.conf"] = "/etc/ntp.conf"
+				configFiles[n.Name+".dhcpd.conf"] = "/etc/dhcp/dhcpd.conf"
+				configFiles[n.Name+".tftpd-hpa.default"] = "/etc/default/tftpd-hpa"
 			}
 
 			for source, dest := range configFiles {
@@ -199,6 +266,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 					return fmt.Errorf("Unable to load config file %s:\n\t%v", source, err)
 				}
 			}
+
 		}
 
 		// Start process when necessary
@@ -206,6 +274,13 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 			// start FRR daemon
 			if _, err := client.Exec(n.ID, []string{"/usr/lib/frr/frrinit.sh", "start"}); err != nil {
 				return err
+			}
+		} else {
+			netconf := path.Join(confPath, n.Name+".net.conf")
+			if _, err := os.Stat(netconf); err == nil {
+				if _, err := client.Exec(n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"}); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -304,6 +379,11 @@ func (n *DockerNode) Close() error {
 		if err := client.Rm(n.ID); err != nil {
 			return err
 		}
+
+		// clean attributes
+		n.ConfigLoaded = false
+		n.Interfaces = make([]string, 0)
+		netns.DeleteNamed(n.LocalNetnsName)
 	}
 
 	return nil

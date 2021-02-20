@@ -8,6 +8,7 @@ import (
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/ovs"
+	"github.com/vishvananda/netns"
 )
 
 type INetemNode interface {
@@ -16,7 +17,9 @@ type INetemNode interface {
 	IsRunning() bool
 	Start() error
 	Stop() error
-	AttachInterface(ifName string, index int) error
+	GetNetns() (netns.NsHandle, error)
+	GetInterfaceName(ifIndex int) string
+	AddInterface(ifIndex int) error
 	LoadConfig(confPath string) error
 	CanRunConsole() error
 	Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error

@@ -5,6 +5,7 @@ import (
 
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/options"
+	"github.com/vishvananda/netns"
 )
 
 type State int
@@ -42,6 +43,38 @@ func (o *OvsProjectInstance) Start() error {
 	return nil
 }
 
+func (o *OvsProjectInstance) GetNetns() (netns.NsHandle, error) {
+	if o.state != started {
+		return netns.NsHandle(0), fmt.Errorf("ovswitch instance not running")
+	}
+
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return netns.NsHandle(0), err
+	}
+	defer client.Close()
+
+	pid, err := client.Pid(o.containerId)
+	if err != nil {
+		return netns.NsHandle(0), err
+	}
+	return netns.GetFromPid(pid)
+}
+
+func (o *OvsProjectInstance) Exec(cmd []string) error {
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if _, err := client.Exec(o.containerId, cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (o *OvsProjectInstance) findBr(brName string) int {
 	for idx, br := range o.bridges {
 		if br == brName {
@@ -56,14 +89,8 @@ func (o *OvsProjectInstance) AddBr(brName string) error {
 		return fmt.Errorf("Switch %s already exists", brName)
 	}
 
-	client, err := docker.NewDockerClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
 	cmd := []string{"ovs-vsctl", "add-br", brName}
-	if _, err := client.Exec(o.containerId, cmd); err != nil {
+	if err := o.Exec(cmd); err != nil {
 		return err
 	}
 	o.bridges = append(o.bridges, brName)
@@ -74,14 +101,8 @@ func (o *OvsProjectInstance) AddBr(brName string) error {
 func (o *OvsProjectInstance) DelBr(brName string) error {
 	brIdx := o.findBr(brName)
 	if brIdx != -1 {
-		client, err := docker.NewDockerClient()
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-
 		cmd := []string{"ovs-vsctl", "del-br", brName}
-		if _, err := client.Exec(o.containerId, cmd); err != nil {
+		if err := o.Exec(cmd); err != nil {
 			return err
 		}
 
@@ -93,24 +114,14 @@ func (o *OvsProjectInstance) DelBr(brName string) error {
 	return nil
 }
 
-func (o *OvsProjectInstance) AttachInterface(brName, ifName string, ifIndex int) error {
-	client, err := docker.NewDockerClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
+func (o *OvsProjectInstance) AddPort(brName, ifName string) error {
+	cmd := []string{"ovs-vsctl", "add-port", brName, ifName}
+	return o.Exec(cmd)
+}
 
-	name := fmt.Sprintf("%s.%d", brName, ifIndex)
-	if err := client.AttachInterface(o.containerId, ifName, name); err != nil {
-		return err
-	}
-
-	cmd := []string{"ovs-vsctl", "add-port", brName, name}
-	if _, err := client.Exec(o.containerId, cmd); err != nil {
-		return err
-	}
-
-	return nil
+func (o *OvsProjectInstance) DelPort(brName, ifName string) error {
+	cmd := []string{"ovs-vsctl", "del-port", brName, ifName}
+	return o.Exec(cmd)
 }
 
 func (o *OvsProjectInstance) Close() error {

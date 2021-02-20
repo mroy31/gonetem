@@ -182,6 +182,8 @@ func (t *NetemTopologyManager) Reload() error {
 }
 
 func (t *NetemTopologyManager) Run() error {
+	t.logger.Debug("Topo/Run")
+
 	var err error
 	if t.running {
 		t.logger.Warn("Topology is already running")
@@ -190,12 +192,14 @@ func (t *NetemTopologyManager) Run() error {
 
 	g := new(errgroup.Group)
 	// 1 - start ovswitch container and init p2pSwitch
+	t.logger.Debug("Topo/Run: start ovswitch instance")
 	t.ovsInstance.Start()
 	if err != nil {
 		return err
 	}
 
 	// 2 - start all nodes
+	t.logger.Debug("Topo/Run: start all nodes")
 	for _, node := range t.nodes {
 		node := node
 		g.Go(func() error { return node.Start() })
@@ -205,24 +209,48 @@ func (t *NetemTopologyManager) Run() error {
 	}
 
 	// 3 - create links
+	t.logger.Debug("Topo/Run: setup links")
 	for _, l := range t.links {
-		veth, err := link.CreateVethLink(
-			genIfName(t.prjID, l.Peer1.Node.GetName(), l.Peer1.IfIndex, l.Peer2.Node.GetName(), l.Peer2.IfIndex),
-			genIfName(t.prjID, l.Peer2.Node.GetName(), l.Peer2.IfIndex, l.Peer1.Node.GetName(), l.Peer1.IfIndex),
-		)
+		peer1Netns, err := l.Peer1.Node.GetNetns()
 		if err != nil {
 			return err
 		}
+		defer peer1Netns.Close()
 
-		if err := l.Peer1.Node.AttachInterface(veth.Name, l.Peer1.IfIndex); err != nil {
+		peer2Netns, err := l.Peer2.Node.GetNetns()
+		if err != nil {
 			return err
 		}
-		if err := l.Peer2.Node.AttachInterface(veth.PeerName, l.Peer2.IfIndex); err != nil {
+		defer peer2Netns.Close()
+
+		veth, err := link.CreateVethLink(
+			l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex), peer1Netns,
+			l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex), peer2Netns,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"Unable to create link %s.%d-%s.%d: %v",
+				l.Peer1.Node.GetName(), l.Peer1.IfIndex,
+				l.Peer2.Node.GetName(), l.Peer2.IfIndex,
+				err,
+			)
+		}
+
+		// set interface up
+		if err := link.SetInterfaceState(veth.Name, peer1Netns, link.IFSTATE_UP); err != nil {
 			return err
 		}
+		if err := link.SetInterfaceState(veth.PeerName, peer2Netns, link.IFSTATE_UP); err != nil {
+			return err
+		}
+
+		// record interface in node
+		l.Peer1.Node.AddInterface(l.Peer1.IfIndex)
+		l.Peer2.Node.AddInterface(l.Peer2.IfIndex)
 	}
 
 	// 4 - load configs
+	t.logger.Debug("Topo/Run: load configuration")
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
@@ -286,6 +314,11 @@ func (t *NetemTopologyManager) stopNode(node INetemNode) error {
 }
 
 func (t *NetemTopologyManager) Start(nodeName string) error {
+	if !t.running {
+		t.logger.Warnf("Start %s: topology not running", nodeName)
+		return nil
+	}
+
 	node := t.GetNode(nodeName)
 	if node == nil {
 		return fmt.Errorf("Node %s not found in the topology", nodeName)
@@ -295,6 +328,11 @@ func (t *NetemTopologyManager) Start(nodeName string) error {
 }
 
 func (t *NetemTopologyManager) Stop(nodeName string) error {
+	if !t.running {
+		t.logger.Warnf("Stop %s: topology not running", nodeName)
+		return nil
+	}
+
 	node := t.GetNode(nodeName)
 	if node == nil {
 		return fmt.Errorf("Node %s not found in the topology", nodeName)

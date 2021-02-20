@@ -172,6 +172,54 @@ func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest)
 	}, nil
 }
 
+func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if err := project.Topology.Start(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) Stop(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if err := project.Topology.Stop(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) Restart(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if err := project.Topology.Stop(request.GetNode()); err != nil {
+		return nil, err
+	}
+	if err := project.Topology.Start(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
 func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
 	project := GetProject(request.GetId())
 	if project == nil {

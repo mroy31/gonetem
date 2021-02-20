@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/moby/term"
+	"github.com/vishvananda/netns"
 )
 
 type OvsNode struct {
@@ -12,6 +13,7 @@ type OvsNode struct {
 	Name        string
 	Running     bool
 	OvsInstance *OvsProjectInstance
+	Interfaces  []string
 }
 
 func (s *OvsNode) GetName() string {
@@ -34,25 +36,56 @@ func (o *OvsNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Wi
 	return fmt.Errorf("Console not supported for ovswitch node")
 }
 
+func (o *OvsNode) GetNetns() (netns.NsHandle, error) {
+	return o.OvsInstance.GetNetns()
+}
+
+func (o *OvsNode) GetInterfaceName(ifIndex int) string {
+	return fmt.Sprintf("%s.%d", o.Name, ifIndex)
+}
+
 func (o *OvsNode) Start() error {
 	if !o.Running {
+		if err := o.OvsInstance.AddBr(o.Name); err != nil {
+			return err
+		}
 		o.Running = true
-		return o.OvsInstance.AddBr(o.Name)
+
+		for _, ifName := range o.Interfaces {
+			if err := o.OvsInstance.AddPort(o.Name, ifName); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
 func (o *OvsNode) Stop() error {
+	if o.Running {
+		for _, ifName := range o.Interfaces {
+			if err := o.OvsInstance.DelPort(o.Name, ifName); err != nil {
+				return err
+			}
+		}
+
+		if err := o.OvsInstance.DelBr(o.Name); err != nil {
+			return err
+		}
+		o.Running = false
+	}
+
 	return nil
 }
 
-func (o *OvsNode) AttachInterface(ifName string, ifIndex int) error {
-	if !o.Running {
-		return nil
+func (o *OvsNode) AddInterface(ifIndex int) error {
+	if err := o.OvsInstance.AddPort(o.Name, o.GetInterfaceName(ifIndex)); err != nil {
+		return err
 	}
 
-	return o.OvsInstance.AttachInterface(o.Name, ifName, ifIndex)
+	o.Interfaces = append(o.Interfaces, o.GetInterfaceName(ifIndex))
+
+	return nil
 }
 
 func (o *OvsNode) LoadConfig(confPath string) error {
