@@ -1,4 +1,63 @@
+gonetem
+=======
 
-UI with electron:
-  - use https://github.com/konvajs/react-konva for canvas
+Description
+-----------
 
+gonetem is a network emulator written in go based on
+
+* docker to emulate nodes (host, server or router)
+* OpenvSwitch to emulate switch
+
+Architecture
+------------
+
+gonetem is composed of 2 parts:
+
+* `gonetem-server`: it's the core of gonetem to emulate networks. It needs root access to create/launch
+  docker nodes / switches and create links between them.
+* `gonetem-console`: it's the console client to control `gonetem-server`
+
+Installation
+------------
+
+You can compile gonetem with the command
+
+    $make build
+
+The 2 binaries are then available in the `bin` folder
+
+Usage
+-----
+
+To use gonetem, firstly you have lo launch gonetem-server with the root
+right. You can use the following command for example:
+
+    $sudo gonetem-server
+
+Then, you can use gonetem-console to create/launch project. For example
+to create an empty project:
+
+    $gonetem-console create ./myproject.gnet
+
+And after to open it
+
+    $gonetem-console open ./myproject.gnet
+    $[myproject]> edit # if you want to edit the topology
+    $[myproject]> reload # to reload the new topology
+    $[myproject]> console all # to open all consoles
+    $[myproject]> quit
+
+Docker Node
+-----------
+
+Before using gonetem, you need to pull from docker hub images used by gonetem.
+
+* mroy31/gonetem-frr -> to emulate router based on frr software
+* mroy31/gonetem-host -> tp emulate host
+* mroy31/gonetem-server -> to emulate server
+* mroy31/gonetem-ovs -> to emulate switch with Openvswitch
+
+To do that, you can use the following command:
+
+    $gonetem-console pull
