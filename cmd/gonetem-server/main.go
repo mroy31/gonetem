@@ -19,13 +19,12 @@ var (
 	grpcServer *grpc.Server = nil
 	socket     net.Listener = nil
 	verbose                 = flag.Bool("verbose", false, "Display more messages")
-	conf                    = flag.String("conf-file", "", "Configuration path")
-	logFile                 = flag.String("log-file", "", "Path of the log file")
+	conf                    = flag.String("conf-file", options.DEFAULT_CONFIG_FILE, "Configuration path")
+	logFile                 = flag.String("log-file", "", "Path of the log file (default: stdout)")
 )
 
 func main() {
 	flag.Parse()
-	options.InitServerConfig()
 
 	// init log
 	logWriter := os.Stderr
@@ -45,6 +44,16 @@ func main() {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 	logrus.Info("Starting gonetem daemon - version " + options.VERSION)
+
+	// parse config
+	options.InitServerConfig()
+	if _, err := os.Stat(*conf); os.IsNotExist(err) {
+		logrus.Warnf("Config file %s not exit, skip it", *conf)
+	} else {
+		if err := options.ParseConfigFile(*conf); err != nil {
+			logrus.Fatalf("Unable to parse config file %s: %v", *conf, err)
+		}
+	}
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)

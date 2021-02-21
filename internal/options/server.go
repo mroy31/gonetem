@@ -1,14 +1,15 @@
 package options
 
 import (
+	"io/ioutil"
 	"log"
 
 	"gopkg.in/yaml.v2"
 )
 
 const (
-	VERSION               = "0.15.0"
-	GLOBAL_CONFIG_FILE    = "/etc/gonetem/config.yaml"
+	VERSION               = "0.1.0"
+	DEFAULT_CONFIG_FILE   = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
 listen: "localhost:10110"
 docker:
@@ -43,6 +44,15 @@ func InitServerConfig() {
 	}
 }
 
+func CreateConfigFile(config string) error {
+	return ioutil.WriteFile(config, []byte(INITIAL_SERVER_CONFIG), 0644)
+}
+
 func ParseConfigFile(config string) error {
-	return nil
+	data, err := ioutil.ReadFile(config)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(data, &ServerConfig)
 }
