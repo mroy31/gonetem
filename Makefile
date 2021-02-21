@@ -5,9 +5,12 @@ proto: internal/proto/netem.proto
 		internal/proto/netem.proto
 
 build-console:
-	go build -o ./gonetem-console cmd/gonetem-console/main.go
+	go build -o ./bin/gonetem-console cmd/gonetem-console/main.go
 
 build-server:
-	go build -o ./gonetem-server cmd/gonetem-server/main.go
+	go build -o ./bin/gonetem-server cmd/gonetem-server/main.go
 
 build: build-console build-server
+
+clean:
+	rm -r bin

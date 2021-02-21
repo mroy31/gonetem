@@ -30,6 +30,15 @@ var (
 	openProjects = make(map[string]*NetemProject, 0)
 )
 
+func IsProjectExist(prjName string) bool {
+	for _, prj := range openProjects {
+		if prj.Name == prjName {
+			return true
+		}
+	}
+	return false
+}
+
 func IdProjectExist(prjID string) bool {
 	for _, prj := range openProjects {
 		if prj.Id == prjID {

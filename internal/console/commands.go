@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -29,6 +30,7 @@ nodes:
 var (
 	server     string
 	disableRun bool
+	prjRunName string
 )
 
 func ListProjects() *proto.PrjListResponse {
@@ -56,15 +58,15 @@ func CreateProject(prjPath string) error {
 	return utils.CreateOneFileArchive(prj, networkFilename, []byte(emptyNetwork))
 }
 
-func OpenProject(prjPath string) (string, error) {
+func OpenProject(prjPath string) (string, string, error) {
 	data, err := ioutil.ReadFile(prjPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	client, err := NewClient(server)
 	if err != nil {
-		return "", fmt.Errorf("Server not responding")
+		return "", "", fmt.Errorf("Server not responding")
 	}
 	defer client.Conn.Close()
 
@@ -72,33 +74,40 @@ func OpenProject(prjPath string) (string, error) {
 	s.Prefix = "Open project " + filepath.Base(prjPath) + " : "
 	s.Start()
 
+	name := prjRunName
+	if name == "" {
+		// use filename as name
+		name = strings.TrimSuffix(filepath.Base(prjPath), ".gnet")
+	}
 	response, err := client.Client.OpenProject(context.Background(), &proto.OpenRequest{
-		Name: filepath.Base(prjPath),
+		Name: name,
 		Data: data,
 	})
 	s.Stop()
 
 	if err != nil {
-		return "", err
+		return name, "", err
+	} else if response.GetStatus().GetCode() == proto.StatusCode_ERROR {
+		return name, "", fmt.Errorf(response.GetStatus().GetError())
 	}
 
 	prjID := response.GetId()
 	if !disableRun {
-		s.Prefix = "Start project " + filepath.Base(prjPath) + " : "
+		s.Prefix = "Start project " + name + " : "
 		s.Start()
 
 		_, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
 		s.Stop()
 
 		if err != nil {
-			return prjID, err
+			return name, prjID, err
 		}
 	}
 
-	return prjID, nil
+	return name, prjID, nil
 }
 
-func NewPrompt(prjID, prjPath string) {
+func NewPrompt(prjName, prjID, prjPath string) {
 	c := NewPromptCompleter()
 	e := NewNetemPrompt(server, prjID, prjPath)
 
@@ -108,7 +117,7 @@ func NewPrompt(prjID, prjPath string) {
 		e.Execute,
 		c.Complete,
 		prompt.OptionTitle("gonetem-emulator"),
-		prompt.OptionPrefix(fmt.Sprintf("[%s]> ", prjID)),
+		prompt.OptionPrefix(fmt.Sprintf("[%s]> ", prjName)),
 		prompt.OptionInputTextColor(prompt.Yellow),
 		prompt.OptionCompletionWordSeparator(completer.FilePathCompletionSeparator),
 	)
@@ -144,7 +153,7 @@ var listCmd = &cobra.Command{
 			fmt.Println(color.YellowString("No project open on the server"))
 		} else {
 			for _, prj := range projects.GetProjects() {
-				fmt.Printf("Id: %s | Name: %s\n", prj.GetId(), prj.GetName())
+				fmt.Printf("Name: %s | OpenAt %s\n", prj.GetName(), prj.GetOpenAt())
 			}
 		}
 	},
@@ -160,9 +169,17 @@ var connectCmd = &cobra.Command{
 		if len(projects.GetProjects()) == 0 {
 			fmt.Println(color.YellowString("No project open on the server"))
 		} else {
-			prjID := prompt.Input("Select project: ", NewConnectCompleter(projects).Complete)
+			prjID := ""
+			prjName := prompt.Input("Select project: ", NewConnectCompleter(projects).Complete)
+
+			// find project in list
+			for _, prj := range projects.GetProjects() {
+				if prj.GetName() == prjName {
+					prjID = prj.GetId()
+				}
+			}
 			if prjID != "" {
-				NewPrompt(prjID, "")
+				NewPrompt(prjName, prjID, "")
 			}
 		}
 	},
@@ -186,13 +203,8 @@ var createCmd = &cobra.Command{
 			Fatal("Unable to create project %s: \n\t%v\n", args[0], err)
 		}
 
-		prjID, err := OpenProject(args[0])
-		if err != nil {
-			RedPrintf("Error when starting project: \n\t%v\n", err)
-		}
-		if prjID != "" {
-			NewPrompt(prjID, args[0])
-		}
+		fmt.Println(color.GreenString("Project " + args[0] + " has been created"))
+		fmt.Println(color.GreenString("You can now launch it with the command: gonetem-console open " + args[0]))
 	},
 }
 
@@ -206,12 +218,13 @@ var openCmd = &cobra.Command{
 			Fatal("gonetem accepts only project with .gnet extension")
 		}
 
-		prjID, err := OpenProject(args[0])
+		prjName, prjID, err := OpenProject(args[0])
 		if err != nil {
-			RedPrintf("Error when starting project: \n\t%v\n", err)
+			RedPrintf("Error when open project: \n%v\n", err)
 		}
+
 		if prjID != "" {
-			NewPrompt(prjID, args[0])
+			NewPrompt(prjName, prjID, args[0])
 		}
 	},
 }
@@ -229,9 +242,15 @@ var consoleCmd = &cobra.Command{
 }
 
 func Init() {
-	rootCmd.PersistentFlags().StringVarP(&server, "server", "s", "localhost:10110", "Server uri for connection")
-	createCmd.Flags().BoolVar(&disableRun, "disable-start", false, "Create a project without start it")
-	openCmd.Flags().BoolVar(&disableRun, "disable-start", false, "Create a project without start it")
+	rootCmd.PersistentFlags().StringVarP(
+		&server, "server", "s", "localhost:10110",
+		"Server uri for connection (default to localhost:10110")
+	openCmd.Flags().BoolVar(
+		&disableRun, "no-start", false,
+		"Do not start the project after open it")
+	openCmd.Flags().StringVar(
+		&prjRunName, "name", "",
+		"Name used to identify the project on the server (name of the file by default)")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(listCmd)

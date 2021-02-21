@@ -26,8 +26,8 @@ func (c *ConnectCompleter) Complete(d prompt.Document) []prompt.Suggest {
 	suggestions := []prompt.Suggest{}
 	for _, prj := range c.projects.GetProjects() {
 		suggestions = append(suggestions, prompt.Suggest{
-			Text:        prj.GetId(),
-			Description: fmt.Sprintf("%s (%s)", prj.GetName(), prj.GetOpenAt()),
+			Text:        prj.GetName(),
+			Description: fmt.Sprintf("Open at %s", prj.GetOpenAt()),
 		})
 	}
 	return suggestions

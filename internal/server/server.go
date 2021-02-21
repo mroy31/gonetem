@@ -40,7 +40,7 @@ func (s *netemServer) GetProjects(ctx context.Context, empty *empty.Empty) (*pro
 		response.Projects = append(response.Projects, &proto.PrjListResponse_Info{
 			Id:     prj.Id,
 			Name:   prj.Name,
-			OpenAt: prj.OpenAt.String(),
+			OpenAt: prj.OpenAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 
@@ -48,6 +48,15 @@ func (s *netemServer) GetProjects(ctx context.Context, empty *empty.Empty) (*pro
 }
 
 func (s *netemServer) OpenProject(ctx context.Context, request *proto.OpenRequest) (*proto.PrjOpenResponse, error) {
+	if IsProjectExist(request.GetName()) {
+		return &proto.PrjOpenResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: "A project with this name is already open.\nUse --name option if you want to open it anyway",
+			},
+		}, nil
+	}
+
 	prjID := utils.RandString(3)
 	for IdProjectExist(prjID) {
 		prjID = utils.RandString(3)
