@@ -3,6 +3,7 @@ package console
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -126,17 +127,15 @@ func NewPrompt(prjName, prjID, prjPath string) {
 
 var rootCmd = &cobra.Command{
 	Use:   "gonetem-console",
-	Short: "gonetem-console is a console to work with gonetem network emulator",
-	Long:  `gonetem-console is a console to work with gonetem network emulator`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Do Stuff Here
-	},
+	Short: "gonetem-console is a cli client for gonetem emulator",
+	Long:  "gonetem-console is a cli client for gonetem emulator",
 }
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of gonetem",
 	Long:  `All software has versions. This is gonetem's`,
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Gonetem network emulator v" + options.VERSION)
 	},
@@ -146,6 +145,7 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running projects on the server",
 	Long:  `List running projects on the server`,
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		projects := ListProjects()
 
@@ -161,8 +161,9 @@ var listCmd = &cobra.Command{
 
 var connectCmd = &cobra.Command{
 	Use:   "connect",
-	Short: "Connect to a project",
+	Short: "Connect to a running project",
 	Long:  `Connect console to a running project"`,
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		projects := ListProjects()
 
@@ -241,10 +242,55 @@ var consoleCmd = &cobra.Command{
 	},
 }
 
+var pullCmd = &cobra.Command{
+	Use:   "pull",
+	Short: "Pull required docker images on the server",
+	Long:  "Pull required docker images on the server",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		var s *spinner.Spinner
+
+		client, err := NewClient(server)
+		if err != nil {
+			Fatal("Unable to connect to server: %v", err)
+		}
+		defer client.Conn.Close()
+
+		stream, err := client.Client.PullImages(context.Background(), &emptypb.Empty{})
+		if err != nil {
+			Fatal("Unable to pull gonetem images: %v", err)
+		}
+
+		for {
+			msg, err := stream.Recv()
+			if s != nil {
+				s.Stop()
+			}
+
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				Fatal("Error while pulling gonetem images: %v", err)
+			}
+
+			switch msg.Code {
+			case proto.PullSrvMsg_START:
+				s = spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+				s.Prefix = "Pull image " + msg.Image + " : "
+				s.Start()
+			case proto.PullSrvMsg_ERROR:
+				fmt.Println(color.RedString(msg.Error))
+			case proto.PullSrvMsg_OK:
+				fmt.Println(color.GreenString("Image " + msg.Image + "has been pulled"))
+			}
+		}
+	},
+}
+
 func Init() {
 	rootCmd.PersistentFlags().StringVarP(
 		&server, "server", "s", "localhost:10110",
-		"Server uri for connection (default to localhost:10110")
+		"Server uri for connection")
 	openCmd.Flags().BoolVar(
 		&disableRun, "no-start", false,
 		"Do not start the project after open it")
@@ -258,6 +304,7 @@ func Init() {
 	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(consoleCmd)
+	rootCmd.AddCommand(pullCmd)
 }
 
 func Execute() {

@@ -6,7 +6,9 @@ package netem;
 import "google/protobuf/empty.proto";
 
 service Netem {
+    // general action
     rpc GetVersion(google.protobuf.Empty) returns (VersionResponse) {}
+    rpc PullImages(google.protobuf.Empty) returns (stream PullSrvMsg) {}
 
     // Project actions
     rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
@@ -59,6 +61,18 @@ message ConsoleSrvMsg {
 
     Code code = 1;
     bytes data = 3;
+}
+
+message PullSrvMsg {
+    enum Code {
+        START = 0;
+        OK = 1;
+        ERROR = 2;
+    }
+
+    Code code = 1;
+    string image = 2;
+    string error = 3;
 }
 
 // Request messages

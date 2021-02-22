@@ -19,7 +19,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NetemClient interface {
+	// general action
 	GetVersion(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*VersionResponse, error)
+	PullImages(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (Netem_PullImagesClient, error)
 	// Project actions
 	GetProjects(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PrjListResponse, error)
 	OpenProject(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*PrjOpenResponse, error)
@@ -55,6 +57,38 @@ func (c *netemClient) GetVersion(ctx context.Context, in *empty.Empty, opts ...g
 		return nil, err
 	}
 	return out, nil
+}
+
+func (c *netemClient) PullImages(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (Netem_PullImagesClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[0], "/netem.Netem/PullImages", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &netemPullImagesClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Netem_PullImagesClient interface {
+	Recv() (*PullSrvMsg, error)
+	grpc.ClientStream
+}
+
+type netemPullImagesClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemPullImagesClient) Recv() (*PullSrvMsg, error) {
+	m := new(PullSrvMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (c *netemClient) GetProjects(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PrjListResponse, error) {
@@ -148,7 +182,7 @@ func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.
 }
 
 func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[0], "/netem.Netem/Console", opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[1], "/netem.Netem/Console", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +243,9 @@ func (c *netemClient) Restart(ctx context.Context, in *NodeRequest, opts ...grpc
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
 type NetemServer interface {
+	// general action
 	GetVersion(context.Context, *empty.Empty) (*VersionResponse, error)
+	PullImages(*empty.Empty, Netem_PullImagesServer) error
 	// Project actions
 	GetProjects(context.Context, *empty.Empty) (*PrjListResponse, error)
 	OpenProject(context.Context, *OpenRequest) (*PrjOpenResponse, error)
@@ -237,6 +273,9 @@ type UnimplementedNetemServer struct {
 
 func (UnimplementedNetemServer) GetVersion(context.Context, *empty.Empty) (*VersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetVersion not implemented")
+}
+func (UnimplementedNetemServer) PullImages(*empty.Empty, Netem_PullImagesServer) error {
+	return status.Errorf(codes.Unimplemented, "method PullImages not implemented")
 }
 func (UnimplementedNetemServer) GetProjects(context.Context, *empty.Empty) (*PrjListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProjects not implemented")
@@ -309,6 +348,27 @@ func _Netem_GetVersion_Handler(srv interface{}, ctx context.Context, dec func(in
 		return srv.(NetemServer).GetVersion(ctx, req.(*empty.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _Netem_PullImages_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(empty.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NetemServer).PullImages(m, &netemPullImagesServer{stream})
+}
+
+type Netem_PullImagesServer interface {
+	Send(*PullSrvMsg) error
+	grpc.ServerStream
+}
+
+type netemPullImagesServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemPullImagesServer) Send(m *PullSrvMsg) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _Netem_GetProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -636,6 +696,11 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "PullImages",
+			Handler:       _Netem_PullImages_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "Console",
 			Handler:       _Netem_Console_Handler,

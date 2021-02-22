@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
+	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
@@ -25,6 +26,45 @@ func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*prot
 		},
 		Version: options.VERSION,
 	}, nil
+}
+
+func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImagesServer) error {
+	images := []string{
+		options.ServerConfig.Docker.Images.Host,
+		options.ServerConfig.Docker.Images.Server,
+		options.ServerConfig.Docker.Images.Router,
+		options.ServerConfig.Docker.Images.Ovs,
+	}
+
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	for _, img := range images {
+		imgTag := fmt.Sprintf("%s:%s", img, options.VERSION)
+
+		stream.Send(&proto.PullSrvMsg{
+			Code:  proto.PullSrvMsg_START,
+			Image: imgTag,
+		})
+
+		if err := client.ImagePull(imgTag); err != nil {
+			stream.Send(&proto.PullSrvMsg{
+				Code:  proto.PullSrvMsg_ERROR,
+				Image: imgTag,
+				Error: fmt.Sprintf("%s: %v", imgTag, err),
+			})
+			continue
+		}
+		stream.Send(&proto.PullSrvMsg{
+			Code:  proto.PullSrvMsg_OK,
+			Image: imgTag,
+		})
+	}
+
+	return nil
 }
 
 func (s *netemServer) GetProjects(ctx context.Context, empty *empty.Empty) (*proto.PrjListResponse, error) {

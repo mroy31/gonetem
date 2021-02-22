@@ -14,9 +14,9 @@ const (
 listen: "localhost:10110"
 docker:
   images:
-    server: mroy31/pynetem-server
-    host: mroy31/pynetem-host
-    router: mroy31/pynetem-frr
+    server: mroy31/gonetem-server
+    host: mroy31/gonetem-host
+    router: mroy31/gonetem-frr
     ovs: mroy31/gonetem-ovs
 `
 )
