@@ -36,6 +36,7 @@ type NetemClient interface {
 	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
+	CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error)
 	Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
@@ -181,6 +182,15 @@ func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.
 	return out, nil
 }
 
+func (c *netemClient) CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/CanRunConsole", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[1], "/netem.Netem/Console", opts...)
 	if err != nil {
@@ -260,6 +270,7 @@ type NetemServer interface {
 	Reload(context.Context, *ProjectRequest) (*AckResponse, error)
 	Run(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
+	CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error)
 	Console(Netem_ConsoleServer) error
 	Start(context.Context, *NodeRequest) (*AckResponse, error)
 	Stop(context.Context, *NodeRequest) (*AckResponse, error)
@@ -306,6 +317,9 @@ func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*AckRe
 }
 func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
+}
+func (UnimplementedNetemServer) CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CanRunConsole not implemented")
 }
 func (UnimplementedNetemServer) Console(Netem_ConsoleServer) error {
 	return status.Errorf(codes.Unimplemented, "method Console not implemented")
@@ -551,6 +565,24 @@ func _Netem_Run_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_CanRunConsole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).CanRunConsole(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/CanRunConsole",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).CanRunConsole(ctx, req.(*NodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Netem_Console_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(NetemServer).Console(&netemConsoleServer{stream})
 }
@@ -681,6 +713,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Run",
 			Handler:    _Netem_Run_Handler,
+		},
+		{
+			MethodName: "CanRunConsole",
+			Handler:    _Netem_CanRunConsole_Handler,
 		},
 		{
 			MethodName: "Start",

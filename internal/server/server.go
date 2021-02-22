@@ -289,6 +289,36 @@ func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) 
 	}, nil
 }
 
+func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return &proto.AckResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: fmt.Sprintf("Node %s not found", request.GetNode()),
+			},
+		}, nil
+	}
+
+	if err := node.CanRunConsole(); err != nil {
+		return &proto.AckResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: err.Error(),
+			},
+		}, nil
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
 func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	// read first msg from client
 	resp, err := stream.Recv()

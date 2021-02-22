@@ -27,6 +27,7 @@ service Netem {
     rpc Run(ProjectRequest) returns (AckResponse) {}
 
     // Node actions
+    rpc CanRunConsole(NodeRequest) returns (AckResponse) {}
     rpc Console(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
     rpc Start(NodeRequest) returns (AckResponse) {}
     rpc Stop(NodeRequest) returns (AckResponse) {}

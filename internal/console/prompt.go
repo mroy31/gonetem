@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -43,7 +42,7 @@ func (p *NetemPrompt) Execute(s string) {
 
 	if s == "quit" || s == "exit" {
 		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-		s.Prefix = "Close project " + filepath.Base(p.prjPath) + " : "
+		s.Prefix = "Close project " + p.prjPath + " : "
 		s.Start()
 
 		err := p.Close()
@@ -141,10 +140,23 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 		return
 	}
 
+	// first check that we can run console for this node
+	ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
+		PrjId: p.prjID,
+		Node:  cmdArgs[0],
+	})
+	if err != nil {
+		RedPrintf(err.Error() + "\n")
+		return
+	} else if ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
+		RedPrintf(ack.GetStatus().GetError() + "\n")
+		return
+	}
+
 	// search term command
 	termPath, err := exec.LookPath("xterm")
 	if err != nil {
-		RedPrintf("xterm is not installed")
+		RedPrintf("xterm is not installed\n")
 		return
 	}
 
@@ -155,7 +167,7 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 		"-e", "gonetem-console console " + node}
 	cmd := exec.Command(termPath, termArgs...)
 	if err := cmd.Start(); err != nil {
-		RedPrintf("Error when starting console: %v", err)
+		RedPrintf("Error when starting console: %v\n", err)
 		return
 	}
 
@@ -170,9 +182,9 @@ func (p *NetemPrompt) Save(client proto.NetemClient, dstPath string) {
 	}
 
 	if dstPath == "" {
-		RedPrintf("Project path is empty, set it in save command")
+		RedPrintf("Project path is empty, set it in save command\n")
 	} else if err := ioutil.WriteFile(dstPath, response.GetData(), 0644); err != nil {
-		RedPrintf("Unable to write saved project to %s: %v", dstPath, err)
+		RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
 	}
 }
 
