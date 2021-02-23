@@ -144,14 +144,15 @@ func (t *NetemTopologyManager) Load() error {
 	}
 
 	// Create links
-	for _, lConfig := range topology.Links {
+	t.links = make([]*NetemLink, len(topology.Links))
+	for idx, lConfig := range topology.Links {
 		peer1 := strings.Split(lConfig.Peer1, ".")
 		peer2 := strings.Split(lConfig.Peer2, ".")
 
 		peer1Idx, _ := strconv.Atoi(peer1[1])
 		peer2Idx, _ := strconv.Atoi(peer2[1])
 
-		t.links = append(t.links, &NetemLink{
+		t.links[idx] = &NetemLink{
 			Peer1: NetemLinkPeer{
 				Node:    t.GetNode(peer1[0]),
 				IfIndex: peer1Idx,
@@ -160,7 +161,7 @@ func (t *NetemTopologyManager) Load() error {
 				Node:    t.GetNode(peer2[0]),
 				IfIndex: peer2Idx,
 			},
-		})
+		}
 	}
 
 	return nil
@@ -175,6 +176,7 @@ func (t *NetemTopologyManager) Reload() error {
 		return err
 	}
 	if t.running {
+		t.running = false
 		return t.Run()
 	}
 
@@ -405,6 +407,7 @@ func (t *NetemTopologyManager) Close() error {
 		}
 	}
 	t.nodes = make([]INetemNode, 0)
+	t.links = make([]*NetemLink, 0)
 
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
 		t.logger.Errorf("Error when closing ovwitch instance: %v", err)

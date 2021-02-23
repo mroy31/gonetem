@@ -16,7 +16,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/proto"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var (
@@ -56,13 +55,6 @@ func (p *NetemPrompt) Execute(s string) {
 		os.Exit(0)
 	}
 
-	client, err := NewClient(p.server)
-	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v", err)
-		return
-	}
-	defer client.Conn.Close()
-
 	args, err := shlex.Split(s)
 	if err != nil {
 		RedPrintf("Bad command line: %v", err)
@@ -80,45 +72,57 @@ func (p *NetemPrompt) Execute(s string) {
 		p.Capture(cmdArgs)
 
 	case "check":
-		p.Check(client.Client, cmdArgs)
+		p.execWithClient(cmdArgs, 0, p.Check)
 
 	case "console":
-		p.Console(client.Client, cmdArgs)
+		p.execWithClient(cmdArgs, 1, p.Console)
 
 	case "edit":
-		p.Edit(client.Client)
+		p.execWithClient(cmdArgs, 0, p.Edit)
 
 	case "reload":
-		p.Reload(client.Client)
+		p.execWithClient(cmdArgs, 0, p.Reload)
 
 	case "restart":
-		p.Restart(client.Client, cmdArgs)
+		p.execWithClient(cmdArgs, 1, p.Restart)
 
 	case "run":
-		p.Run(client.Client)
+		p.execWithClient(cmdArgs, 0, p.Run)
 
 	case "save":
-		p.Save(client.Client, p.prjPath)
+		p.execWithClient(cmdArgs, 0, p.Save)
+
+	case "saveAs":
+		p.execWithClient(cmdArgs, 1, p.SaveAs)
 
 	case "start":
-		p.Start(client.Client, cmdArgs)
+		p.execWithClient(cmdArgs, 1, p.Start)
 
 	case "stop":
-		p.Stop(client.Client, cmdArgs)
+		p.execWithClient(cmdArgs, 1, p.Stop)
 
 	case "status":
-		p.Status(client.Client)
-
-	case "version":
-		response, err := client.Client.GetVersion(context.Background(), &emptypb.Empty{})
-		if err != nil {
-			Fatal("Unable to get version: %v", err)
-		}
-		fmt.Println(response.GetVersion())
+		p.execWithClient(cmdArgs, 0, p.Status)
 
 	default:
 		fmt.Println("Unknown command, enter help for details")
 	}
+}
+
+func (p *NetemPrompt) execWithClient(cmdArgs []string, nbArgs int, execFunc func(client proto.NetemClient, cmdArgs []string)) {
+	if len(cmdArgs) != nbArgs {
+		RedPrintf("Wrong invocation: %d arguments expected for this command\n", nbArgs)
+		return
+	}
+
+	client, err := NewClient(p.server)
+	if err != nil {
+		RedPrintf("Unable to connect to gonetem server: %v", err)
+		return
+	}
+	defer client.Conn.Close()
+
+	execFunc(client.Client, cmdArgs)
 }
 
 func (p *NetemPrompt) Capture(cmdArgs []string) {
@@ -207,11 +211,6 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
-	if len(cmdArgs) != 0 {
-		RedPrintf("check command does not take arguments\n")
-		return
-	}
-
 	ack, err := client.Check(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf(err.Error() + "\n")
@@ -225,11 +224,6 @@ func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
-	if len(cmdArgs) != 1 {
-		RedPrintf("Wrong console invocation: console <node>\n")
-		return
-	}
-
 	// first check that we can run console for this node
 	ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
 		PrjId: p.prjID,
@@ -264,18 +258,29 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 	p.processes = append(p.processes, cmd)
 }
 
-func (p *NetemPrompt) Save(client proto.NetemClient, dstPath string) {
+func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
 	response, err := client.SaveProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to save project: %v\n", err)
 		return
 	}
 
-	if dstPath == "" {
-		RedPrintf("Project path is empty, set it in save command\n")
-	} else if err := ioutil.WriteFile(dstPath, response.GetData(), 0644); err != nil {
+	if err := ioutil.WriteFile(dstPath, response.GetData(), 0644); err != nil {
 		RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
 	}
+}
+
+func (p *NetemPrompt) Save(client proto.NetemClient, cmdArgs []string) {
+	if p.prjPath == "" {
+		RedPrintf("Project path is empty, use saveAs command if you connect to running project\n")
+		return
+	}
+
+	p.save(client, p.prjPath)
+}
+
+func (p *NetemPrompt) SaveAs(client proto.NetemClient, cmdArgs []string) {
+	p.save(client, cmdArgs[0])
 }
 
 func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
@@ -326,7 +331,7 @@ func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
 	}
 }
 
-func (p *NetemPrompt) Status(client proto.NetemClient) {
+func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
 	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get project status: %v\n", err)
@@ -354,7 +359,7 @@ func (p *NetemPrompt) Status(client proto.NetemClient) {
 	}
 }
 
-func (p *NetemPrompt) Edit(client proto.NetemClient) {
+func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) {
 	response, err := client.ReadNetworkFile(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get network file: %v\n", err)
@@ -387,15 +392,29 @@ func (p *NetemPrompt) Edit(client proto.NetemClient) {
 	}
 }
 
-func (p *NetemPrompt) Run(client proto.NetemClient) {
-	if _, err := client.Run(context.Background(), &proto.ProjectRequest{Id: p.prjID}); err != nil {
+func (p *NetemPrompt) Run(client proto.NetemClient, cmdArgs []string) {
+	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+	s.Prefix = "Run project " + p.prjPath + " : "
+	s.Start()
+
+	_, err := client.Run(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	s.Stop()
+
+	if err != nil {
 		RedPrintf("Unable to run the project: %v\n", err)
 		return
 	}
 }
 
-func (p *NetemPrompt) Reload(client proto.NetemClient) {
-	if _, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID}); err != nil {
+func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
+	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+	s.Prefix = "Reload project " + p.prjPath + " : "
+	s.Start()
+
+	_, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	s.Stop()
+
+	if err != nil {
 		RedPrintf("Unable to reload the project: %v\n", err)
 		return
 	}

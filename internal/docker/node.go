@@ -175,6 +175,8 @@ func (n *DockerNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term
 
 func (n *DockerNode) Start() error {
 	if !n.Running {
+		n.Logger.Debug("Start Node")
+
 		client, err := NewDockerClient()
 		if err != nil {
 			return err
@@ -209,6 +211,8 @@ func (n *DockerNode) Start() error {
 
 func (n *DockerNode) Stop() error {
 	if n.Running {
+		n.Logger.Debug("Stop Node")
+
 		client, err := NewDockerClient()
 		if err != nil {
 			return err
@@ -380,6 +384,8 @@ func (n *DockerNode) CopyTo(source, dest string) error {
 
 func (n *DockerNode) Close() error {
 	if n.ID != "" {
+		n.Logger.Debug("Close node")
+
 		client, err := NewDockerClient()
 		if err != nil {
 			return err

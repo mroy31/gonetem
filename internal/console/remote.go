@@ -143,6 +143,11 @@ func monitorTty(stream proto.Netem_ConsoleClient, terminalFd uintptr) {
 			switch sig {
 			case syscall.SIGWINCH:
 				resizeTty(stream, terminalFd)
+			case syscall.SIGHUP:
+				// terminal has been closed, send exit to
+				stream.Send(&proto.ConsoleCltMsg{
+					Code: proto.ConsoleCltMsg_CLOSE,
+				})
 			}
 		}
 	}()

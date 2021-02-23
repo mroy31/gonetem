@@ -43,6 +43,7 @@ message ConsoleCltMsg {
         INIT = 0;
         DATA = 1;
         RESIZE = 2;
+        CLOSE = 3;
     }
 
     Code code = 1;
