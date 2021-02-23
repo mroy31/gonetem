@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,11 @@ var (
 func Fatal(msg string, a ...interface{}) {
 	RedPrintf(msg+"\n", a...)
 	os.Exit(1)
+}
+
+func IsInterfaceId(arg string) bool {
+	r, _ := regexp.Compile(`^\w+\.\d+$`)
+	return r.MatchString(arg)
 }
 
 type NetemPrompt struct {
@@ -79,6 +85,9 @@ func (p *NetemPrompt) Execute(s string) {
 
 	case "edit":
 		p.execWithClient(cmdArgs, 0, p.Edit)
+
+	case "ifState":
+		p.execWithClient(cmdArgs, 2, p.IfState)
 
 	case "reload":
 		p.execWithClient(cmdArgs, 0, p.Reload)
@@ -155,7 +164,7 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 		return
 	}
 
-	stream, err := client.Client.Capture(context.Background(), &proto.CaptureRequest{
+	stream, err := client.Client.Capture(context.Background(), &proto.NodeInterfaceRequest{
 		PrjId:   p.prjID,
 		Node:    args[0],
 		IfIndex: int32(ifIndex),
@@ -208,6 +217,37 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 		}
 
 	}()
+}
+
+func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
+	if !IsInterfaceId(cmdArgs[0]) {
+		RedPrintf("Interface identifier is not valid: <node>.<ifIndex> expected\n")
+		return
+	}
+
+	state, found := map[string]proto.IfState{
+		"up":   proto.IfState_UP,
+		"down": proto.IfState_DOWN,
+	}[cmdArgs[1]]
+	if !found {
+		RedPrintf("State is not valid: up|down expected\n")
+		return
+	}
+
+	ifArgs := strings.Split(cmdArgs[0], ".")
+	ifIndex, _ := strconv.Atoi(ifArgs[1])
+
+	_, err := client.SetIfState(
+		context.Background(),
+		&proto.NodeIfStateRequest{
+			PrjId:   p.prjID,
+			Node:    ifArgs[0],
+			IfIndex: int32(ifIndex),
+			State:   state,
+		})
+	if err != nil {
+		RedPrintf("Unable to change interface state: %v\n", err)
+	}
 }
 
 func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
@@ -339,6 +379,8 @@ func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
 	}
 
 	fmt.Println("Project " + response.GetName())
+	fmt.Println("- Id: " + response.GetId())
+	fmt.Println("- OpenAt: " + response.GetOpenAt())
 	fmt.Print("- State: ")
 	if response.GetRunning() {
 		fmt.Print(color.GreenString("Running\n"))
@@ -352,6 +394,15 @@ func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
 			fmt.Print("   - " + nodeInfo.GetName() + ": ")
 			if nodeInfo.GetRunning() {
 				fmt.Print(color.GreenString("Running\n"))
+				for _, i := range nodeInfo.GetInterfaces() {
+					fmt.Print("     - " + i.GetName() + ": ")
+					switch i.GetState() {
+					case proto.IfState_DOWN:
+						fmt.Print(color.MagentaString("Down\n"))
+					case proto.IfState_UP:
+						fmt.Print(color.GreenString("Up\n"))
+					}
+				}
 			} else {
 				fmt.Print(color.MagentaString("Not Running\n"))
 			}

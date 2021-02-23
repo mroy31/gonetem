@@ -32,9 +32,24 @@ service Netem {
     rpc Start(NodeRequest) returns (AckResponse) {}
     rpc Stop(NodeRequest) returns (AckResponse) {}
     rpc Restart(NodeRequest) returns (AckResponse) {}
-    rpc Capture(CaptureRequest) returns (stream CaptureSrvMsg) {}
+    rpc SetIfState(NodeIfStateRequest) returns (AckResponse) {}
+    rpc Capture(NodeInterfaceRequest) returns (stream CaptureSrvMsg) {}
 
 }
+
+// global enums
+
+enum StatusCode {
+    OK = 0;
+    ERROR = 1;
+}
+
+enum IfState {
+    UP = 0;
+    DOWN = 1;
+}
+
+
 
 // Stream messages
 
@@ -92,7 +107,14 @@ message CaptureSrvMsg {
 
 // Request messages
 
-message CaptureRequest {
+message NodeIfStateRequest {
+    string prjId = 1;
+    string node = 2;
+    int32 ifIndex = 3;
+    IfState state = 4;
+}
+
+message NodeInterfaceRequest {
     string prjId = 1;
     string node = 2;
     int32 ifIndex = 3;
@@ -119,11 +141,6 @@ message OpenRequest {
 
 // Response messages
 
-enum StatusCode {
-    OK = 0;
-    ERROR = 1;
-}
-
 message Status {
     StatusCode code = 1;
     string error = 2;
@@ -144,9 +161,15 @@ message VersionResponse {
 }
 
 message StatusResponse {
+    message IfStatus {
+        string name = 1;
+        IfState state = 2;
+    }
+
     message NodeStatus {
         string name = 1;
         bool running = 2;
+        repeated IfStatus interfaces = 10;
     }
 
     Status status = 1;

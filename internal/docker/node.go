@@ -31,7 +31,7 @@ type DockerNode struct {
 	ID             string
 	Name           string
 	Type           string
-	Interfaces     []string
+	Interfaces     map[string]link.IfState
 	LocalNetnsName string
 	Running        bool
 	ConfigLoaded   bool
@@ -124,7 +124,7 @@ func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 }
 
 func (n *DockerNode) AddInterface(ifIndex int) error {
-	n.Interfaces = append(n.Interfaces, n.GetInterfaceName(ifIndex))
+	n.Interfaces[n.GetInterfaceName(ifIndex)] = link.IFSTATE_UP
 
 	return nil
 }
@@ -382,6 +382,33 @@ func (n *DockerNode) CopyTo(source, dest string) error {
 	return client.CopyTo(n.ID, source, dest)
 }
 
+func (n *DockerNode) GetInterfaces() map[string]link.IfState {
+	return n.Interfaces
+}
+
+func (n *DockerNode) SetInterfaceState(ifIndex int, state link.IfState) error {
+	for ifName, st := range n.Interfaces {
+		if ifName == n.GetInterfaceName(ifIndex) {
+			if state != st {
+				ns, err := n.GetNetns()
+				if err != nil {
+					return err
+				}
+				defer ns.Close()
+
+				if err := link.SetInterfaceState(n.GetInterfaceName(ifIndex), ns, state); err != nil {
+					return err
+				}
+				n.Interfaces[ifName] = state
+				return nil
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
+}
+
 func (n *DockerNode) Close() error {
 	if n.ID != "" {
 		n.Logger.Debug("Close node")
@@ -403,7 +430,7 @@ func (n *DockerNode) Close() error {
 
 		// clean attributes
 		n.ConfigLoaded = false
-		n.Interfaces = make([]string, 0)
+		n.Interfaces = make(map[string]link.IfState)
 		netns.DeleteNamed(n.LocalNetnsName)
 	}
 
@@ -433,11 +460,12 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 	}
 
 	node := &DockerNode{
-		PrjID: prjID,
-		ID:    "",
-		Name:  dockerOpts.Name,
-		Type:  dockerOpts.Type,
-		Mpls:  dockerOpts.Mpls,
+		PrjID:      prjID,
+		ID:         "",
+		Name:       dockerOpts.Name,
+		Type:       dockerOpts.Type,
+		Mpls:       dockerOpts.Mpls,
+		Interfaces: make(map[string]link.IfState),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,
 			"node":    dockerOpts.Name,

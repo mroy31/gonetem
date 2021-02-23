@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/docker"
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
@@ -150,10 +151,21 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 
 	if project.Topology.IsRunning() {
 		for _, node := range project.Topology.GetAllNodes() {
-			response.Nodes = append(response.Nodes, &proto.StatusResponse_NodeStatus{
+			nodeStatus := &proto.StatusResponse_NodeStatus{
 				Name:    node.GetName(),
 				Running: node.IsRunning(),
-			})
+			}
+			for ifName, state := range node.GetInterfaces() {
+				nodeStatus.Interfaces = append(nodeStatus.Interfaces, &proto.StatusResponse_IfStatus{
+					Name: ifName,
+					State: map[link.IfState]proto.IfState{
+						link.IFSTATE_DOWN: proto.IfState_DOWN,
+						link.IFSTATE_UP:   proto.IfState_UP,
+					}[state],
+				})
+			}
+
+			response.Nodes = append(response.Nodes, nodeStatus)
 		}
 	}
 
@@ -289,7 +301,35 @@ func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) 
 	}, nil
 }
 
-func (s *netemServer) Capture(request *proto.CaptureRequest, stream proto.Netem_CaptureServer) error {
+func (s *netemServer) SetIfState(ctx context.Context, request *proto.NodeIfStateRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return nil, &NodeNotFoundError{request.GetPrjId(), request.GetNode()}
+	}
+
+	var state link.IfState
+	switch request.GetState() {
+	case proto.IfState_DOWN:
+		state = link.IFSTATE_DOWN
+	case proto.IfState_UP:
+		state = link.IFSTATE_UP
+	}
+
+	if err := node.SetInterfaceState(int(request.GetIfIndex()), state); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.Netem_CaptureServer) error {
 	project := GetProject(request.GetPrjId())
 	if project == nil {
 		return stream.Send(&proto.CaptureSrvMsg{

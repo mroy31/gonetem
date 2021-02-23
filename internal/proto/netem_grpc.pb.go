@@ -41,7 +41,8 @@ type NetemClient interface {
 	Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Capture(ctx context.Context, in *CaptureRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error)
+	SetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error)
 }
 
 type netemClient struct {
@@ -250,7 +251,16 @@ func (c *netemClient) Restart(ctx context.Context, in *NodeRequest, opts ...grpc
 	return out, nil
 }
 
-func (c *netemClient) Capture(ctx context.Context, in *CaptureRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
+func (c *netemClient) SetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/SetIfState", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], "/netem.Netem/Capture", opts...)
 	if err != nil {
 		return nil, err
@@ -308,7 +318,8 @@ type NetemServer interface {
 	Start(context.Context, *NodeRequest) (*AckResponse, error)
 	Stop(context.Context, *NodeRequest) (*AckResponse, error)
 	Restart(context.Context, *NodeRequest) (*AckResponse, error)
-	Capture(*CaptureRequest, Netem_CaptureServer) error
+	SetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error)
+	Capture(*NodeInterfaceRequest, Netem_CaptureServer) error
 	mustEmbedUnimplementedNetemServer()
 }
 
@@ -367,7 +378,10 @@ func (UnimplementedNetemServer) Stop(context.Context, *NodeRequest) (*AckRespons
 func (UnimplementedNetemServer) Restart(context.Context, *NodeRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Restart not implemented")
 }
-func (UnimplementedNetemServer) Capture(*CaptureRequest, Netem_CaptureServer) error {
+func (UnimplementedNetemServer) SetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetIfState not implemented")
+}
+func (UnimplementedNetemServer) Capture(*NodeInterfaceRequest, Netem_CaptureServer) error {
 	return status.Errorf(codes.Unimplemented, "method Capture not implemented")
 }
 func (UnimplementedNetemServer) mustEmbedUnimplementedNetemServer() {}
@@ -700,8 +714,26 @@ func _Netem_Restart_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_SetIfState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeIfStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).SetIfState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/SetIfState",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).SetIfState(ctx, req.(*NodeIfStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Netem_Capture_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(CaptureRequest)
+	m := new(NodeInterfaceRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
@@ -787,6 +819,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Restart",
 			Handler:    _Netem_Restart_Handler,
+		},
+		{
+			MethodName: "SetIfState",
+			Handler:    _Netem_SetIfState_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -67,7 +67,7 @@ func SetInterfaceState(name string, namespace netns.NsHandle, state IfState) err
 	return nil
 }
 
-func MoveInterfacesNetns(ifNames []string, current netns.NsHandle, target netns.NsHandle) error {
+func MoveInterfacesNetns(ifNames map[string]IfState, current netns.NsHandle, target netns.NsHandle) error {
 	if len(ifNames) == 0 {
 		return nil
 	}
@@ -81,7 +81,7 @@ func MoveInterfacesNetns(ifNames []string, current netns.NsHandle, target netns.
 		return fmt.Errorf("Error when switching netns: %v", err)
 	}
 
-	for _, ifName := range ifNames {
+	for ifName, _ := range ifNames {
 		link, err := netlink.LinkByName(ifName)
 		if err != nil {
 			return fmt.Errorf("Unable get link %s: %v", ifName, err)

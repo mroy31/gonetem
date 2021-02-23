@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/moby/term"
+	"github.com/mroy31/gonetem/internal/link"
 	"github.com/vishvananda/netns"
 )
 
@@ -13,7 +14,7 @@ type OvsNode struct {
 	Name        string
 	Running     bool
 	OvsInstance *OvsProjectInstance
-	Interfaces  []string
+	Interfaces  map[string]link.IfState
 }
 
 func (s *OvsNode) GetName() string {
@@ -59,7 +60,7 @@ func (o *OvsNode) Start() error {
 		}
 		o.Running = true
 
-		for _, ifName := range o.Interfaces {
+		for ifName, _ := range o.Interfaces {
 			if err := o.OvsInstance.AddPort(o.Name, ifName); err != nil {
 				return err
 			}
@@ -71,7 +72,7 @@ func (o *OvsNode) Start() error {
 
 func (o *OvsNode) Stop() error {
 	if o.Running {
-		for _, ifName := range o.Interfaces {
+		for ifName, _ := range o.Interfaces {
 			if err := o.OvsInstance.DelPort(o.Name, ifName); err != nil {
 				return err
 			}
@@ -91,9 +92,36 @@ func (o *OvsNode) AddInterface(ifIndex int) error {
 		return err
 	}
 
-	o.Interfaces = append(o.Interfaces, o.GetInterfaceName(ifIndex))
+	o.Interfaces[o.GetInterfaceName(ifIndex)] = link.IFSTATE_UP
 
 	return nil
+}
+
+func (o *OvsNode) GetInterfaces() map[string]link.IfState {
+	return o.Interfaces
+}
+
+func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
+	for ifName, st := range n.Interfaces {
+		if ifName == n.GetInterfaceName(ifIndex) {
+			if state != st {
+				ns, err := n.GetNetns()
+				if err != nil {
+					return err
+				}
+				defer ns.Close()
+
+				if err := link.SetInterfaceState(n.GetInterfaceName(ifIndex), ns, state); err != nil {
+					return err
+				}
+				n.Interfaces[ifName] = state
+				return nil
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
 }
 
 func (o *OvsNode) LoadConfig(confPath string) error {
@@ -113,8 +141,9 @@ func (o *OvsNode) Close() error {
 
 func NewOvsNode(prjID, name string) (*OvsNode, error) {
 	node := &OvsNode{
-		PrjID: prjID,
-		Name:  name,
+		PrjID:      prjID,
+		Name:       name,
+		Interfaces: make(map[string]link.IfState),
 	}
 
 	node.OvsInstance = GetOvsInstance(prjID)
