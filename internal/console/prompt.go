@@ -3,10 +3,12 @@ package console
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +76,9 @@ func (p *NetemPrompt) Execute(s string) {
 	}
 
 	switch cmd {
+	case "capture":
+		p.Capture(cmdArgs)
+
 	case "check":
 		p.Check(client.Client, cmdArgs)
 
@@ -114,6 +119,91 @@ func (p *NetemPrompt) Execute(s string) {
 	default:
 		fmt.Println("Unknown command, enter help for details")
 	}
+}
+
+func (p *NetemPrompt) Capture(cmdArgs []string) {
+	if len(cmdArgs) != 1 {
+		RedPrintf("Wrong capture invocation: capture <node>.<ifIndex>\n")
+		return
+	}
+
+	args := strings.Split(cmdArgs[0], ".")
+	if len(args) != 2 {
+		RedPrintf("Wrong interface identifier: <node>.<ifIndex> expected\n")
+		return
+	}
+	ifIndex, err := strconv.Atoi(args[1])
+	if err != nil {
+		RedPrintf("ifIndex is not a number\n")
+		return
+	}
+
+	// Check wireshark is present
+	wiresharkPath, err := exec.LookPath("wireshark")
+	if err != nil {
+		RedPrintf("wireshark is not installed\n")
+		return
+	}
+
+	client, err := NewClient(p.server)
+	if err != nil {
+		RedPrintf("Unable to connect to gonetem server: %v", err)
+		return
+	}
+
+	stream, err := client.Client.Capture(context.Background(), &proto.CaptureRequest{
+		PrjId:   p.prjID,
+		Node:    args[0],
+		IfIndex: int32(ifIndex),
+	})
+	if err != nil {
+		RedPrintf("Error when start capturing %v\n", err)
+		return
+	}
+
+	msg, err := stream.Recv()
+	if err != nil {
+		RedPrintf("Error when start capturing %v\n", err)
+		return
+	}
+
+	if msg.GetCode() == proto.CaptureSrvMsg_ERROR {
+		RedPrintf("%s\n", string(msg.GetData()))
+		return
+	}
+
+	rIn, wIn := io.Pipe()
+	captureArgs := []string{
+		"-o", "'gui.window_title:" + cmdArgs[0] + "'",
+		"-k", "-i", "-"}
+	cmd := exec.Command(wiresharkPath, captureArgs...)
+	cmd.Stdin = rIn
+
+	if err := cmd.Start(); err != nil {
+		RedPrintf("Error when starting wireshark: %v\n", err)
+		return
+	}
+
+	go func() {
+		defer client.Conn.Close()
+
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				return
+			}
+
+			switch msg.GetCode() {
+			case proto.CaptureSrvMsg_STDOUT:
+				wIn.Write(msg.GetData())
+			case proto.CaptureSrvMsg_ERROR:
+				RedPrintf("Error when capturing wireshark: %s\n", string(msg.GetData()))
+				cmd.Process.Signal(os.Kill)
+				return
+			}
+		}
+
+	}()
 }
 
 func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {

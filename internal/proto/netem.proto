@@ -32,6 +32,7 @@ service Netem {
     rpc Start(NodeRequest) returns (AckResponse) {}
     rpc Stop(NodeRequest) returns (AckResponse) {}
     rpc Restart(NodeRequest) returns (AckResponse) {}
+    rpc Capture(CaptureRequest) returns (stream CaptureSrvMsg) {}
 
 }
 
@@ -76,7 +77,25 @@ message PullSrvMsg {
     string error = 3;
 }
 
+message CaptureSrvMsg {
+    enum Code {
+        STDOUT = 0;
+        STDERR = 1;
+        OK = 2;
+        ERROR = 3;
+    }
+
+    Code code = 1;
+    bytes data = 2;
+}
+
 // Request messages
+
+message CaptureRequest {
+    string prjId = 1;
+    string node = 2;
+    int32 ifIndex = 3;
+}
 
 message NodeRequest {
     string prjId = 1;

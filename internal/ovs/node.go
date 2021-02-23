@@ -44,6 +44,14 @@ func (o *OvsNode) GetInterfaceName(ifIndex int) string {
 	return fmt.Sprintf("%s.%d", o.Name, ifIndex)
 }
 
+func (o *OvsNode) Capture(ifIndex int, out io.Writer) error {
+	if !o.Running {
+		return fmt.Errorf("Not running")
+	}
+
+	return o.OvsInstance.Capture(o.GetInterfaceName(ifIndex), out)
+}
+
 func (o *OvsNode) Start() error {
 	if !o.Running {
 		if err := o.OvsInstance.AddBr(o.Name); err != nil {

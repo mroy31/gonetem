@@ -136,6 +136,21 @@ func (n *DockerNode) CanRunConsole() error {
 	return nil
 }
 
+func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
+	if !n.Running {
+		return errors.New("Not running")
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", n.GetInterfaceName(ifIndex)}
+	return client.ExecOutStream(n.ID, cmd, out)
+}
+
 func (n *DockerNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	if !n.Running {
 		return errors.New("Not running")

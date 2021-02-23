@@ -294,6 +294,56 @@ func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
 	return string(stdout), nil
 }
 
+func (c *DockerClient) ExecOutStream(containerId string, cmd []string, out io.Writer) error {
+	config := types.ExecConfig{
+		AttachStderr: false,
+		AttachStdout: true,
+		Cmd:          cmd,
+	}
+
+	ctx := context.Background()
+	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{})
+	if err != nil {
+		return err
+	}
+	defer resp.Close()
+
+	// read the output
+	var errBuf bytes.Buffer
+	outputDone := make(chan error)
+
+	go func() {
+		_, err = stdcopy.StdCopy(out, &errBuf, resp.Reader)
+		outputDone <- err
+	}()
+
+	select {
+	case err := <-outputDone:
+		if err != nil {
+			return err
+		}
+		break
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	res, err := c.cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return err
+	}
+
+	if res.ExitCode != 0 {
+		return fmt.Errorf("ExecOutStream: exit code %d", res.ExitCode)
+	}
+	return nil
+}
+
 func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	config := types.ExecConfig{
 		AttachStderr: true,

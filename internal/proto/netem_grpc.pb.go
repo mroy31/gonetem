@@ -41,6 +41,7 @@ type NetemClient interface {
 	Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	Capture(ctx context.Context, in *CaptureRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error)
 }
 
 type netemClient struct {
@@ -249,6 +250,38 @@ func (c *netemClient) Restart(ctx context.Context, in *NodeRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *netemClient) Capture(ctx context.Context, in *CaptureRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], "/netem.Netem/Capture", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &netemCaptureClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Netem_CaptureClient interface {
+	Recv() (*CaptureSrvMsg, error)
+	grpc.ClientStream
+}
+
+type netemCaptureClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
+	m := new(CaptureSrvMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // NetemServer is the server API for Netem service.
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
@@ -275,6 +308,7 @@ type NetemServer interface {
 	Start(context.Context, *NodeRequest) (*AckResponse, error)
 	Stop(context.Context, *NodeRequest) (*AckResponse, error)
 	Restart(context.Context, *NodeRequest) (*AckResponse, error)
+	Capture(*CaptureRequest, Netem_CaptureServer) error
 	mustEmbedUnimplementedNetemServer()
 }
 
@@ -332,6 +366,9 @@ func (UnimplementedNetemServer) Stop(context.Context, *NodeRequest) (*AckRespons
 }
 func (UnimplementedNetemServer) Restart(context.Context, *NodeRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Restart not implemented")
+}
+func (UnimplementedNetemServer) Capture(*CaptureRequest, Netem_CaptureServer) error {
+	return status.Errorf(codes.Unimplemented, "method Capture not implemented")
 }
 func (UnimplementedNetemServer) mustEmbedUnimplementedNetemServer() {}
 
@@ -663,6 +700,27 @@ func _Netem_Restart_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_Capture_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CaptureRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NetemServer).Capture(m, &netemCaptureServer{stream})
+}
+
+type Netem_CaptureServer interface {
+	Send(*CaptureSrvMsg) error
+	grpc.ServerStream
+}
+
+type netemCaptureServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemCaptureServer) Send(m *CaptureSrvMsg) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Netem_ServiceDesc is the grpc.ServiceDesc for Netem service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -742,6 +800,11 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _Netem_Console_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "Capture",
+			Handler:       _Netem_Capture_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "internal/proto/netem.proto",

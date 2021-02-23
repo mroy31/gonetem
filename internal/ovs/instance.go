@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/options"
@@ -59,6 +60,21 @@ func (o *OvsProjectInstance) GetNetns() (netns.NsHandle, error) {
 		return netns.NsHandle(0), err
 	}
 	return netns.GetFromPid(pid)
+}
+
+func (o *OvsProjectInstance) Capture(ifName string, out io.Writer) error {
+	if o.state != started {
+		return fmt.Errorf("ovswitch instance not running")
+	}
+
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", ifName}
+	return client.ExecOutStream(o.containerId, cmd, out)
 }
 
 func (o *OvsProjectInstance) Exec(cmd []string) error {

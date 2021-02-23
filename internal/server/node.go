@@ -23,6 +23,7 @@ type INetemNode interface {
 	LoadConfig(confPath string) error
 	CanRunConsole() error
 	Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
+	Capture(ifIndex int, out io.Writer) error
 	Save(dstPath string) error
 	Close() error
 }

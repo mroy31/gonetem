@@ -319,6 +319,75 @@ func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequ
 	}, nil
 }
 
+func (s *netemServer) Capture(request *proto.CaptureRequest, stream proto.Netem_CaptureServer) error {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return stream.Send(&proto.CaptureSrvMsg{
+			Code: proto.CaptureSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Project %s not found", request.PrjId)),
+		})
+	}
+
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return stream.Send(&proto.CaptureSrvMsg{
+			Code: proto.CaptureSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Node %s not found", request.GetNode())),
+		})
+	}
+
+	stream.Send(&proto.CaptureSrvMsg{
+		Code: proto.CaptureSrvMsg_OK,
+	})
+
+	logger := logrus.WithFields(logrus.Fields{
+		"project": project.Id,
+		"node":    node.GetName(),
+	})
+
+	rOut, wOut := io.Pipe()
+	waitCh := make(chan error)
+
+	go func() {
+		defer wOut.Close()
+
+		data := make([]byte, 256)
+		for {
+			n, err := rOut.Read(data)
+			if err != nil {
+				if err == io.EOF {
+					waitCh <- nil
+				} else {
+					waitCh <- err
+				}
+				return
+			} else if n == 0 {
+				continue
+			}
+
+			if err := stream.Send(&proto.CaptureSrvMsg{
+				Code: proto.CaptureSrvMsg_STDOUT,
+				Data: data[:n],
+			}); err != nil {
+				waitCh <- err
+				return
+			}
+		}
+	}()
+
+	logger.Debugf("Start capture on interface %d", request.IfIndex)
+	if err := node.Capture(int(request.GetIfIndex()), wOut); err != nil {
+		stream.Send(&proto.CaptureSrvMsg{
+			Code: proto.CaptureSrvMsg_ERROR,
+			Data: []byte(err.Error()),
+		})
+	}
+
+	logger.Debugf("Stop capture on interface %d", request.IfIndex)
+	wOut.Close()
+	return <-waitCh
+}
+
 func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	// read first msg from client
 	resp, err := stream.Recv()
