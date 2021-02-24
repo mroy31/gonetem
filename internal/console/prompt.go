@@ -34,11 +34,126 @@ func IsInterfaceId(arg string) bool {
 	return r.MatchString(arg)
 }
 
+type NetemCommand struct {
+	Desc  string
+	Usage string
+	Args  []string
+	Run   func(p *NetemPrompt, cmdArgs []string)
+}
+
 type NetemPrompt struct {
 	server    string
 	prjID     string
 	prjPath   string
 	processes []*exec.Cmd
+	commands  map[string]*NetemCommand
+}
+
+func (p *NetemPrompt) RegisterCommands() {
+	p.commands["capture"] = &NetemCommand{
+		Desc:  "Capture trafic on an interface",
+		Usage: "capture <node_name>.<if_number>",
+		Args:  []string{`^\w+\.\d+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.Capture(cmdArgs)
+		},
+	}
+	p.commands["check"] = &NetemCommand{
+		Desc:  "Check that the topology file is correct. If not, return found errors",
+		Usage: "check",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Check)
+		},
+	}
+	p.commands["console"] = &NetemCommand{
+		Desc:  "Open a console for a node",
+		Usage: "console <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Console)
+		},
+	}
+	p.commands["edit"] = &NetemCommand{
+		Desc:  "Edit the topology",
+		Usage: "edit",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Edit)
+		},
+	}
+	p.commands["ifState"] = &NetemCommand{
+		Desc:  "Enable/disable a node interface",
+		Usage: "ifState <node_name>.<if_number> up|down",
+		Args:  []string{`^\w+\.\d+$`, `^up|down$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.IfState)
+		},
+	}
+	p.commands["reload"] = &NetemCommand{
+		Desc:  "Reload the project",
+		Usage: "reload",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Reload)
+		},
+	}
+	p.commands["restart"] = &NetemCommand{
+		Desc:  "Restart a node",
+		Usage: "restart <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Restart)
+		},
+	}
+	p.commands["run"] = &NetemCommand{
+		Desc:  "Start the project",
+		Usage: "run",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Run)
+		},
+	}
+	p.commands["save"] = &NetemCommand{
+		Desc:  "Save the project",
+		Usage: "save",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Save)
+		},
+	}
+	p.commands["saveAs"] = &NetemCommand{
+		Desc:  "Save the project in a new file",
+		Usage: "saveAs <project_path>/<name>.gnet",
+		Args:  []string{`^.*\.gnet$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.SaveAs)
+		},
+	}
+	p.commands["start"] = &NetemCommand{
+		Desc:  "Start a node",
+		Usage: "start <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Start)
+		},
+	}
+	p.commands["stop"] = &NetemCommand{
+		Desc:  "Stop a node",
+		Usage: "stop <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Stop)
+		},
+	}
+	p.commands["status"] = &NetemCommand{
+		Desc:  "Display the state of the project",
+		Usage: "status",
+		Args:  []string{},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Status)
+		},
+	}
 }
 
 func (p *NetemPrompt) Execute(s string) {
@@ -61,69 +176,45 @@ func (p *NetemPrompt) Execute(s string) {
 		os.Exit(0)
 	}
 
+	if s == "help" {
+		for name, cmd := range p.commands {
+			fmt.Println(color.BlueString(name))
+			fmt.Println("  " + cmd.Desc)
+			fmt.Println("  Usage: " + cmd.Desc)
+		}
+		return
+	}
+
 	args, err := shlex.Split(s)
 	if err != nil {
 		RedPrintf("Bad command line: %v", err)
 		return
 	}
 
-	cmd := args[0]
-	var cmdArgs []string
-	if len(args) > 1 {
-		cmdArgs = args[1:]
-	}
-
-	switch cmd {
-	case "capture":
-		p.Capture(cmdArgs)
-
-	case "check":
-		p.execWithClient(cmdArgs, 0, p.Check)
-
-	case "console":
-		p.execWithClient(cmdArgs, 1, p.Console)
-
-	case "edit":
-		p.execWithClient(cmdArgs, 0, p.Edit)
-
-	case "ifState":
-		p.execWithClient(cmdArgs, 2, p.IfState)
-
-	case "reload":
-		p.execWithClient(cmdArgs, 0, p.Reload)
-
-	case "restart":
-		p.execWithClient(cmdArgs, 1, p.Restart)
-
-	case "run":
-		p.execWithClient(cmdArgs, 0, p.Run)
-
-	case "save":
-		p.execWithClient(cmdArgs, 0, p.Save)
-
-	case "saveAs":
-		p.execWithClient(cmdArgs, 1, p.SaveAs)
-
-	case "start":
-		p.execWithClient(cmdArgs, 1, p.Start)
-
-	case "stop":
-		p.execWithClient(cmdArgs, 1, p.Stop)
-
-	case "status":
-		p.execWithClient(cmdArgs, 0, p.Status)
-
-	default:
-		fmt.Println("Unknown command, enter help for details")
-	}
-}
-
-func (p *NetemPrompt) execWithClient(cmdArgs []string, nbArgs int, execFunc func(client proto.NetemClient, cmdArgs []string)) {
-	if len(cmdArgs) != nbArgs {
-		RedPrintf("Wrong invocation: %d arguments expected for this command\n", nbArgs)
+	cmd, found := p.commands[args[0]]
+	if !found {
+		RedPrintf("Unknown command, enter help for details\n")
 		return
 	}
 
+	// check args
+	if len(args) != len(cmd.Args)+1 {
+		RedPrintf("Wrong number of arguments for '%s'\n\tusage: %s\n", args[0], cmd.Usage)
+		return
+	}
+	for idx, argRe := range cmd.Args {
+		r, _ := regexp.Compile(argRe)
+		if !r.MatchString(args[idx+1]) {
+			RedPrintf("Wrong format for argument %d\n\tusage: %s\n", idx+1, cmd.Usage)
+			return
+		}
+	}
+
+	// run the command
+	cmd.Run(p, args[1:])
+}
+
+func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client proto.NetemClient, cmdArgs []string)) {
 	client, err := NewClient(p.server)
 	if err != nil {
 		RedPrintf("Unable to connect to gonetem server: %v", err)
@@ -501,5 +592,8 @@ func (p *NetemPrompt) Close() error {
 }
 
 func NewNetemPrompt(server, prjID, prjPath string) *NetemPrompt {
-	return &NetemPrompt{server, prjID, prjPath, make([]*exec.Cmd, 0)}
+	p := &NetemPrompt{server, prjID, prjPath, make([]*exec.Cmd, 0), make(map[string]*NetemCommand)}
+	p.RegisterCommands()
+
+	return p
 }
