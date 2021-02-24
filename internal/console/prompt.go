@@ -67,7 +67,11 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{`^\w+$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
-				p.startConsole(client, cmdArgs[0], false)
+				if cmdArgs[0] == "all" {
+					p.startConsoleAll(client, false)
+				} else {
+					p.startConsole(client, cmdArgs[0], false)
+				}
 			})
 		},
 	}
@@ -133,7 +137,11 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{`^\w+$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
-				p.startConsole(client, cmdArgs[0], true)
+				if cmdArgs[0] == "all" {
+					p.startConsoleAll(client, true)
+				} else {
+					p.startConsole(client, cmdArgs[0], true)
+				}
 			})
 		},
 	}
@@ -381,6 +389,26 @@ func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, sh
 	}
 
 	p.processes = append(p.processes, cmd)
+}
+
+func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
+	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		RedPrintf("Unable to get project status: %v\n", err)
+		return
+	}
+
+	for _, node := range response.GetNodes() {
+		ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
+			PrjId: p.prjID,
+			Node:  node.GetName(),
+		})
+		if err != nil || ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
+			continue
+		}
+
+		p.startConsole(client, node.GetName(), shell)
+	}
 }
 
 func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
