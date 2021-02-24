@@ -514,7 +514,7 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 		}
 	})
 
-	if err := node.Console(rIn, wOut, resizeCh); err != nil {
+	if err := node.Console(resp.GetShell(), rIn, wOut, resizeCh); err != nil {
 		stream.Send(&proto.ConsoleSrvMsg{
 			Code: proto.ConsoleSrvMsg_ERROR,
 			Data: []byte(err.Error()),

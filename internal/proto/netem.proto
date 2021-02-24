@@ -64,9 +64,10 @@ message ConsoleCltMsg {
     Code code = 1;
     string prjId = 2;
     string node = 3;
-    int32 ttyWidth = 4;
-    int32 ttyHeight = 5;
-    bytes data = 6;
+    bool shell = 4;
+    int32 ttyWidth = 5;
+    int32 ttyHeight = 6;
+    bytes data = 7;
 }
 
 message ConsoleSrvMsg {

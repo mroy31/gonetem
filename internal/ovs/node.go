@@ -33,7 +33,7 @@ func (o *OvsNode) CanRunConsole() error {
 	return fmt.Errorf("Console not supported for ovswitch node")
 }
 
-func (o *OvsNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	return fmt.Errorf("Console not supported for ovswitch node")
 }
 

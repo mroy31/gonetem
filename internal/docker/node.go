@@ -151,7 +151,7 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 	return client.ExecOutStream(n.ID, cmd, out)
 }
 
-func (n *DockerNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	if !n.Running {
 		return errors.New("Not running")
 	}
@@ -162,12 +162,12 @@ func (n *DockerNode) Console(in io.ReadCloser, out io.Writer, resizeCh chan term
 	}
 	defer client.Close()
 
-	var cmd []string
-	switch n.Type {
-	case "router":
-		cmd = []string{"/usr/bin/vtysh"}
-	default:
-		cmd = []string{"/bin/bash"}
+	cmd := []string{"/bin/bash"}
+	if !shell {
+		switch n.Type {
+		case "router":
+			cmd = []string{"/usr/bin/vtysh"}
+		}
 	}
 
 	return client.ExecTty(n.ID, cmd, in, out, resizeCh)

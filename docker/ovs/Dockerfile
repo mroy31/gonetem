@@ -3,7 +3,7 @@ FROM alpine:latest
 
 # Install dependencies
 RUN apk --update add \
-    dumb-init openvswitch \
+    bash dumb-init openvswitch \
     htop net-tools tcpdump less vim \
     iputils procps python3 shadow ethtool
 

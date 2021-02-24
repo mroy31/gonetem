@@ -29,9 +29,10 @@ nodes:
 )
 
 var (
-	server     string
-	disableRun bool
-	prjRunName string
+	server         string
+	disableRun     bool
+	prjRunName     string
+	isConsoleShell bool
 )
 
 func ListProjects() *proto.PrjListResponse {
@@ -236,7 +237,7 @@ var consoleCmd = &cobra.Command{
 	Long:  `Open a console to the specified node"`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := StartRemoteConsole(server, args[0]); err != nil {
+		if err := StartRemoteConsole(server, args[0], isConsoleShell); err != nil {
 			Fatal("Console to node %s returns an error: %v", args[0], err)
 		}
 	},
@@ -297,6 +298,9 @@ func Init() {
 	openCmd.Flags().StringVar(
 		&prjRunName, "name", "",
 		"Name used to identify the project on the server (name of the file by default)")
+	consoleCmd.Flags().BoolVar(
+		&isConsoleShell, "shell", false,
+		"Open console in shell mode")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(listCmd)

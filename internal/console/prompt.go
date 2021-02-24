@@ -29,11 +29,6 @@ func Fatal(msg string, a ...interface{}) {
 	os.Exit(1)
 }
 
-func IsInterfaceId(arg string) bool {
-	r, _ := regexp.Compile(`^\w+\.\d+$`)
-	return r.MatchString(arg)
-}
-
 type NetemCommand struct {
 	Desc  string
 	Usage string
@@ -71,7 +66,9 @@ func (p *NetemPrompt) RegisterCommands() {
 		Usage: "console <node_name>",
 		Args:  []string{`^\w+$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Console)
+			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
+				p.startConsole(client, cmdArgs[0], false)
+			})
 		},
 	}
 	p.commands["edit"] = &NetemCommand{
@@ -128,6 +125,16 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{`^.*\.gnet$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, p.SaveAs)
+		},
+	}
+	p.commands["shell"] = &NetemCommand{
+		Desc:  "Open a shell console for a node",
+		Usage: "shell <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
+				p.startConsole(client, cmdArgs[0], true)
+			})
 		},
 	}
 	p.commands["start"] = &NetemCommand{
@@ -226,21 +233,8 @@ func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client prot
 }
 
 func (p *NetemPrompt) Capture(cmdArgs []string) {
-	if len(cmdArgs) != 1 {
-		RedPrintf("Wrong capture invocation: capture <node>.<ifIndex>\n")
-		return
-	}
-
 	args := strings.Split(cmdArgs[0], ".")
-	if len(args) != 2 {
-		RedPrintf("Wrong interface identifier: <node>.<ifIndex> expected\n")
-		return
-	}
-	ifIndex, err := strconv.Atoi(args[1])
-	if err != nil {
-		RedPrintf("ifIndex is not a number\n")
-		return
-	}
+	ifIndex, _ := strconv.Atoi(args[1])
 
 	// Check wireshark is present
 	wiresharkPath, err := exec.LookPath("wireshark")
@@ -311,11 +305,6 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 }
 
 func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
-	if !IsInterfaceId(cmdArgs[0]) {
-		RedPrintf("Interface identifier is not valid: <node>.<ifIndex> expected\n")
-		return
-	}
-
 	state, found := map[string]proto.IfState{
 		"up":   proto.IfState_UP,
 		"down": proto.IfState_DOWN,
@@ -354,11 +343,11 @@ func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
 	}
 }
 
-func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) {
 	// first check that we can run console for this node
 	ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
 		PrjId: p.prjID,
-		Node:  cmdArgs[0],
+		Node:  nodeName,
 	})
 	if err != nil {
 		RedPrintf(err.Error() + "\n")
@@ -375,11 +364,16 @@ func (p *NetemPrompt) Console(client proto.NetemClient, cmdArgs []string) {
 		return
 	}
 
-	node := fmt.Sprintf("%s.%s", p.prjID, cmdArgs[0])
+	node := fmt.Sprintf("%s.%s", p.prjID, nodeName)
+	shellOpt := ""
+	if shell {
+		shellOpt = "--shell "
+	}
+
 	termArgs := []string{
 		"-xrm", "XTerm.vt100.allowTitleOps: false",
-		"-title", cmdArgs[0],
-		"-e", "gonetem-console console " + node}
+		"-title", nodeName,
+		"-e", "gonetem-console console " + shellOpt + node}
 	cmd := exec.Command(termPath, termArgs...)
 	if err := cmd.Start(); err != nil {
 		RedPrintf("Error when starting console: %v\n", err)
@@ -415,11 +409,6 @@ func (p *NetemPrompt) SaveAs(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
-	if len(cmdArgs) != 1 {
-		RedPrintf("start command requires exactly 1 argument: <node>\n")
-		return
-	}
-
 	ack, err := client.Start(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to start node: %v\n", err)
@@ -431,11 +420,6 @@ func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
-	if len(cmdArgs) != 1 {
-		RedPrintf("stop command requires exactly 1 argument: <node>\n")
-		return
-	}
-
 	ack, err := client.Stop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to stop node: %v\n", err)
@@ -447,11 +431,6 @@ func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
-	if len(cmdArgs) != 1 {
-		RedPrintf("restart command requires exactly 1 argument: <node>\n")
-		return
-	}
-
 	ack, err := client.Restart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to restart node: %v\n", err)

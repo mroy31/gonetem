@@ -24,7 +24,7 @@ type INetemNode interface {
 	GetInterfaces() map[string]link.IfState
 	LoadConfig(confPath string) error
 	CanRunConsole() error
-	Console(in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
+	Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
 	Capture(ifIndex int, out io.Writer) error
 	Save(dstPath string) error
 	SetInterfaceState(ifIndex int, state link.IfState) error

@@ -14,7 +14,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
-func StartRemoteConsole(server, node string) error {
+func StartRemoteConsole(server, node string, shell bool) error {
 	var (
 		terminalFd uintptr
 		oldState   *term.State
@@ -47,6 +47,7 @@ func StartRemoteConsole(server, node string) error {
 		Code:  proto.ConsoleCltMsg_INIT,
 		PrjId: args[0],
 		Node:  args[1],
+		Shell: shell,
 	}); err != nil {
 		return err
 	}
