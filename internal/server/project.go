@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/utils"
 )
 
@@ -62,7 +63,7 @@ func GetProject(prjID string) *NetemProject {
 
 func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
 	// create temp directory for the project
-	dir, err := ioutil.TempDir("/tmp", "gonetem-"+prjId+"-")
+	dir, err := ioutil.TempDir(options.ServerConfig.Workdir, "gonetem-"+prjId+"-")
 	if err != nil {
 		return nil, fmt.Errorf("Unable to create temp folder for project: %w", err)
 	}

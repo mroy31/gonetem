@@ -1,0 +1,11 @@
+[Unit]
+Description=Gonetem server
+After=network.target
+
+[Service]
+ExecStartPre=/bin/touch /var/log/gonetem-server.log
+ExecStartPre=/bin/chown root:adm /var/log/gonetem-server.log
+ExecStart=/usr/sbin/gonetem-server -log-file /var/log/gonetem-server.log
+
+[Install]
+WantedBy=multi-user.target

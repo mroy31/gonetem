@@ -9,9 +9,11 @@ import (
 
 const (
 	VERSION               = "0.1.0"
+	NETEM_ID              = "ntm"
 	DEFAULT_CONFIG_FILE   = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
 listen: "localhost:10110"
+workdir: /tmp
 docker:
   images:
     server: mroy31/gonetem-server
@@ -22,8 +24,9 @@ docker:
 )
 
 type NetemServerConfig struct {
-	Listen string
-	Docker struct {
+	Listen  string
+	Workdir string
+	Docker  struct {
 		Images struct {
 			Server string
 			Host   string

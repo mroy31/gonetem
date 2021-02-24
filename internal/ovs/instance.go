@@ -178,7 +178,7 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 		return nil, fmt.Errorf("Ovswitch image %s not present", imgName)
 	}
 
-	containerName := fmt.Sprintf("ntm%s.ovs", prjID)
+	containerName := fmt.Sprintf("%s%s.ovs", options.NETEM_ID, prjID)
 	containerId, err := client.Create(imgName, containerName, "ovs", false)
 	if err != nil {
 		return nil, err

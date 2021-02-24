@@ -93,7 +93,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 		return fmt.Errorf("Docker image %s not present", imgName)
 	}
 
-	containerName := fmt.Sprintf("ntm%s.%s", n.PrjID, n.Name)
+	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
 	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6); err != nil {
 		return err
 	}
