@@ -25,6 +25,8 @@ const (
 	networkFilename = "network.yml"
 	emptyNetwork    = `
 nodes:
+links:
+bridges:
 `
 )
 

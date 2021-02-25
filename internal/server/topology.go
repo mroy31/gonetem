@@ -12,24 +12,18 @@ import (
 	"github.com/docker/docker/pkg/system"
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/link"
+	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/ovs"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
 func shortName(name string) string {
-	if len(name) <= 2 {
+	if len(name) <= 4 {
 		return name
 	}
 
-	return name[len(name)-3 : len(name)-1]
-}
-
-func genIfName(prjId, hostName string, hostIfIndex int, peerName string, peerIfIndex int) string {
-	return fmt.Sprintf(
-		"%s%s%d.%s%d", prjId,
-		shortName(hostName), hostIfIndex,
-		shortName(peerName), peerIfIndex)
+	return name[len(name)-4:]
 }
 
 func splitCopyArg(arg string) (container, path string) {
@@ -74,9 +68,16 @@ type LinkConfig struct {
 	Peer2 string
 }
 
+type BridgeConfig struct {
+	Name       string
+	Host       string
+	Interfaces []string
+}
+
 type NetemTopology struct {
-	Nodes []NodeConfig
-	Links []LinkConfig
+	Nodes   []NodeConfig
+	Links   []LinkConfig
+	Bridges []BridgeConfig
 }
 
 type NetemLinkPeer struct {
@@ -89,6 +90,12 @@ type NetemLink struct {
 	Peer2 NetemLinkPeer
 }
 
+type NetemBridge struct {
+	Name          string
+	HostInterface string
+	Peers         []NetemLinkPeer
+}
+
 type NetemTopologyManager struct {
 	prjID string
 	path  string
@@ -96,6 +103,7 @@ type NetemTopologyManager struct {
 	nodes       []INetemNode
 	ovsInstance *ovs.OvsProjectInstance
 	links       []*NetemLink
+	bridges     []*NetemBridge
 	running     bool
 	logger      *logrus.Entry
 }
@@ -164,6 +172,26 @@ func (t *NetemTopologyManager) Load() error {
 		}
 	}
 
+	// Create bridges
+	t.bridges = make([]*NetemBridge, len(topology.Bridges))
+	for idx, bConfig := range topology.Bridges {
+		t.bridges[idx] = &NetemBridge{
+			Name:          options.NETEM_ID + t.prjID + "." + shortName(bConfig.Name),
+			HostInterface: bConfig.Host,
+			Peers:         make([]NetemLinkPeer, len(bConfig.Interfaces)),
+		}
+
+		for pIdx, ifName := range bConfig.Interfaces {
+			peer := strings.Split(ifName, ".")
+			peerIdx, _ := strconv.Atoi(peer[1])
+
+			t.bridges[idx].Peers[pIdx] = NetemLinkPeer{
+				Node:    t.GetNode(peer[0]),
+				IfIndex: peerIdx,
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -213,45 +241,28 @@ func (t *NetemTopologyManager) Run() error {
 	// 3 - create links
 	t.logger.Debug("Topo/Run: setup links")
 	for _, l := range t.links {
-		peer1Netns, err := l.Peer1.Node.GetNetns()
-		if err != nil {
-			return err
-		}
-		defer peer1Netns.Close()
-
-		peer2Netns, err := l.Peer2.Node.GetNetns()
-		if err != nil {
-			return err
-		}
-		defer peer2Netns.Close()
-
-		veth, err := link.CreateVethLink(
-			l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex), peer1Netns,
-			l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex), peer2Netns,
-		)
-		if err != nil {
-			return fmt.Errorf(
-				"Unable to create link %s.%d-%s.%d: %v",
-				l.Peer1.Node.GetName(), l.Peer1.IfIndex,
-				l.Peer2.Node.GetName(), l.Peer2.IfIndex,
-				err,
-			)
-		}
-
-		// set interface up
-		if err := link.SetInterfaceState(veth.Name, peer1Netns, link.IFSTATE_UP); err != nil {
-			return err
-		}
-		if err := link.SetInterfaceState(veth.PeerName, peer2Netns, link.IFSTATE_UP); err != nil {
-			return err
-		}
-
-		// record interface in node
-		l.Peer1.Node.AddInterface(l.Peer1.IfIndex)
-		l.Peer2.Node.AddInterface(l.Peer2.IfIndex)
+		l := l
+		g.Go(func() error {
+			return t.setupLink(l)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
-	// 4 - load configs
+	// 4 - create bridges
+	t.logger.Debug("Topo/Run: setup bridges")
+	for _, br := range t.bridges {
+		br := br
+		g.Go(func() error {
+			return t.setupBridge(br)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	// 5 - load configs
 	t.logger.Debug("Topo/Run: load configuration")
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
@@ -263,6 +274,96 @@ func (t *NetemTopologyManager) Run() error {
 	}
 
 	t.running = true
+	return nil
+}
+
+func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
+	rootNs := link.GetRootNetns()
+	defer rootNs.Close()
+
+	brId, err := link.CreateBridge(br.Name, rootNs)
+	if err != nil {
+		return err
+	}
+
+	if err := link.AttachToBridge(brId, br.HostInterface, rootNs); err != nil {
+		return fmt.Errorf("Unable to attach HostIf to bridge %s: %v", br.Name, err)
+	}
+
+	for _, peer := range br.Peers {
+		peerNetns, err := peer.Node.GetNetns()
+		if err != nil {
+			return err
+		}
+		defer peerNetns.Close()
+
+		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, shortName(peer.Node.GetName()), peer.IfIndex)
+		veth, err := link.CreateVethLink(
+			ifName, rootNs,
+			peer.Node.GetInterfaceName(peer.IfIndex), peerNetns,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"Unable to create link %s-%s.%d: %v",
+				br.Name, peer.Node.GetName(), peer.IfIndex, err,
+			)
+		}
+
+		// set interface up
+		if err := link.SetInterfaceState(veth.Name, rootNs, link.IFSTATE_UP); err != nil {
+			return err
+		}
+		if err := link.SetInterfaceState(veth.PeerName, peerNetns, link.IFSTATE_UP); err != nil {
+			return err
+		}
+
+		if err := link.AttachToBridge(brId, veth.Name, rootNs); err != nil {
+			return err
+		}
+		peer.Node.AddInterface(peer.IfIndex)
+	}
+
+	return nil
+}
+
+func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
+	peer1Netns, err := l.Peer1.Node.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peer1Netns.Close()
+
+	peer2Netns, err := l.Peer2.Node.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peer2Netns.Close()
+
+	veth, err := link.CreateVethLink(
+		l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex), peer1Netns,
+		l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex), peer2Netns,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"Unable to create link %s.%d-%s.%d: %v",
+			l.Peer1.Node.GetName(), l.Peer1.IfIndex,
+			l.Peer2.Node.GetName(), l.Peer2.IfIndex,
+			err,
+		)
+	}
+
+	// set interface up
+	if err := link.SetInterfaceState(veth.Name, peer1Netns, link.IFSTATE_UP); err != nil {
+		return err
+	}
+	if err := link.SetInterfaceState(veth.PeerName, peer2Netns, link.IFSTATE_UP); err != nil {
+		return err
+	}
+
+	// record interface in node
+	l.Peer1.Node.AddInterface(l.Peer1.IfIndex)
+	l.Peer2.Node.AddInterface(l.Peer2.IfIndex)
+
 	return nil
 }
 
@@ -406,8 +507,27 @@ func (t *NetemTopologyManager) Close() error {
 			}
 		}
 	}
+
+	rootNs := link.GetRootNetns()
+	defer rootNs.Close()
+	for _, br := range t.bridges {
+		if err := link.DeleteLink(br.Name, rootNs); err != nil {
+			t.logger.Errorf("Error when deleting bridge %s: %v", br.Name, err)
+		}
+
+		for _, peer := range br.Peers {
+			ifName := fmt.Sprintf(
+				"%s%s%s.%d", options.NETEM_ID, t.prjID,
+				shortName(peer.Node.GetName()), peer.IfIndex)
+			if err := link.DeleteLink(ifName, rootNs); err != nil {
+				t.logger.Errorf("Error when deleting link %s: %v", ifName, err)
+			}
+		}
+	}
+
 	t.nodes = make([]INetemNode, 0)
 	t.links = make([]*NetemLink, 0)
+	t.bridges = make([]*NetemBridge, 0)
 
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
 		t.logger.Errorf("Error when closing ovwitch instance: %v", err)

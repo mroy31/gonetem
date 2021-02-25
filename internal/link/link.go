@@ -2,6 +2,7 @@ package link
 
 import (
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/vishvananda/netlink"
@@ -18,6 +19,12 @@ const (
 var (
 	mutex = &sync.Mutex{}
 )
+
+func GetRootNetns() netns.NsHandle {
+	ns, _ := netns.GetFromPid(os.Getpid())
+
+	return ns
+}
 
 func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peerNamespace netns.NsHandle) (*netlink.Veth, error) {
 	veth := &netlink.Veth{
@@ -36,6 +43,61 @@ func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peer
 	}
 
 	return veth, nil
+}
+
+func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error) {
+	la := netlink.NewLinkAttrs()
+	la.Name = name
+	la.Namespace = netlink.NsFd(namespace)
+	br := &netlink.Bridge{LinkAttrs: la}
+
+	err := netlink.LinkAdd(br)
+	if err != nil {
+		return br, fmt.Errorf("Error when creating bridge %s: %v", name, err)
+	}
+
+	// set bridge up
+	// As we need to stay in the right namespace
+	// Use mutex to avoid netns change
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	netns.Set(namespace)
+	if err := netlink.LinkSetUp(br); err != nil {
+		return br, fmt.Errorf("Error when set %s up: %v", name, err)
+	}
+
+	return br, nil
+}
+
+func AttachToBridge(br *netlink.Bridge, ifName string, namespace netns.NsHandle) error {
+	// As we need to stay in the right namespace
+	// Use mutex to avoid netns change
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	netns.Set(namespace)
+	ifObj, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("Unable to get %s: %v", ifName, err)
+	}
+
+	return netlink.LinkSetMaster(ifObj, br)
+}
+
+func DeleteLink(name string, namespace netns.NsHandle) error {
+	// As we need to stay in the right namespace
+	// Use mutex to avoid netns change
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	netns.Set(namespace)
+	br, err := netlink.LinkByName(name)
+	if err != nil {
+		return fmt.Errorf("Unable to get bridge %s: %v", name, err)
+	}
+
+	return netlink.LinkDel(br)
 }
 
 func SetInterfaceState(name string, namespace netns.NsHandle, state IfState) error {
