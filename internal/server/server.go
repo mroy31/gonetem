@@ -145,7 +145,7 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 		Status:  &proto.Status{Code: proto.StatusCode_OK},
 		Name:    project.Name,
 		Id:      project.Id,
-		OpenAt:  project.OpenAt.String(),
+		OpenAt:  project.OpenAt.Format("2006-01-02 15:04:05"),
 		Running: project.Topology.IsRunning(),
 	}
 

@@ -29,6 +29,13 @@ func checkNodeConfig(nConfig NodeConfig, nodes []string) error {
 		return fmt.Errorf("Node: '%s' type field is not valid", nConfig.Type)
 	}
 
+	// ovs node do not support MPLS
+	if nConfig.Type == "ovs" {
+		if nConfig.Mpls || len(nConfig.Vrfs) > 0 {
+			return fmt.Errorf("Mpls can not be enable on ovswitch")
+		}
+	}
+
 	return nil
 }
 

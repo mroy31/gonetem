@@ -84,14 +84,19 @@ func (c *DockerClient) GetState(containerId string) (string, error) {
 	return container.State, nil
 }
 
-func (c *DockerClient) Create(imgName, containerName, hostName string, ipv6 bool) (string, error) {
+func (c *DockerClient) Create(imgName, containerName, hostName string, ipv6, mpls bool) (string, error) {
 	hostConfig := container.HostConfig{
 		NetworkMode: "none",
 		Privileged:  true,
 		CapAdd:      []string{"ALL"},
+		Sysctls:     make(map[string]string),
 	}
 	if ipv6 {
-		hostConfig.Sysctls = map[string]string{"net.ipv6.conf.all.disable_ipv6": "0"}
+		hostConfig.Sysctls["net.ipv6.conf.all.disable_ipv6"] = "0"
+	}
+	if mpls {
+		hostConfig.Sysctls["net.mpls.platform_labels"] = "100000"
+		hostConfig.Sysctls["net.mpls.conf.lo.input"] = "1"
 	}
 
 	resp, err := c.cli.ContainerCreate(context.Background(), &container.Config{

@@ -39,7 +39,7 @@ func TestDockerNode_StartStop(t *testing.T) {
 			name:        utils.RandString(3),
 			nType:       "host",
 			ipv6:        true,
-			mpls:        false,
+			mpls:        true,
 			expectError: false,
 		},
 	}

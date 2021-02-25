@@ -79,6 +79,31 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 	return br, nil
 }
 
+func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, error) {
+	la := netlink.NewLinkAttrs()
+	la.Name = name
+	la.Namespace = netlink.NsFd(namespace)
+	vrf := &netlink.Vrf{LinkAttrs: la, Table: uint32(table)}
+
+	err := netlink.LinkAdd(vrf)
+	if err != nil {
+		return vrf, fmt.Errorf("Error when creating VRF %s: %v", name, err)
+	}
+
+	// set VRF up
+	// As we need to stay in the right namespace
+	// Use mutex to avoid netns change
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	netns.Set(namespace)
+	if err := netlink.LinkSetUp(vrf); err != nil {
+		return vrf, fmt.Errorf("Error when set %s up: %v", name, err)
+	}
+
+	return vrf, nil
+}
+
 func AttachToBridge(br *netlink.Bridge, ifName string, namespace netns.NsHandle) error {
 	// As we need to stay in the right namespace
 	// Use mutex to avoid netns change

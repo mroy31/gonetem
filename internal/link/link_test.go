@@ -60,6 +60,28 @@ func TestLink_CreateVeth(t *testing.T) {
 	}
 }
 
+func TestLink_CreateVrf(t *testing.T) {
+	teardown := setUpNetlinkTest(t)
+	defer teardown()
+
+	ns, err := netns.Get()
+	if err != nil {
+		t.Fatalf("Unable to get current netns")
+	}
+
+	vrf, err := CreateVrf(utils.RandString(6), ns, 10)
+	if err != nil {
+		t.Fatalf("Unable to create VRF: %v", err)
+	}
+	defer netlink.LinkDel(vrf)
+
+	// check existence
+	_, err = netlink.LinkByName(vrf.Name)
+	if err != nil {
+		t.Fatalf("Unable to find created vrf: %v", err)
+	}
+}
+
 func TestLink_InterfaceState(t *testing.T) {
 	teardown := setUpNetlinkTest(t)
 	defer teardown()

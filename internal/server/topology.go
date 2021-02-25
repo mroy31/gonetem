@@ -61,6 +61,7 @@ type NodeConfig struct {
 	Interfaces map[string]string
 	IPv6       bool
 	Mpls       bool
+	Vrfs       []string
 }
 
 type LinkConfig struct {

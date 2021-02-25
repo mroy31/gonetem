@@ -116,13 +116,12 @@ func NewPrompt(prjName, prjID, prjPath string) {
 	e := NewNetemPrompt(server, prjID, prjPath)
 
 	fmt.Println("Welcome to gonetem " + options.VERSION)
-	fmt.Println("Please use `exit` or `Ctrl-D` to exit this program.")
+	fmt.Println("Please use `exit` to close the project")
 	p := prompt.New(
 		e.Execute,
 		c.Complete,
 		prompt.OptionTitle("gonetem-emulator"),
 		prompt.OptionPrefix(fmt.Sprintf("[%s]> ", prjName)),
-		prompt.OptionInputTextColor(prompt.Yellow),
 		prompt.OptionCompletionWordSeparator(completer.FilePathCompletionSeparator),
 	)
 	p.Run()

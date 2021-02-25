@@ -30,7 +30,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 	}{
 		{
 			name:    "ImagePresent: valid test",
-			imgName: fmt.Sprintf("mroy31/pynetem-host:%s", options.VERSION),
+			imgName: fmt.Sprintf("mroy31/gonetem-ovs:%s", options.VERSION),
 			result:  true,
 		},
 		{
@@ -62,7 +62,7 @@ func TestDockerClient_CreateRm(t *testing.T) {
 	// create a container
 	img := fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Host, options.VERSION)
 	name := utils.RandString(10)
-	cID, err := client.Create(img, name, name, true)
+	cID, err := client.Create(img, name, name, true, false)
 	if err != nil {
 		t.Errorf("Unable to create the container: %v", err)
 		return
@@ -111,7 +111,7 @@ func TestDockerClient_Exec(t *testing.T) {
 	// create and start a container
 	img := fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Server, options.VERSION)
 	name := utils.RandString(10)
-	cID, err := client.Create(img, name, name, true)
+	cID, err := client.Create(img, name, name, true, true)
 	if err != nil {
 		t.Errorf("Unable to create the container: %v", err)
 		return
@@ -148,7 +148,7 @@ func TestDockerClient_Copy(t *testing.T) {
 	// create a container
 	img := fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Router, options.VERSION)
 	name := utils.RandString(10)
-	cID, err := client.Create(img, name, name, true)
+	cID, err := client.Create(img, name, name, true, true)
 	if err != nil {
 		t.Errorf("Unable to create the container: %v", err)
 		return
@@ -201,7 +201,7 @@ func TestDockerClient_Pid(t *testing.T) {
 	// create a container
 	img := fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Router, options.VERSION)
 	name := utils.RandString(10)
-	cID, err := client.Create(img, name, name, true)
+	cID, err := client.Create(img, name, name, true, false)
 	if err != nil {
 		t.Errorf("Unable to create the container: %v", err)
 		return

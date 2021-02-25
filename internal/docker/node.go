@@ -20,6 +20,7 @@ type DockerNodeOptions struct {
 	ImgName string
 	Ipv6    bool
 	Mpls    bool
+	Vrfs    []string
 }
 
 type DockerNodeStatus struct {
@@ -36,6 +37,7 @@ type DockerNode struct {
 	Running        bool
 	ConfigLoaded   bool
 	Mpls           bool
+	Vrfs           []string
 	Logger         *logrus.Entry
 }
 
@@ -94,7 +96,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 
 	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
-	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6); err != nil {
+	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6, n.Mpls); err != nil {
 		return err
 	}
 
@@ -125,8 +127,31 @@ func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 
 func (n *DockerNode) AddInterface(ifIndex int) error {
 	n.Interfaces[n.GetInterfaceName(ifIndex)] = link.IFSTATE_UP
+	n.PrepareInterface(n.GetInterfaceName(ifIndex))
 
 	return nil
+}
+
+func (n *DockerNode) PrepareInterface(ifName string) {
+	client, err := NewDockerClient()
+	if err != nil {
+		return
+	}
+	defer client.Close()
+
+	// disable tcp offloading
+	cmd := []string{"ethtool", "-K", ifName, "tx", "off"}
+	if _, err := client.Exec(n.ID, cmd); err != nil {
+		n.Logger.Warnf("Unable to disable tcp offloading on %s", ifName)
+	}
+
+	// enable MPLS forwarding
+	if n.Mpls {
+		cmd = []string{"sysctl", "-w", "net.mpls.conf." + ifName + ".input=1"}
+		if _, err := client.Exec(n.ID, cmd); err != nil {
+			n.Logger.Warnf("Unable to enable MPLS on %s", ifName)
+		}
+	}
 }
 
 func (n *DockerNode) CanRunConsole() error {
@@ -204,6 +229,11 @@ func (n *DockerNode) Start() error {
 		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
 			return fmt.Errorf("Unable to attach interfaces: %v", err)
 		}
+
+		// Configure interfaces
+		for ifName, _ := range n.Interfaces {
+			n.PrepareInterface(ifName)
+		}
 	}
 
 	return nil
@@ -254,6 +284,15 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 	}
 
 	if !n.ConfigLoaded {
+		ns, _ := n.GetNetns()
+		defer ns.Close()
+
+		for idx, vrf := range n.Vrfs {
+			if _, err := link.CreateVrf(vrf, ns, 10+idx); err != nil {
+				return err
+			}
+		}
+
 		client, err := NewDockerClient()
 		if err != nil {
 			return err
@@ -465,6 +504,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		Name:       dockerOpts.Name,
 		Type:       dockerOpts.Type,
 		Mpls:       dockerOpts.Mpls,
+		Vrfs:       dockerOpts.Vrfs,
 		Interfaces: make(map[string]link.IfState),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,

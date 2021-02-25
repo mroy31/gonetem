@@ -51,6 +51,7 @@ func CreateNode(prjID string, config NodeConfig) (INetemNode, error) {
 			Type: groups[1],
 			Ipv6: config.IPv6,
 			Mpls: config.Mpls,
+			Vrfs: config.Vrfs,
 		})
 	}
 
