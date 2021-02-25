@@ -26,6 +26,15 @@ func GetRootNetns() netns.NsHandle {
 	return ns
 }
 
+func IsLinkExist(name string, namespace netns.NsHandle) bool {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	netns.Set(namespace)
+	_, err := netlink.LinkByName(name)
+	return err == nil
+}
+
 func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peerNamespace netns.NsHandle) (*netlink.Veth, error) {
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
@@ -94,7 +103,7 @@ func DeleteLink(name string, namespace netns.NsHandle) error {
 	netns.Set(namespace)
 	br, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("Unable to get bridge %s: %v", name, err)
+		return fmt.Errorf("Unable to get link %s: %v", name, err)
 	}
 
 	return netlink.LinkDel(br)

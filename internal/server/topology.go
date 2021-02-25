@@ -512,7 +512,7 @@ func (t *NetemTopologyManager) Close() error {
 	defer rootNs.Close()
 	for _, br := range t.bridges {
 		if err := link.DeleteLink(br.Name, rootNs); err != nil {
-			t.logger.Errorf("Error when deleting bridge %s: %v", br.Name, err)
+			t.logger.Warnf("Error when deleting bridge %s: %v", br.Name, err)
 		}
 
 		for _, peer := range br.Peers {
@@ -520,7 +520,7 @@ func (t *NetemTopologyManager) Close() error {
 				"%s%s%s.%d", options.NETEM_ID, t.prjID,
 				shortName(peer.Node.GetName()), peer.IfIndex)
 			if err := link.DeleteLink(ifName, rootNs); err != nil {
-				t.logger.Errorf("Error when deleting link %s: %v", ifName, err)
+				t.logger.Warnf("Error when deleting link %s: %v", ifName, err)
 			}
 		}
 	}
@@ -530,7 +530,7 @@ func (t *NetemTopologyManager) Close() error {
 	t.bridges = make([]*NetemBridge, 0)
 
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
-		t.logger.Errorf("Error when closing ovwitch instance: %v", err)
+		t.logger.Warnf("Error when closing ovwitch instance: %v", err)
 	}
 	t.ovsInstance = nil
 
