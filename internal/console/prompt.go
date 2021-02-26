@@ -279,8 +279,9 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 	}
 
 	rIn, wIn := io.Pipe()
+
 	captureArgs := []string{
-		"-o", "'gui.window_title:" + cmdArgs[0] + "'",
+		fmt.Sprintf("-o 'gui.window_title:%s@%s'", args[1], args[0]),
 		"-k", "-i", "-"}
 	cmd := exec.Command(wiresharkPath, captureArgs...)
 	cmd.Stdin = rIn
@@ -303,7 +304,6 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 			case proto.CaptureSrvMsg_STDOUT:
 				wIn.Write(msg.GetData())
 			case proto.CaptureSrvMsg_ERROR:
-				RedPrintf("Error when capturing wireshark: %s\n", string(msg.GetData()))
 				cmd.Process.Signal(os.Kill)
 				return
 			}

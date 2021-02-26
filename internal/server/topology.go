@@ -297,9 +297,10 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		defer peerNetns.Close()
 
 		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, shortName(peer.Node.GetName()), peer.IfIndex)
+		peerIfName := fmt.Sprintf("%s%s%d.%s", options.NETEM_ID, t.prjID, peer.IfIndex, shortName(peer.Node.GetName()))
 		veth, err := link.CreateVethLink(
 			ifName, rootNs,
-			peer.Node.GetInterfaceName(peer.IfIndex), peerNetns,
+			peerIfName, peerNetns,
 		)
 		if err != nil {
 			return fmt.Errorf(
@@ -312,14 +313,11 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		if err := link.SetInterfaceState(veth.Name, rootNs, link.IFSTATE_UP); err != nil {
 			return err
 		}
-		if err := link.SetInterfaceState(veth.PeerName, peerNetns, link.IFSTATE_UP); err != nil {
-			return err
-		}
 
 		if err := link.AttachToBridge(brId, veth.Name, rootNs); err != nil {
 			return err
 		}
-		peer.Node.AddInterface(peer.IfIndex)
+		peer.Node.AddInterface(peerIfName, peer.IfIndex, peerNetns)
 	}
 
 	return nil
@@ -338,10 +336,9 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 	defer peer2Netns.Close()
 
-	veth, err := link.CreateVethLink(
-		l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex), peer1Netns,
-		l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex), peer2Netns,
-	)
+	peer1IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer1.Node.GetName(), l.Peer1.IfIndex)
+	peer2IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer2.Node.GetName(), l.Peer2.IfIndex)
+	_, err = link.CreateVethLink(peer1IfName, peer1Netns, peer2IfName, peer2Netns)
 	if err != nil {
 		return fmt.Errorf(
 			"Unable to create link %s.%d-%s.%d: %v",
@@ -351,17 +348,12 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 		)
 	}
 
-	// set interface up
-	if err := link.SetInterfaceState(veth.Name, peer1Netns, link.IFSTATE_UP); err != nil {
+	if err := l.Peer1.Node.AddInterface(peer1IfName, l.Peer1.IfIndex, peer1Netns); err != nil {
 		return err
 	}
-	if err := link.SetInterfaceState(veth.PeerName, peer2Netns, link.IFSTATE_UP); err != nil {
+	if err := l.Peer2.Node.AddInterface(peer2IfName, l.Peer2.IfIndex, peer2Netns); err != nil {
 		return err
 	}
-
-	// record interface in node
-	l.Peer1.Node.AddInterface(l.Peer1.IfIndex)
-	l.Peer2.Node.AddInterface(l.Peer2.IfIndex)
 
 	return nil
 }

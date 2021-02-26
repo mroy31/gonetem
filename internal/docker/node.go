@@ -125,9 +125,14 @@ func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 	return fmt.Sprintf("eth%d", ifIndex)
 }
 
-func (n *DockerNode) AddInterface(ifIndex int) error {
-	n.Interfaces[n.GetInterfaceName(ifIndex)] = link.IFSTATE_UP
-	n.PrepareInterface(n.GetInterfaceName(ifIndex))
+func (n *DockerNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error {
+	targetIfName := n.GetInterfaceName(ifIndex)
+	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
+		return err
+	}
+
+	n.Interfaces[targetIfName] = link.IFSTATE_UP
+	n.PrepareInterface(targetIfName)
 
 	return nil
 }
@@ -172,7 +177,8 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 	}
 	defer client.Close()
 
-	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", n.GetInterfaceName(ifIndex)}
+	ifName := n.GetInterfaceName(ifIndex)
+	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", ifName}
 	return client.ExecOutStream(n.ID, cmd, out)
 }
 
@@ -231,7 +237,7 @@ func (n *DockerNode) Start() error {
 		}
 
 		// Configure interfaces
-		for ifName, _ := range n.Interfaces {
+		for ifName := range n.Interfaces {
 			n.PrepareInterface(ifName)
 		}
 	}

@@ -20,7 +20,7 @@ type INetemNode interface {
 	Stop() error
 	GetNetns() (netns.NsHandle, error)
 	GetInterfaceName(ifIndex int) string
-	AddInterface(ifIndex int) error
+	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
 	GetInterfaces() map[string]link.IfState
 	LoadConfig(confPath string) error
 	CanRunConsole() error

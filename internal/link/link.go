@@ -3,6 +3,7 @@ package link
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 
 	"github.com/vishvananda/netlink"
@@ -55,6 +56,9 @@ func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peer
 }
 
 func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	la := netlink.NewLinkAttrs()
 	la.Name = name
 	la.Namespace = netlink.NsFd(namespace)
@@ -65,12 +69,6 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 		return br, fmt.Errorf("Error when creating bridge %s: %v", name, err)
 	}
 
-	// set bridge up
-	// As we need to stay in the right namespace
-	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	netns.Set(namespace)
 	if err := netlink.LinkSetUp(br); err != nil {
 		return br, fmt.Errorf("Error when set %s up: %v", name, err)
@@ -80,6 +78,9 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 }
 
 func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	la := netlink.NewLinkAttrs()
 	la.Name = name
 	la.Namespace = netlink.NsFd(namespace)
@@ -90,12 +91,6 @@ func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, 
 		return vrf, fmt.Errorf("Error when creating VRF %s: %v", name, err)
 	}
 
-	// set VRF up
-	// As we need to stay in the right namespace
-	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	netns.Set(namespace)
 	if err := netlink.LinkSetUp(vrf); err != nil {
 		return vrf, fmt.Errorf("Error when set %s up: %v", name, err)
@@ -105,10 +100,8 @@ func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, 
 }
 
 func AttachToBridge(br *netlink.Bridge, ifName string, namespace netns.NsHandle) error {
-	// As we need to stay in the right namespace
-	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	netns.Set(namespace)
 	ifObj, err := netlink.LinkByName(ifName)
@@ -120,10 +113,8 @@ func AttachToBridge(br *netlink.Bridge, ifName string, namespace netns.NsHandle)
 }
 
 func DeleteLink(name string, namespace netns.NsHandle) error {
-	// As we need to stay in the right namespace
-	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	netns.Set(namespace)
 	br, err := netlink.LinkByName(name)
@@ -134,11 +125,32 @@ func DeleteLink(name string, namespace netns.NsHandle) error {
 	return netlink.LinkDel(br)
 }
 
+func RenameLink(name string, target string, namespace netns.NsHandle) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := netns.Set(namespace); err != nil {
+		return fmt.Errorf("RenameLink - Error when switching netns: %v", err)
+	}
+
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return fmt.Errorf("RenameLink - Unable get link %s: %v", name, err)
+	}
+
+	if err := netlink.LinkSetName(link, target); err != nil {
+		return fmt.Errorf("Error when renaming link %s->%s: %v", name, target, err)
+	}
+	if err := netlink.LinkSetUp(link); err != nil {
+		return fmt.Errorf("Error when set %s up: %v", name, err)
+	}
+
+	return nil
+}
+
 func SetInterfaceState(name string, namespace netns.NsHandle, state IfState) error {
-	// As we need to stay in the right namespace
-	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	if err := netns.Set(namespace); err != nil {
 		return fmt.Errorf("Error when switching netns: %v", err)
@@ -170,8 +182,8 @@ func MoveInterfacesNetns(ifNames map[string]IfState, current netns.NsHandle, tar
 
 	// As we need to stay in the right namespace
 	// Use mutex to avoid netns change
-	mutex.Lock()
-	defer mutex.Unlock()
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	if err := netns.Set(current); err != nil {
 		return fmt.Errorf("Error when switching netns: %v", err)

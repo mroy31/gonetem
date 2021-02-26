@@ -60,7 +60,7 @@ func (o *OvsNode) Start() error {
 		}
 		o.Running = true
 
-		for ifName, _ := range o.Interfaces {
+		for ifName := range o.Interfaces {
 			if err := o.OvsInstance.AddPort(o.Name, ifName); err != nil {
 				return err
 			}
@@ -72,7 +72,7 @@ func (o *OvsNode) Start() error {
 
 func (o *OvsNode) Stop() error {
 	if o.Running {
-		for ifName, _ := range o.Interfaces {
+		for ifName := range o.Interfaces {
 			if err := o.OvsInstance.DelPort(o.Name, ifName); err != nil {
 				return err
 			}
@@ -87,12 +87,17 @@ func (o *OvsNode) Stop() error {
 	return nil
 }
 
-func (o *OvsNode) AddInterface(ifIndex int) error {
-	if err := o.OvsInstance.AddPort(o.Name, o.GetInterfaceName(ifIndex)); err != nil {
+func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error {
+	targetIfName := o.GetInterfaceName(ifIndex)
+	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
 		return err
 	}
 
-	o.Interfaces[o.GetInterfaceName(ifIndex)] = link.IFSTATE_UP
+	if err := o.OvsInstance.AddPort(o.Name, targetIfName); err != nil {
+		return err
+	}
+
+	o.Interfaces[targetIfName] = link.IFSTATE_UP
 
 	return nil
 }
