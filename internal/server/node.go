@@ -40,14 +40,14 @@ func (e *NodeNotFoundError) Error() string {
 	return fmt.Sprintf("Node %s not found in project %s", e.name, e.prjId)
 }
 
-func CreateNode(prjID string, config NodeConfig) (INetemNode, error) {
+func CreateNode(prjID string, name string, config NodeConfig) (INetemNode, error) {
 	// first test if it is a docker node
 	re := regexp.MustCompile(`^docker.(\w+)$`)
 	groups := re.FindStringSubmatch(config.Type)
 	if len(groups) == 2 {
 		// Create docker node
 		return docker.NewDockerNode(prjID, docker.DockerNodeOptions{
-			Name: config.Name,
+			Name: name,
 			Type: groups[1],
 			Ipv6: config.IPv6,
 			Mpls: config.Mpls,
@@ -57,7 +57,7 @@ func CreateNode(prjID string, config NodeConfig) (INetemNode, error) {
 
 	// then test if it is a switch
 	if config.Type == "ovs" {
-		return ovs.NewOvsNode(prjID, config.Name)
+		return ovs.NewOvsNode(prjID, name)
 	}
 
 	return nil, fmt.Errorf("Unknown node type '%s'", config.Type)

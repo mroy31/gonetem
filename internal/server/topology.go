@@ -56,12 +56,10 @@ const (
 )
 
 type NodeConfig struct {
-	Name       string
-	Type       string
-	Interfaces map[string]string
-	IPv6       bool
-	Mpls       bool
-	Vrfs       []string
+	Type string
+	IPv6 bool
+	Mpls bool
+	Vrfs []string
 }
 
 type LinkConfig struct {
@@ -70,15 +68,14 @@ type LinkConfig struct {
 }
 
 type BridgeConfig struct {
-	Name       string
 	Host       string
 	Interfaces []string
 }
 
 type NetemTopology struct {
-	Nodes   []NodeConfig
+	Nodes   map[string]NodeConfig
 	Links   []LinkConfig
-	Bridges []BridgeConfig
+	Bridges map[string]BridgeConfig
 }
 
 type NetemLinkPeer struct {
@@ -142,14 +139,16 @@ func (t *NetemTopologyManager) Load() error {
 	}
 
 	// Create nodes
+	idx := 0
 	t.nodes = make([]INetemNode, len(topology.Nodes))
-	for idx, nConfig := range topology.Nodes {
-		t.logger.Debugf("Create node %s", nConfig.Name)
+	for name, nConfig := range topology.Nodes {
+		t.logger.Debugf("Create node %s", name)
 
-		t.nodes[idx], err = CreateNode(t.prjID, nConfig)
+		t.nodes[idx], err = CreateNode(t.prjID, name, nConfig)
 		if err != nil {
-			return fmt.Errorf("Unable to create node %s: %w", nConfig.Name, err)
+			return fmt.Errorf("Unable to create node %s: %w", name, err)
 		}
+		idx++
 	}
 
 	// Create links
@@ -174,10 +173,11 @@ func (t *NetemTopologyManager) Load() error {
 	}
 
 	// Create bridges
+	bIdx := 0
 	t.bridges = make([]*NetemBridge, len(topology.Bridges))
-	for idx, bConfig := range topology.Bridges {
-		t.bridges[idx] = &NetemBridge{
-			Name:          options.NETEM_ID + t.prjID + "." + shortName(bConfig.Name),
+	for bName, bConfig := range topology.Bridges {
+		t.bridges[bIdx] = &NetemBridge{
+			Name:          options.NETEM_ID + t.prjID + "." + shortName(bName),
 			HostInterface: bConfig.Host,
 			Peers:         make([]NetemLinkPeer, len(bConfig.Interfaces)),
 		}
@@ -186,11 +186,13 @@ func (t *NetemTopologyManager) Load() error {
 			peer := strings.Split(ifName, ".")
 			peerIdx, _ := strconv.Atoi(peer[1])
 
-			t.bridges[idx].Peers[pIdx] = NetemLinkPeer{
+			t.bridges[bIdx].Peers[pIdx] = NetemLinkPeer{
 				Node:    t.GetNode(peer[0]),
 				IfIndex: peerIdx,
 			}
 		}
+
+		bIdx++
 	}
 
 	return nil
@@ -242,13 +244,9 @@ func (t *NetemTopologyManager) Run() error {
 	// 3 - create links
 	t.logger.Debug("Topo/Run: setup links")
 	for _, l := range t.links {
-		l := l
-		g.Go(func() error {
-			return t.setupLink(l)
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return err
+		if err := t.setupLink(l); err != nil {
+			return err
+		}
 	}
 
 	// 4 - create bridges

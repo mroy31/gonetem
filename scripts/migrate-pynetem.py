@@ -36,7 +36,7 @@ def copy_config_files(pnet_path, gnet_path):
 
 
 def create_gnet_network(pnet_network):
-    network = {"nodes": [], "links": [], "bridges": []}
+    network = {"nodes": {}, "links": [], "bridges": {}}
     sw_indexes = {}
 
     def type_translation(pnet_type):
@@ -60,20 +60,18 @@ def create_gnet_network(pnet_network):
     if "bridges" in pnet_network:
         for br in pnet_network["bridges"]:
             b_config = pnet_network["bridges"][br]
-            network["bridges"].append({
-                "name": br,
+            network["bridges"][br] = {
                 "host": b_config["host_if"],
                 "interfaces": []
-            })
+            }
 
     if "switches" in pnet_network:
         for sw in pnet_network["switches"]:
-            network["nodes"].append({"name": sw, "type": "ovs"})
+            network["nodes"][sw] = {"type": "ovs"}
 
     for name in pnet_network["nodes"]:
         n_config = pnet_network["nodes"][name]
         node = {
-            "name": name,
             "type": type_translation(n_config["type"]),
         }
 
@@ -84,7 +82,7 @@ def create_gnet_network(pnet_network):
         if "vrfs" in n_config:
             node["vrfs"] = n_config["vrfs"].split(";")
 
-        network["nodes"].append(node)
+        network["nodes"][name] = node
 
         # create associated links
         for idx in range(n_config.as_int("if_numbers")):

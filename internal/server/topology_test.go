@@ -22,14 +22,14 @@ var (
 	simpleNetwork = TopologyTestData{
 		network: `
 nodes:
-- name: switch
-  type: ovs
-- name: R1
-  type: docker.router
-  ipv6: true
-  mpls: true
-- name: host
-  type: docker.host
+  switch:
+    type: ovs
+  R1:
+    type: docker.router
+    ipv6: true
+    mpls: true
+  host:
+    type: docker.host
 links:
 - peer1: R1.0
   peer2: switch.0
@@ -55,11 +55,11 @@ links:
 	}
 	wrongTopology = `
 nodes:
-  - name: R1
+  R1
     type: docker.router
     ipv6: true
     mpls: true
-  - name: host
+  host
     type: test
 `
 )

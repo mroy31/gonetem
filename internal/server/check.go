@@ -16,13 +16,13 @@ var (
 	peerRE     = regexp.MustCompile(`^\w+.[0-9]+$`)
 )
 
-func checkNodeConfig(nConfig NodeConfig, nodes []string) error {
-	if isEntryExist(nodes, nConfig.Name) {
-		return fmt.Errorf("Node '%s' already exist", nConfig.Name)
+func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
+	if isEntryExist(nodes, name) {
+		return fmt.Errorf("Node '%s' already exist", name)
 	}
 
-	if !nameRE.MatchString(nConfig.Name) {
-		return fmt.Errorf("Node: '%s' name field is not valid", nConfig.Name)
+	if !nameRE.MatchString(name) {
+		return fmt.Errorf("Node: '%s' name field is not valid", name)
 	}
 
 	if !nodeTypeRE.MatchString(nConfig.Type) {
@@ -39,20 +39,20 @@ func checkNodeConfig(nConfig NodeConfig, nodes []string) error {
 	return nil
 }
 
-func checkBridgeConfig(bConfig BridgeConfig, bridges []string) error {
-	if isEntryExist(bridges, bConfig.Name) {
-		return fmt.Errorf("Bridge '%s' already exist", bConfig.Name)
+func checkBridgeConfig(name string, bConfig BridgeConfig, bridges []string) error {
+	if isEntryExist(bridges, name) {
+		return fmt.Errorf("Bridge '%s' already exist", name)
 	}
 
-	if !nameRE.MatchString(bConfig.Name) {
-		return fmt.Errorf("Bridge: '%s' name field is not valid", bConfig.Name)
+	if !nameRE.MatchString(name) {
+		return fmt.Errorf("Bridge: '%s' name field is not valid", name)
 	}
 
 	ns := link.GetRootNetns()
 	defer ns.Close()
 
 	if !link.IsLinkExist(bConfig.Host, ns) {
-		return fmt.Errorf("Bridge %s: host interface %s not found", bConfig.Name, bConfig.Host)
+		return fmt.Errorf("Bridge %s: host interface %s not found", name, bConfig.Host)
 	}
 
 	return nil
@@ -106,11 +106,11 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 	}
 
 	// check nodes
-	for _, node := range topology.Nodes {
-		if err := checkNodeConfig(node, nodes); err != nil {
+	for name, nConfig := range topology.Nodes {
+		if err := checkNodeConfig(name, nConfig, nodes); err != nil {
 			errors = append(errors, err)
 		}
-		nodes = append(nodes, node.Name)
+		nodes = append(nodes, name)
 	}
 
 	// check links
@@ -132,12 +132,12 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 	}
 
 	// check bridges
-	for _, br := range topology.Bridges {
-		if err := checkBridgeConfig(br, bridges); err != nil {
+	for bName, bConfig := range topology.Bridges {
+		if err := checkBridgeConfig(bName, bConfig, bridges); err != nil {
 			errors = append(errors, err)
 		}
 
-		for _, peer := range br.Interfaces {
+		for _, peer := range bConfig.Interfaces {
 			if err := isPeerValid(nodes, peers, peer); err != nil {
 				errors = append(errors, err)
 				continue
@@ -145,7 +145,7 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 			peers = append(peers, peer)
 		}
 
-		bridges = append(bridges, br.Name)
+		bridges = append(bridges, bName)
 	}
 
 	return &topology, errors
