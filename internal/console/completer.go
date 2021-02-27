@@ -36,3 +36,14 @@ func (c *ConnectCompleter) Complete(d prompt.Document) []prompt.Suggest {
 func NewConnectCompleter(projects *proto.PrjListResponse) *ConnectCompleter {
 	return &ConnectCompleter{projects}
 }
+
+func ConfirmComplete(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{
+		{
+			Text: "yes",
+		},
+		{
+			Text: "no",
+		},
+	}
+}

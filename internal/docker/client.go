@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -58,6 +59,34 @@ func (c *DockerClient) ImagePull(imgName string) error {
 
 	io.Copy(ioutil.Discard, out)
 	return nil
+}
+
+type NetemContainerList struct {
+	Container types.Container
+	Name      string
+}
+
+func (c *DockerClient) List(prefix string) ([]NetemContainerList, error) {
+	result := make([]NetemContainerList, 0)
+
+	list, err := c.cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	if err != nil {
+		return result, err
+	}
+
+	for _, container := range list {
+		for _, name := range container.Names {
+			if strings.HasPrefix(name, "/"+prefix) {
+				result = append(result, NetemContainerList{
+					Container: container,
+					Name:      name[1:],
+				})
+				continue
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func (c *DockerClient) Get(containerId string) (*types.Container, error) {

@@ -4,6 +4,7 @@ import (
 	context "context"
 	"fmt"
 	"io"
+	"regexp"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
@@ -26,6 +27,39 @@ func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*prot
 			Code: proto.StatusCode_OK,
 		},
 		Version: options.VERSION,
+	}, nil
+}
+
+func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.AckResponse, error) {
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to init docker client: %w", err)
+	}
+	defer client.Close()
+
+	cList, err := client.List(options.NETEM_ID)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get container list: %w", err)
+	}
+
+	re := regexp.MustCompile(`^` + options.NETEM_ID + `(\w+)\.\w+`)
+	for _, cObj := range cList {
+		groups := re.FindStringSubmatch(cObj.Name)
+		if len(groups) == 2 {
+			if !IdProjectExist(groups[1]) {
+				logrus.Infof("Clean: remove container %s\n", cObj.Name)
+				if err := client.Stop(cObj.Container.ID); err != nil {
+					return nil, fmt.Errorf("Unable to stop container %s: %w", cObj.Name, err)
+				}
+				if err := client.Rm(cObj.Container.ID); err != nil {
+					return nil, fmt.Errorf("Unable to rm container %s: %w", cObj.Name, err)
+				}
+			}
+		}
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
 	}, nil
 }
 

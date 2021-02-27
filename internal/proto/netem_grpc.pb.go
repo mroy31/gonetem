@@ -22,6 +22,7 @@ type NetemClient interface {
 	// general action
 	GetVersion(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*VersionResponse, error)
 	PullImages(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (Netem_PullImagesClient, error)
+	Clean(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*AckResponse, error)
 	// Project actions
 	GetProjects(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PrjListResponse, error)
 	OpenProject(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*PrjOpenResponse, error)
@@ -92,6 +93,15 @@ func (x *netemPullImagesClient) Recv() (*PullSrvMsg, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (c *netemClient) Clean(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/Clean", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *netemClient) GetProjects(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*PrjListResponse, error) {
@@ -299,6 +309,7 @@ type NetemServer interface {
 	// general action
 	GetVersion(context.Context, *empty.Empty) (*VersionResponse, error)
 	PullImages(*empty.Empty, Netem_PullImagesServer) error
+	Clean(context.Context, *empty.Empty) (*AckResponse, error)
 	// Project actions
 	GetProjects(context.Context, *empty.Empty) (*PrjListResponse, error)
 	OpenProject(context.Context, *OpenRequest) (*PrjOpenResponse, error)
@@ -332,6 +343,9 @@ func (UnimplementedNetemServer) GetVersion(context.Context, *empty.Empty) (*Vers
 }
 func (UnimplementedNetemServer) PullImages(*empty.Empty, Netem_PullImagesServer) error {
 	return status.Errorf(codes.Unimplemented, "method PullImages not implemented")
+}
+func (UnimplementedNetemServer) Clean(context.Context, *empty.Empty) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Clean not implemented")
 }
 func (UnimplementedNetemServer) GetProjects(context.Context, *empty.Empty) (*PrjListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProjects not implemented")
@@ -434,6 +448,24 @@ type netemPullImagesServer struct {
 
 func (x *netemPullImagesServer) Send(m *PullSrvMsg) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func _Netem_Clean_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(empty.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).Clean(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/Clean",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).Clean(ctx, req.(*empty.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Netem_GetProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -763,6 +795,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVersion",
 			Handler:    _Netem_GetVersion_Handler,
+		},
+		{
+			MethodName: "Clean",
+			Handler:    _Netem_Clean_Handler,
 		},
 		{
 			MethodName: "GetProjects",

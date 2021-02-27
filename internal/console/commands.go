@@ -143,6 +143,34 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var cleanCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Prune containers not used by any project",
+	Long:  "Prune containers not used by any project",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		confirm := prompt.Input("Are you sure you want prune unused containers ? ", ConfirmComplete)
+		if confirm == "yes" {
+			client, err := NewClient(server)
+			if err != nil {
+				Fatal("Unable to connect to server: %v", err)
+			}
+			defer client.Conn.Close()
+
+			s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+			s.Prefix = "Clean command launched: "
+			s.Start()
+
+			_, err = client.Client.Clean(context.Background(), &emptypb.Empty{})
+			s.Stop()
+
+			if err != nil {
+				Fatal("Unable to clean old containers: %v", err)
+			}
+		}
+	},
+}
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running projects on the server",
@@ -304,6 +332,7 @@ func Init() {
 		"Open console in shell mode")
 
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(cleanCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(connectCmd)

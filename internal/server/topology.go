@@ -139,16 +139,27 @@ func (t *NetemTopologyManager) Load() error {
 	}
 
 	// Create nodes
-	idx := 0
-	t.nodes = make([]INetemNode, len(topology.Nodes))
-	for name, nConfig := range topology.Nodes {
-		t.logger.Debugf("Create node %s", name)
+	t.nodes = make([]INetemNode, 0)
+	g := new(errgroup.Group)
 
-		t.nodes[idx], err = CreateNode(t.prjID, name, nConfig)
-		if err != nil {
-			return fmt.Errorf("Unable to create node %s: %w", name, err)
-		}
-		idx++
+	for name, nConfig := range topology.Nodes {
+		name := name
+		nConfig := nConfig
+
+		g.Go(func() error {
+			t.logger.Debugf("Create node %s", name)
+
+			node, err := CreateNode(t.prjID, name, nConfig)
+			t.nodes = append(t.nodes, node)
+			if err != nil {
+				return fmt.Errorf("Unable to create node %s: %w", name, err)
+			}
+
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Create links

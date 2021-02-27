@@ -9,6 +9,7 @@ service Netem {
     // general action
     rpc GetVersion(google.protobuf.Empty) returns (VersionResponse) {}
     rpc PullImages(google.protobuf.Empty) returns (stream PullSrvMsg) {}
+    rpc Clean(google.protobuf.Empty) returns (AckResponse) {}
 
     // Project actions
     rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
