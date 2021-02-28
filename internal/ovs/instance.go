@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/options"
@@ -18,6 +19,7 @@ const (
 
 var (
 	ovsInstances = make(map[string]*OvsProjectInstance)
+	mutex        = &sync.Mutex{}
 )
 
 type OvsProjectInstance struct {
@@ -101,6 +103,9 @@ func (o *OvsProjectInstance) findBr(brName string) int {
 }
 
 func (o *OvsProjectInstance) AddBr(brName string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	if o.findBr(brName) != -1 {
 		return fmt.Errorf("Switch %s already exists", brName)
 	}
@@ -115,6 +120,9 @@ func (o *OvsProjectInstance) AddBr(brName string) error {
 }
 
 func (o *OvsProjectInstance) DelBr(brName string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	brIdx := o.findBr(brName)
 	if brIdx != -1 {
 		cmd := []string{"ovs-vsctl", "del-br", brName}

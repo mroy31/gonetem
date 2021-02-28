@@ -15,7 +15,7 @@ Architecture
 gonetem is composed of 2 parts:
 
 * `gonetem-server`: it's the core of gonetem to emulate networks. It needs root access to create/launch
-  docker nodes / switches and create links between them.
+  docker nodes / switches and to create links between them.
 * `gonetem-console`: it's the console client to control `gonetem-server`
 
 Installation

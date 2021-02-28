@@ -92,11 +92,11 @@ def create_gnet_network(pnet_network):
 
             peer2 = n_config["if"+str(idx)]
             if peer2.startswith("sw"):
-                (s_name,) = re.match("^sw\.(\w+)$", peer2).groups()
+                (s_name,) = re.match(r"^sw\.(\w+)$", peer2).groups()
                 peer2 = "%s.%d" % (s_name, get_sw_index(s_name))
                 network["links"].append({"peer1": peer1, "peer2": peer2})
             elif peer2.startswith("br"):
-                (b_name,) = re.match("^br\.(\w+)$", peer2).groups()
+                (b_name,) = re.match(r"^br\.(\w+)$", peer2).groups()
                 for br in network["bridges"]:
                     if br.name == b_name:
                         br["interfaces"].append(peer1)

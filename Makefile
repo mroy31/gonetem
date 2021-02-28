@@ -1,5 +1,7 @@
 
 VERSION := $(shell cat VERSION)
+INSTALLDIR := /usr/local/bin
+CONFDIR := /etc/gonetem
 
 proto: internal/proto/netem.proto
 	protoc --go_out=. --go_opt=paths=source_relative \
@@ -32,3 +34,20 @@ build-deb: clean build
 
 clean:
 	rm -rf bin
+
+install: clean build
+	@echo "installing gonetem-console/gonetem-server in '${INSTALLDIR}' directory"
+	cp bin/gonetem-server ${INSTALLDIR}
+	cp bin/gonetem-console ${INSTALLDIR}
+	mkdir -p ${CONFDIR}
+	cp conf/config.yaml ${CONFDIR}
+
+uninstall:
+	@echo "delete gonetem-console/gonetem-server in '${INSTALLDIR}' directory"
+	rm ${INSTALLDIR}/gonetem-console
+	rm ${INSTALLDIR}/gonetem-server
+	rm ${CONFDIR}/config.yaml
+	rmdir ${CONFDIR}
+
+
+.PHONY: clean proto build build-deb install

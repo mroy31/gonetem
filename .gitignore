@@ -1,2 +1,4 @@
 *.gnet
 bin/*
+docs/build/*
+docs/source/_build/*

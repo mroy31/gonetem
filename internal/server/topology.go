@@ -502,12 +502,14 @@ func (t *NetemTopologyManager) Copy(source, dest string) error {
 }
 
 func (t *NetemTopologyManager) Close() error {
+	g := new(errgroup.Group)
+	// close all nodes
 	for _, node := range t.nodes {
-		if node != nil {
-			if err := node.Close(); err != nil {
-				t.logger.Errorf("Error when closing node %s: %v", node.GetName(), err)
-			}
-		}
+		node := node
+		g.Go(func() error { return node.Close() })
+	}
+	if err := g.Wait(); err != nil {
+		t.logger.Errorf("Error when closing nodes: %v", err)
 	}
 
 	rootNs := link.GetRootNetns()
