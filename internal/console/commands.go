@@ -311,7 +311,7 @@ var pullCmd = &cobra.Command{
 			case proto.PullSrvMsg_ERROR:
 				fmt.Println(color.RedString(msg.Error))
 			case proto.PullSrvMsg_OK:
-				fmt.Println(color.GreenString("Image " + msg.Image + "has been pulled"))
+				fmt.Println(color.GreenString("Image " + msg.Image + " has been pulled"))
 			}
 		}
 	},

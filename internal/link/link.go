@@ -37,6 +37,11 @@ func IsLinkExist(name string, namespace netns.NsHandle) bool {
 }
 
 func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peerNamespace netns.NsHandle) (*netlink.Veth, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	netns.Set(namespace)
+
 	veth := &netlink.Veth{
 		LinkAttrs: netlink.LinkAttrs{
 			Name:      name,

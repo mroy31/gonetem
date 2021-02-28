@@ -23,16 +23,17 @@ def open_pnet_project(prj_path):
 
 def copy_config_files(pnet_path, gnet_path):
     c_path = os.path.join(pnet_path, "configs")
-    conf_files = [
-        f for f in os.listdir(c_path)
-        if os.path.isfile(os.path.join(c_path, f))
-    ]
+    if os.path.isdir(c_path):
+        conf_files = [
+            f for f in os.listdir(c_path)
+            if os.path.isfile(os.path.join(c_path, f))
+        ]
 
-    for f in conf_files:
-        shutil.copy(
-            os.path.join(c_path, f),
-            os.path.join(gnet_path, "configs"),
-        )
+        for f in conf_files:
+            shutil.copy(
+                os.path.join(c_path, f),
+                os.path.join(gnet_path, "configs"),
+            )
 
 
 def create_gnet_network(pnet_network):
