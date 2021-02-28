@@ -26,6 +26,8 @@ type INetemNode interface {
 	CanRunConsole() error
 	Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
 	Capture(ifIndex int, out io.Writer) error
+	CopyFrom(srcPath, destPath string) error
+	CopyTo(srcPath, destPath string) error
 	Save(dstPath string) error
 	SetInterfaceState(ifIndex int, state link.IfState) error
 	Close() error

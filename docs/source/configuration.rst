@@ -22,7 +22,7 @@ After the installation, the configuration of gonetem-server is done with the fil
 
 Server
 ------
-If you install pynetem manually, you have lo launch gonetem-server with the root
+If you install gonetem manually, you have lo launch gonetem-server with the root
 right. It is required to execute docker or netlink actions. You can use
 the following command for example:
 

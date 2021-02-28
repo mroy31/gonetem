@@ -44,6 +44,8 @@ type NetemClient interface {
 	Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	SetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error)
+	CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error)
+	CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error)
 }
 
 type netemClient struct {
@@ -302,6 +304,72 @@ func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
 	return m, nil
 }
 
+func (c *netemClient) CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[3], "/netem.Netem/CopyFrom", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &netemCopyFromClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Netem_CopyFromClient interface {
+	Recv() (*CopyMsg, error)
+	grpc.ClientStream
+}
+
+type netemCopyFromClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemCopyFromClient) Recv() (*CopyMsg, error) {
+	m := new(CopyMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *netemClient) CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[4], "/netem.Netem/CopyTo", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &netemCopyToClient{stream}
+	return x, nil
+}
+
+type Netem_CopyToClient interface {
+	Send(*CopyMsg) error
+	CloseAndRecv() (*AckResponse, error)
+	grpc.ClientStream
+}
+
+type netemCopyToClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemCopyToClient) Send(m *CopyMsg) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *netemCopyToClient) CloseAndRecv() (*AckResponse, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(AckResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // NetemServer is the server API for Netem service.
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
@@ -331,6 +399,8 @@ type NetemServer interface {
 	Restart(context.Context, *NodeRequest) (*AckResponse, error)
 	SetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error)
 	Capture(*NodeInterfaceRequest, Netem_CaptureServer) error
+	CopyFrom(*CopyMsg, Netem_CopyFromServer) error
+	CopyTo(Netem_CopyToServer) error
 	mustEmbedUnimplementedNetemServer()
 }
 
@@ -397,6 +467,12 @@ func (UnimplementedNetemServer) SetIfState(context.Context, *NodeIfStateRequest)
 }
 func (UnimplementedNetemServer) Capture(*NodeInterfaceRequest, Netem_CaptureServer) error {
 	return status.Errorf(codes.Unimplemented, "method Capture not implemented")
+}
+func (UnimplementedNetemServer) CopyFrom(*CopyMsg, Netem_CopyFromServer) error {
+	return status.Errorf(codes.Unimplemented, "method CopyFrom not implemented")
+}
+func (UnimplementedNetemServer) CopyTo(Netem_CopyToServer) error {
+	return status.Errorf(codes.Unimplemented, "method CopyTo not implemented")
 }
 func (UnimplementedNetemServer) mustEmbedUnimplementedNetemServer() {}
 
@@ -785,6 +861,53 @@ func (x *netemCaptureServer) Send(m *CaptureSrvMsg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _Netem_CopyFrom_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CopyMsg)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NetemServer).CopyFrom(m, &netemCopyFromServer{stream})
+}
+
+type Netem_CopyFromServer interface {
+	Send(*CopyMsg) error
+	grpc.ServerStream
+}
+
+type netemCopyFromServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemCopyFromServer) Send(m *CopyMsg) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Netem_CopyTo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NetemServer).CopyTo(&netemCopyToServer{stream})
+}
+
+type Netem_CopyToServer interface {
+	SendAndClose(*AckResponse) error
+	Recv() (*CopyMsg, error)
+	grpc.ServerStream
+}
+
+type netemCopyToServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemCopyToServer) SendAndClose(m *AckResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *netemCopyToServer) Recv() (*CopyMsg, error) {
+	m := new(CopyMsg)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Netem_ServiceDesc is the grpc.ServiceDesc for Netem service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -877,6 +1000,16 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Capture",
 			Handler:       _Netem_Capture_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "CopyFrom",
+			Handler:       _Netem_CopyFrom_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "CopyTo",
+			Handler:       _Netem_CopyTo_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "internal/proto/netem.proto",

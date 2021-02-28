@@ -37,6 +37,14 @@ func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh 
 	return fmt.Errorf("Console not supported for ovswitch node")
 }
 
+func (o *OvsNode) CopyFrom(srcPath, destPath string) error {
+	return fmt.Errorf("CopyFrom action not supported for ovswitch node")
+}
+
+func (o *OvsNode) CopyTo(srcPath, destPath string) error {
+	return fmt.Errorf("CopyTo action not supported for ovswitch node")
+}
+
 func (o *OvsNode) GetNetns() (netns.NsHandle, error) {
 	return o.OvsInstance.GetNetns()
 }

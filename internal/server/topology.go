@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/pkg/system"
-	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/ovs"
@@ -25,30 +22,6 @@ func shortName(name string) string {
 
 	return name[len(name)-4:]
 }
-
-func splitCopyArg(arg string) (container, path string) {
-	if system.IsAbs(arg) {
-		return "", arg
-	}
-
-	parts := strings.SplitN(arg, ":", 2)
-
-	if len(parts) == 1 || strings.HasPrefix(parts[0], ".") {
-		// Either there's no `:` in the arg
-		// OR it's an explicit local relative path like `./file:name.txt`.
-		return "", arg
-	}
-
-	return parts[0], parts[1]
-}
-
-type copyDirection int
-
-const (
-	fromContainer copyDirection = 1 << iota
-	toContainer
-	acrossContainers = fromContainer | toContainer
-)
 
 const (
 	networkFilename = "network.yml"
@@ -461,44 +434,6 @@ func (t *NetemTopologyManager) Save() error {
 		g.Go(func() error { return node.Save(destPath) })
 	}
 	return g.Wait()
-}
-
-func (t *NetemTopologyManager) Copy(source, dest string) error {
-	var container INetemNode
-	srcContainer, srcPath := splitCopyArg(source)
-	destContainer, destPath := splitCopyArg(dest)
-
-	var direction copyDirection
-	if srcContainer != "" {
-		direction |= fromContainer
-		container = t.GetNode(srcContainer)
-		if container == nil {
-			return fmt.Errorf("Node %s not found in the topology", srcContainer)
-		}
-	}
-	if destContainer != "" {
-		direction |= toContainer
-		container = t.GetNode(destContainer)
-		if container == nil {
-			return fmt.Errorf("Node %s not found in the topology", destContainer)
-		}
-	}
-
-	if container.GetType() != "docker" {
-		return errors.New("Selected node does not support copy")
-	}
-	dockerNode := container.(*docker.DockerNode)
-
-	switch direction {
-	case fromContainer:
-		return dockerNode.CopyFrom(srcPath, destPath)
-	case toContainer:
-		return dockerNode.CopyTo(srcPath, destPath)
-	case acrossContainers:
-		return errors.New("copying between containers is not supported")
-	default:
-		return errors.New("must specify at least one container source")
-	}
 }
 
 func (t *NetemTopologyManager) Close() error {

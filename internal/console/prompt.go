@@ -14,9 +14,18 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	"github.com/docker/docker/pkg/system"
 	"github.com/fatih/color"
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/proto"
+)
+
+type copyDirection int
+
+const (
+	fromNode copyDirection = 1 << iota
+	toNode
+	acrossNodes = fromNode | toNode
 )
 
 var (
@@ -27,6 +36,22 @@ var (
 func Fatal(msg string, a ...interface{}) {
 	RedPrintf(msg+"\n", a...)
 	os.Exit(1)
+}
+
+func splitCopyArg(arg string) (container, path string) {
+	if system.IsAbs(arg) {
+		return "", arg
+	}
+
+	parts := strings.SplitN(arg, ":", 2)
+
+	if len(parts) == 1 || strings.HasPrefix(parts[0], ".") {
+		// Either there's no `:` in the arg
+		// OR it's an explicit local relative path like `./file:name.txt`.
+		return "", arg
+	}
+
+	return parts[0], parts[1]
 }
 
 type NetemCommand struct {
@@ -73,6 +98,34 @@ func (p *NetemPrompt) RegisterCommands() {
 					p.startConsole(client, cmdArgs[0], false)
 				}
 			})
+		},
+	}
+	p.commands["copy"] = &NetemCommand{
+		Desc:  "Copy a file from/to a node",
+		Usage: "copy sourceFile <node>:destFile",
+		Args:  []string{`^.+$`, `^.+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			srcNode, srcPath := splitCopyArg(cmdArgs[0])
+			destNode, destPath := splitCopyArg(cmdArgs[1])
+
+			var direction copyDirection
+			if srcNode != "" {
+				direction |= fromNode
+			}
+			if destNode != "" {
+				direction |= toNode
+			}
+
+			switch direction {
+			case fromNode:
+				p.CopyFrom(srcNode, srcPath, destPath)
+			case toNode:
+				p.CopyTo(srcPath, destNode, destPath)
+			case acrossNodes:
+				RedPrintf("copying between containers is not supported\n")
+			default:
+				RedPrintf("must specify at least one container source\n")
+			}
 		},
 	}
 	p.commands["edit"] = &NetemCommand{
@@ -238,6 +291,118 @@ func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client prot
 	defer client.Conn.Close()
 
 	execFunc(client.Client, cmdArgs)
+}
+
+func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
+	file, err := os.Create(destPath)
+	if err != nil {
+		RedPrintf("Unable to create/open %s: %v\n", destPath, err)
+	}
+	defer file.Close()
+
+	client, err := NewClient(p.server)
+	if err != nil {
+		RedPrintf("Unable to connect to gonetem server: %v\n", err)
+		return
+	}
+	defer client.Conn.Close()
+
+	stream, err := client.Client.CopyFrom(context.Background(), &proto.CopyMsg{
+		Code:     proto.CopyMsg_INIT,
+		PrjId:    p.prjID,
+		Node:     srcNode,
+		NodePath: srcPath,
+	})
+	if err != nil {
+		RedPrintf("CopyFrom %s:%s returns an error: %v\n", srcNode, srcPath, err)
+		return
+	}
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			RedPrintf("%v\n", err)
+			return
+		}
+
+		switch msg.GetCode() {
+		case proto.CopyMsg_DATA:
+			file.Write(msg.GetData())
+		case proto.CopyMsg_ERROR:
+			RedPrintf("CopyFrom %s:%s returns an error: %s\n", srcNode, srcPath, string(msg.GetData()))
+		}
+	}
+}
+
+func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) {
+	stat, err := os.Stat(srcPath)
+	if os.IsNotExist(err) {
+		RedPrintf("File %s does not exist\n", srcPath)
+		return
+	} else if err != nil {
+		RedPrintf("Unable to stat %s: %v\n", srcPath, err)
+		return
+	}
+
+	// check it is a regular file
+	if !stat.Mode().IsRegular() {
+		RedPrintf("%s is not a regular file\n", srcPath)
+		return
+	}
+
+	client, err := NewClient(p.server)
+	if err != nil {
+		RedPrintf("Unable to connect to gonetem server: %v\n", err)
+		return
+	}
+	defer client.Conn.Close()
+
+	buffer := make([]byte, 1024)
+	file, err := os.Open(srcPath)
+	if err != nil {
+		RedPrintf("Unable to open %s: %v\n", srcPath, err)
+		return
+	}
+	defer file.Close()
+
+	stream, err := client.Client.CopyTo(context.Background())
+	if err != nil {
+		RedPrintf("CopyTo: %v\n", err)
+		return
+	}
+
+	if err := stream.Send(&proto.CopyMsg{
+		Code:     proto.CopyMsg_INIT,
+		PrjId:    p.prjID,
+		Node:     destNode,
+		NodePath: destPath,
+	}); err != nil {
+		RedPrintf("Unable to init CopyTo: %v\n", err)
+		return
+	}
+
+	for {
+		n, err := file.Read(buffer)
+		if err != nil {
+			break
+		}
+
+		stream.Send(&proto.CopyMsg{
+			Code: proto.CopyMsg_DATA,
+			Data: buffer[:n],
+		})
+	}
+
+	ack, err := stream.CloseAndRecv()
+	if err != nil {
+		RedPrintf("Error in CopyTo cmd: %v\n", err)
+		return
+	} else if ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
+		RedPrintf("CopyTo returns an error: %s\n", string(ack.Status.Error))
+	}
 }
 
 func (p *NetemPrompt) Capture(cmdArgs []string) {

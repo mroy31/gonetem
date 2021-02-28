@@ -4,6 +4,8 @@ import (
 	context "context"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"regexp"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -564,6 +566,144 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 
 	logger.Debug("Close console stream")
 	return g.Wait()
+}
+
+func (s *netemServer) CopyFrom(request *proto.CopyMsg, stream proto.Netem_CopyFromServer) error {
+	// get project
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return stream.Send(&proto.CopyMsg{
+			Code: proto.CopyMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Project %s not found", request.PrjId)),
+		})
+	}
+
+	// get node
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return stream.Send(&proto.CopyMsg{
+			Code: proto.CopyMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Node %s not found in project %s", request.GetNode(), request.GetPrjId())),
+		})
+	}
+
+	// first copy file in a temp path
+	tempPath := path.Join(
+		options.ServerConfig.Workdir,
+		fmt.Sprintf(
+			"%s-%s-%s", request.GetPrjId(), request.GetNode(),
+			path.Base(request.GetNodePath()),
+		),
+	)
+	if err := node.CopyFrom(request.GetNodePath(), tempPath); err != nil {
+		return err
+	}
+	defer os.Remove(tempPath)
+
+	buffer := make([]byte, 1024)
+	tempFile, _ := os.Open(tempPath)
+	for {
+		n, err := tempFile.Read(buffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		if err := stream.Send(&proto.CopyMsg{
+			Code: proto.CopyMsg_DATA,
+			Data: buffer[:n],
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *netemServer) CopyTo(stream proto.Netem_CopyToServer) error {
+	var tempPath, destPath string
+	var tempFile *os.File
+	var node INetemNode
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			if tempPath == "" {
+				return stream.SendAndClose(&proto.AckResponse{
+					Status: &proto.Status{
+						Code:  proto.StatusCode_ERROR,
+						Error: "Temp file does not exist",
+					},
+				})
+			}
+			if err := node.CopyTo(tempPath, destPath); err != nil {
+				return stream.SendAndClose(&proto.AckResponse{
+					Status: &proto.Status{
+						Code:  proto.StatusCode_ERROR,
+						Error: err.Error(),
+					},
+				})
+			}
+
+			return stream.SendAndClose(&proto.AckResponse{
+				Status: &proto.Status{
+					Code: proto.StatusCode_OK,
+				},
+			})
+		}
+
+		switch msg.Code {
+		case proto.CopyMsg_INIT:
+			project := GetProject(msg.GetPrjId())
+			if project == nil {
+				return stream.SendAndClose(&proto.AckResponse{
+					Status: &proto.Status{
+						Code:  proto.StatusCode_ERROR,
+						Error: "Project not found",
+					},
+				})
+			}
+
+			// get node
+			node = project.Topology.GetNode(msg.GetNode())
+			if node == nil {
+				return stream.SendAndClose(&proto.AckResponse{
+					Status: &proto.Status{
+						Code:  proto.StatusCode_ERROR,
+						Error: fmt.Sprintf("Node %s not found", msg.GetNode()),
+					},
+				})
+			}
+
+			destPath = msg.GetNodePath()
+			tempPath = path.Join(
+				options.ServerConfig.Workdir,
+				fmt.Sprintf(
+					"%s-%s-%s", msg.GetPrjId(), msg.GetNode(),
+					path.Base(msg.GetNodePath()),
+				),
+			)
+			tempFile, err = os.Create(tempPath)
+			if err != nil {
+				tempPath = ""
+				return stream.SendAndClose(&proto.AckResponse{
+					Status: &proto.Status{
+						Code:  proto.StatusCode_ERROR,
+						Error: fmt.Sprintf("Unable to create temp file: %v", err),
+					},
+				})
+			}
+			defer tempFile.Close()
+			defer os.Remove(tempPath)
+
+		case proto.CopyMsg_DATA:
+			if tempFile != nil {
+				tempFile.Write(msg.GetData())
+			}
+		}
+	}
 }
 
 func (s *netemServer) Close() error {

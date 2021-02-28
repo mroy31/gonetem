@@ -77,7 +77,7 @@ Restart a node or all the nodes. Same principle than *start* command.
 
 run
 ----
-If the project has not been launch during pynetem starting, run this command to
+If the project has not been start during gonetem-console launch, run this command to
 load the topology and start all the nodes.
 
 save

@@ -38,7 +38,7 @@ To remove gonetem, you can use the following command
 Debian Package
 --------------
 
-A Debian packages are available on `github <https://github.com/mroy31/pynetem/releases>`_
+A Debian packages are available on `github <https://github.com/mroy31/gonetem/releases>`_
 for amd64 architecture. It includes:
 
 * gonetem-console/server

@@ -35,6 +35,8 @@ service Netem {
     rpc Restart(NodeRequest) returns (AckResponse) {}
     rpc SetIfState(NodeIfStateRequest) returns (AckResponse) {}
     rpc Capture(NodeInterfaceRequest) returns (stream CaptureSrvMsg) {}
+    rpc CopyFrom(CopyMsg) returns (stream CopyMsg) {}
+    rpc CopyTo(stream CopyMsg) returns (AckResponse) {}
 
 }
 
@@ -53,6 +55,20 @@ enum IfState {
 
 
 // Stream messages
+
+message CopyMsg {
+    enum Code {
+        INIT = 0;
+        DATA = 1;
+        ERROR = 3;
+    }
+
+    Code code = 1;
+    string prjId = 2;
+    string node = 3;
+    string nodePath = 4;
+    bytes data = 5;
+}
 
 message ConsoleCltMsg {
     enum Code {
