@@ -7,6 +7,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
@@ -26,6 +27,10 @@ func shortName(name string) string {
 const (
 	networkFilename = "network.yml"
 	configDir       = "configs"
+)
+
+var (
+	mutex = &sync.Mutex{}
 )
 
 type NodeConfig struct {
@@ -123,7 +128,11 @@ func (t *NetemTopologyManager) Load() error {
 			t.logger.Debugf("Create node %s", name)
 
 			node, err := CreateNode(t.prjID, name, nConfig)
+
+			mutex.Lock()
 			t.nodes = append(t.nodes, node)
+			mutex.Unlock()
+
 			if err != nil {
 				return fmt.Errorf("Unable to create node %s: %w", name, err)
 			}

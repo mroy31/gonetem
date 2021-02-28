@@ -59,6 +59,8 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	netns.Set(namespace)
+
 	la := netlink.NewLinkAttrs()
 	la.Name = name
 	la.Namespace = netlink.NsFd(namespace)
@@ -69,7 +71,6 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 		return br, fmt.Errorf("Error when creating bridge %s: %v", name, err)
 	}
 
-	netns.Set(namespace)
 	if err := netlink.LinkSetUp(br); err != nil {
 		return br, fmt.Errorf("Error when set %s up: %v", name, err)
 	}
@@ -81,6 +82,8 @@ func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	netns.Set(namespace)
+
 	la := netlink.NewLinkAttrs()
 	la.Name = name
 	la.Namespace = netlink.NsFd(namespace)
@@ -91,7 +94,6 @@ func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, 
 		return vrf, fmt.Errorf("Error when creating VRF %s: %v", name, err)
 	}
 
-	netns.Set(namespace)
 	if err := netlink.LinkSetUp(vrf); err != nil {
 		return vrf, fmt.Errorf("Error when set %s up: %v", name, err)
 	}

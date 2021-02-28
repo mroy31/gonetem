@@ -707,20 +707,18 @@ func (s *netemServer) CopyTo(stream proto.Netem_CopyToServer) error {
 }
 
 func (s *netemServer) Close() error {
-	g := new(errgroup.Group)
-
+	var ids []string
 	for _, project := range GetAllProjects() {
-		prjId := project.Id
-		g.Go(func() error {
-			err := CloseProject(prjId)
-			if err != nil {
-				return fmt.Errorf("Error when closing project %s: %v", prjId, err)
-			}
-			return err
-		})
+		ids = append(ids, project.Id)
 	}
 
-	return g.Wait()
+	for _, prjId := range ids {
+		if err := CloseProject(prjId); err != nil {
+			logrus.Errorf("Error when closing project %s: %v", prjId, err)
+		}
+	}
+
+	return nil
 }
 
 func NewServer() *netemServer {
