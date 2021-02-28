@@ -20,6 +20,20 @@ build-server:
 
 build: build-console build-server
 
+build-console-pi:
+	# build for raspberry pi 4
+	env GOOS=linux GOARCH=arm GOARM=7 go build -o ./bin/gonetem-console_armv7 \
+		-ldflags "-X main.Version=$(VERSION)" \
+		cmd/gonetem-console/main.go
+
+build-server-pi:
+	# build for raspberry pi 4
+	env GOOS=linux GOARCH=arm GOARM=7 go build -o ./bin/gonetem-server_armv7 \
+		-ldflags "-X main.Version=$(VERSION)" \
+		cmd/gonetem-server/main.go
+
+build-pi: build-console-pi build-server-pi
+
 build-deb: clean build
 	docker run -v $(shell pwd):/src --rm gonetem-build fpm --output-type deb \
 		--input-type dir --name gonetem --version $(VERSION) \
