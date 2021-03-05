@@ -61,3 +61,10 @@ Before using gonetem, you need to pull from docker hub images used by gonetem.
 To do that, you can use the following command:
 
     $gonetem-console pull
+
+License
+-------
+
+GNU General Public License v3.0 or later
+
+See [COPYING](COPYING) to see the full text.
