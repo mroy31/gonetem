@@ -112,8 +112,8 @@ func OpenProject(prjPath string) (string, string, error) {
 }
 
 func NewPrompt(prjName, prjID, prjPath string) {
-	c := NewPromptCompleter()
 	e := NewNetemPrompt(server, prjID, prjPath)
+	c := NewPromptCompleter(e)
 
 	fmt.Println("Welcome to gonetem " + options.VERSION)
 	fmt.Println("Please use `exit` to close the project")

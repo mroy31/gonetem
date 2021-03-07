@@ -54,6 +54,11 @@ func splitCopyArg(arg string) (container, path string) {
 	return parts[0], parts[1]
 }
 
+type NetemNode struct {
+	Name       string
+	Interfaces []string
+}
+
 type NetemCommand struct {
 	Desc  string
 	Usage string
@@ -67,6 +72,7 @@ type NetemPrompt struct {
 	prjPath   string
 	processes []*exec.Cmd
 	commands  map[string]*NetemCommand
+	nodes     []NetemNode // use by completion
 }
 
 func (p *NetemPrompt) RegisterCommands() {
@@ -150,6 +156,8 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, p.Reload)
+			// node list needs to be updated for completion
+			p.refreshNodeList()
 		},
 	}
 	p.commands["restart"] = &NetemCommand{
@@ -166,6 +174,8 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, p.Run)
+			// node list needs to be updated for completion
+			p.refreshNodeList()
 		},
 	}
 	p.commands["save"] = &NetemCommand{
@@ -280,6 +290,33 @@ func (p *NetemPrompt) Execute(s string) {
 
 	// run the command
 	cmd.Run(p, args[1:])
+}
+
+func (p *NetemPrompt) refreshNodeList() {
+	client, err := NewClient(p.server)
+	if err != nil {
+		return
+	}
+	defer client.Conn.Close()
+
+	status, err := client.Client.GetProjectStatus(
+		context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		return
+	}
+
+	p.nodes = make([]NetemNode, 0)
+	for _, node := range status.GetNodes() {
+		nStatus := NetemNode{
+			Name:       node.GetName(),
+			Interfaces: make([]string, 0),
+		}
+		for _, ifStatus := range node.GetInterfaces() {
+			nStatus.Interfaces = append(nStatus.Interfaces, ifStatus.Name)
+		}
+
+		p.nodes = append(p.nodes, nStatus)
+	}
 }
 
 func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client proto.NetemClient, cmdArgs []string)) {
@@ -764,8 +801,13 @@ func (p *NetemPrompt) Close() error {
 }
 
 func NewNetemPrompt(server, prjID, prjPath string) *NetemPrompt {
-	p := &NetemPrompt{server, prjID, prjPath, make([]*exec.Cmd, 0), make(map[string]*NetemCommand)}
+	p := &NetemPrompt{
+		server, prjID, prjPath,
+		make([]*exec.Cmd, 0), make(map[string]*NetemCommand),
+		make([]NetemNode, 0),
+	}
 	p.RegisterCommands()
+	p.refreshNodeList()
 
 	return p
 }
