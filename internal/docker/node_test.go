@@ -19,6 +19,8 @@ func skipUnlessRoot(t *testing.T) {
 }
 
 func TestDockerNode_StartStop(t *testing.T) {
+	skipUnlessRoot(t)
+
 	options.InitServerConfig()
 	tests := []struct {
 		desc        string
@@ -86,6 +88,8 @@ func TestDockerNode_StartStop(t *testing.T) {
 }
 
 func TestDockerNode_Copy(t *testing.T) {
+	skipUnlessRoot(t)
+
 	options.InitServerConfig()
 	prjID := utils.RandString(4)
 	config := DockerNodeOptions{
@@ -121,6 +125,8 @@ func TestDockerNode_Copy(t *testing.T) {
 }
 
 func TestDockerNode_Save(t *testing.T) {
+	skipUnlessRoot(t)
+
 	options.InitServerConfig()
 	prefix := utils.RandString(3)
 	tests := []struct {
