@@ -16,7 +16,7 @@ func skipUnlessRoot(t *testing.T) {
 	}
 }
 
-func setUpNetlinkTest(t *testing.T) func() {
+func setUpNetlinkTest(t *testing.T) (netns.NsHandle, func()) {
 	skipUnlessRoot(t)
 
 	// new temporary namespace so we don't pollute the host
@@ -28,20 +28,24 @@ func setUpNetlinkTest(t *testing.T) func() {
 		t.Fatal("Failed to create newns", ns)
 	}
 
-	return func() {
+	return ns, func() {
 		ns.Close()
 		runtime.UnlockOSThread()
 	}
 }
 
-func TestLink_CreateVeth(t *testing.T) {
-	teardown := setUpNetlinkTest(t)
-	defer teardown()
-
-	ns, err := netns.Get()
-	if err != nil {
-		t.Fatalf("Unable to get current netns")
+func checkLinkExistence(t *testing.T, lkNames ...string) {
+	for _, lkName := range lkNames {
+		_, err := netlink.LinkByName(lkName)
+		if err != nil {
+			t.Fatalf("Unable to find created vrf: %v", lkName)
+		}
 	}
+}
+
+func TestLink_CreateVeth(t *testing.T) {
+	ns, teardown := setUpNetlinkTest(t)
+	defer teardown()
 
 	veth, err := CreateVethLink(utils.RandString(6), ns, utils.RandString(6), ns)
 	if err != nil {
@@ -49,25 +53,25 @@ func TestLink_CreateVeth(t *testing.T) {
 	}
 	defer netlink.LinkDel(veth)
 
-	// check existence
-	_, err = netlink.LinkByName(veth.Name)
+	checkLinkExistence(t, veth.Name, veth.PeerName)
+}
+
+func TestLink_CreateBridge(t *testing.T) {
+	ns, teardown := setUpNetlinkTest(t)
+	defer teardown()
+
+	br, err := CreateBridge(utils.RandString(5), ns)
 	if err != nil {
-		t.Fatalf("Unable to find created veth: %v", err)
+		t.Fatalf("Unable to create veth: %v", err)
 	}
-	_, err = netlink.LinkByName(veth.PeerName)
-	if err != nil {
-		t.Fatalf("Unable to find created veth peer: %v", err)
-	}
+	defer netlink.LinkDel(br)
+
+	checkLinkExistence(t, br.Name)
 }
 
 func TestLink_CreateVrf(t *testing.T) {
-	teardown := setUpNetlinkTest(t)
+	ns, teardown := setUpNetlinkTest(t)
 	defer teardown()
-
-	ns, err := netns.Get()
-	if err != nil {
-		t.Fatalf("Unable to get current netns")
-	}
 
 	vrf, err := CreateVrf(utils.RandString(6), ns, 10)
 	if err != nil {
@@ -75,21 +79,12 @@ func TestLink_CreateVrf(t *testing.T) {
 	}
 	defer netlink.LinkDel(vrf)
 
-	// check existence
-	_, err = netlink.LinkByName(vrf.Name)
-	if err != nil {
-		t.Fatalf("Unable to find created vrf: %v", err)
-	}
+	checkLinkExistence(t, vrf.Name)
 }
 
 func TestLink_InterfaceState(t *testing.T) {
-	teardown := setUpNetlinkTest(t)
+	ns, teardown := setUpNetlinkTest(t)
 	defer teardown()
-
-	ns, err := netns.Get()
-	if err != nil {
-		t.Fatalf("Unable to get current netns")
-	}
 
 	veth, err := CreateVethLink(utils.RandString(6), ns, utils.RandString(6), ns)
 	if err != nil {
@@ -97,11 +92,7 @@ func TestLink_InterfaceState(t *testing.T) {
 	}
 	defer netlink.LinkDel(veth)
 
-	// check existence
-	_, err = netlink.LinkByName(veth.Name)
-	if err != nil {
-		t.Fatalf("Unable to find created veth: %v", err)
-	}
+	checkLinkExistence(t, veth.Name, veth.PeerName)
 
 	// set interface up
 	if err := SetInterfaceState(veth.Name, ns, IFSTATE_UP); err != nil {
