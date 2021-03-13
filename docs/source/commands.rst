@@ -8,7 +8,7 @@ This page lists all commands available in the gonetem prompt.
 capture
 -------
 Capture trafic on the given node interface with
-`Wireshark <https://www.wireshark.org/>` (must be installed first)
+`Wireshark <https://www.wireshark.org/>`_ (must be installed first)
 
 Usage:
 
@@ -39,8 +39,16 @@ Open a console for a node (specifing by the *node's name*) or all the nodes
 
 The kind of console opened by this command depends on the type of node:
 
-  * For docker host/server node: ``bash``
-  * For docker frr node, run directly ``vtysh``
+* For docker host/server node: ``bash``
+* For docker frr node, run directly ``vtysh``
+* For ovswitch node, it runs a custom prompt to manage switch. For now,
+  only commands related to VLAN are available:
+
+  * ``vlan_show``: show VLAN configuration for this switch
+  * ``vlan_access``: set a port to a VLAN in access mode, syntax:
+    ``vlan_access <port-number> <vlan-id>``
+  * ``vlan_trunks``: set a port to a list VLAN in trunk mode, syntax:
+    ``vlan_trunks <port-number> <vlan-id1>,<vlan-id2>``
 
 edit
 ----
@@ -67,9 +75,9 @@ reload
 Reload the project. You have to run this command after modifing the
 topology. It does the following actions:
 
-  - Stop all running swithes/nodes/bridges
-  - Load the new topology
-  - Start all switches/nodes/bridges
+- Stop all running swithes/nodes/bridges
+- Load the new topology
+- Start all switches/nodes/bridges
 
 restart
 -------
@@ -83,8 +91,9 @@ load the topology and start all the nodes.
 save
 ----
 Save the project. This command does two things:
-  - save the current topology
-  - for each running node, save the current of the node
+
+- save the current topology
+- for each running node, save the current of the node
 
 saveAs
 ------
