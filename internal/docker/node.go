@@ -327,7 +327,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 				}
 
 				if err := client.CopyTo(n.ID, source, dest); err != nil {
-					return fmt.Errorf("Unable to load config file %s:\n\t%v", source, err)
+					return fmt.Errorf("Unable to load config file %s:\n\t%w", source, err)
 				}
 			}
 

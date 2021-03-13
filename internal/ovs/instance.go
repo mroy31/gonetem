@@ -1,8 +1,11 @@
 package ovs
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"sync"
 
 	"github.com/mroy31/gonetem/internal/docker"
@@ -146,6 +149,54 @@ func (o *OvsProjectInstance) AddPort(brName, ifName string) error {
 func (o *OvsProjectInstance) DelPort(brName, ifName string) error {
 	cmd := []string{"ovs-vsctl", "del-port", brName, ifName}
 	return o.Exec(cmd)
+}
+
+func (o *OvsProjectInstance) LoadConfig(brName, confPath string) error {
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	tmpConfFile := "/tmp/" + brName + ".conf"
+	confFile := path.Join(confPath, brName+".conf")
+	if _, err := os.Stat(confFile); os.IsNotExist(err) {
+		return nil
+	}
+
+	if err := client.CopyTo(o.containerId, confFile, tmpConfFile); err != nil {
+		return fmt.Errorf("Unable to copy config file %s:\n\t%w", confFile, err)
+	}
+
+	cmd := []string{"ovs-config.py", "-a", "load", "-c", tmpConfFile, brName}
+	if _, err := client.Exec(o.containerId, cmd); err != nil {
+		return fmt.Errorf("Unable to load config file %s:\n\t%w", confFile, err)
+	}
+
+	return nil
+}
+
+func (o *OvsProjectInstance) SaveConfig(brName, dstPath string) error {
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	tmpConfFile := "/tmp/" + brName + ".conf"
+	confFile := path.Join(dstPath, brName+".conf")
+
+	cmd := []string{"ovs-config.py", "-a", "save", "-c", tmpConfFile, brName}
+	if _, err := client.Exec(o.containerId, cmd); err != nil {
+		return fmt.Errorf("Unable to save config in file %s:\n\t%w", confFile, err)
+	}
+
+	if err := client.CopyFrom(o.containerId, tmpConfFile, confFile); err != nil {
+		msg := fmt.Sprintf("Unable to save file %s:\n\t%v", confFile, err)
+		return errors.New(msg)
+	}
+
+	return nil
 }
 
 func (o *OvsProjectInstance) Close() error {
