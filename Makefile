@@ -9,7 +9,7 @@ proto: internal/proto/netem.proto
 		internal/proto/netem.proto
 
 build-console:
-	go build -o ./bin/gonetem-console-linux-amd64 \
+	go build -o ./bin/gonetem-console \
 		-ldflags "-X main.Version=$(VERSION)" \
 		cmd/gonetem-console/main.go
 	# GOOS=windows GOARCH=amd64 go build \

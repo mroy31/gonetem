@@ -46,9 +46,9 @@ The kind of console opened by this command depends on the type of node:
 
   * ``vlan_show``: show VLAN configuration for this switch
   * ``vlan_access``: set a port to a VLAN in access mode, syntax:
-    ``vlan_access <port-number> <vlan-id>``
+    ``vlan_access port <port-number> vlan <vlan-id>``
   * ``vlan_trunks``: set a port to a list VLAN in trunk mode, syntax:
-    ``vlan_trunks <port-number> <vlan-id1>,<vlan-id2>``
+    ``vlan_trunks port <port-number> vlans <vlan-id1>,<vlan-id2>``
 
 edit
 ----

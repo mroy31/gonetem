@@ -45,6 +45,13 @@ class OvsConsole(Cmd):
     def __init__(self, sw_name: str):
         self.prompt = f"[{sw_name}]>"
         super(OvsConsole, self).__init__(allow_cli_args=False, use_ipython=False)
+        # disable some commands
+        disable_commmands = [
+            "edit", "py", "set", "run_pyscript", "run_script",
+            "shortcuts", "shell", "macro", "alias"]
+        for cmd_name in disable_commmands:
+            if hasattr(Cmd, "do_"+cmd_name):
+                delattr(Cmd, "do_"+cmd_name)
 
         self.sw_name = sw_name
 
@@ -75,9 +82,9 @@ class OvsConsole(Cmd):
 
     def do_vlan_access(self, statement: str):
         """Add a port to a VLAN in access mode"""
-        groups = re.match(r"(\d+) (\d+)$", statement)
+        groups = re.match(r"port\s+(\d+)\s+vlan\s+(\d+)$", statement)
         if groups is None:
-            self.perror("This command takes 2 arguments: <port-number> <vlan-id>")
+            self.perror("This command has to follow this syntax: port <port-number> vlan <vlan-id>")
             return
 
         port, vlan = groups[1], groups[2]
@@ -88,9 +95,9 @@ class OvsConsole(Cmd):
 
     def do_no_vlan_access(self, statement: str):
         """Remove a port to a VLAN in access mode"""
-        groups = re.match(r"(\d+) (\d+)$", statement)
+        groups = re.match(r"port\s+(\d+)\s+vlan\s+(\d+)$", statement)
         if groups is None:
-            self.perror("This command takes 2 arguments: <port-number> <vlan-id>")
+            self.perror("This command has to follow this syntax: port <port-number> vlan <vlan-id>")
             return
 
         port, vlan = groups[1], groups[2]
@@ -101,9 +108,9 @@ class OvsConsole(Cmd):
 
     def do_vlan_trunks(self, statement: str):
         """Add a port to vlans in trunk mode"""
-        groups = re.match(r"(\d+) ([\d|,]+)$", statement)
+        groups = re.match(r"port\s+(\d+)\s+vlans\s+([\d|,]+)$", statement)
         if groups is None:
-            self.perror("This command takes 2 arguments: <port-number> <vlan-ids>")
+            self.perror("This command has to follow this syntax: port <port-number> vlans <vlan-id1>,<vlan-id2>")
             return
 
         port, trunks = groups[1], groups[2]
@@ -118,9 +125,9 @@ class OvsConsole(Cmd):
 
     def do_no_vlan_trunks(self, statement: str):
         """Remove a port to vlans in trunk mode"""
-        groups = re.match(r"(\d+) ([\d|,]+)$", statement)
+        groups = re.match(r"port\s+(\d+)\s+vlans\s+([\d|,]+)$", statement)
         if groups is None:
-            self.perror("This command takes 2 arguments: <port-number> <vlan-ids>")
+            self.perror("This command has to follow this syntax: port <port-number> vlans <vlan-id1>,<vlan-id2>")
             return
 
         port, trunks = groups[1], groups[2]
