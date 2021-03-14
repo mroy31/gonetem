@@ -483,7 +483,7 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 	rIn, wIn := io.Pipe()
 
 	captureArgs := []string{
-		fmt.Sprintf("-o 'gui.window_title:%s@%s'", args[1], args[0]),
+		"-o", fmt.Sprintf("gui.window_title:%s@%s", args[1], args[0]),
 		"-k", "-i", "-"}
 	cmd := exec.Command(wiresharkPath, captureArgs...)
 	cmd.Stdin = rIn
