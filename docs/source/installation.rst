@@ -13,11 +13,10 @@ Requirements
 ------------
 To run ``gonetem-server``, you have to install the following programs
  * docker-ce
- * bridge-utils
 
 To run ``gonetem-console``, you have to install the following programs
  * xterm
- * bridge-utils
+ * wireshark
 
 Manual Installation
 -------------------

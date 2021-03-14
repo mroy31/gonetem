@@ -18,6 +18,14 @@ gonetem is composed of 2 parts:
   docker nodes / switches and to create links between them.
 * `gonetem-console`: it's the console client to control `gonetem-server`
 
+Requirements
+------------
+
+* `gonetem-server` depends on [docker](https://www.docker.com/)
+* `gonetem-console` depends on:
+  * `xterm` to open console
+  * [wireshark](https://www.wireshark.org/) to capture trafic
+
 Installation
 ------------
 
