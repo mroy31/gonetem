@@ -436,7 +436,7 @@ func (n *DockerNode) CopyTo(source, dest string) error {
 	return client.CopyTo(n.ID, source, dest)
 }
 
-func (n *DockerNode) GetInterfaces() map[string]link.IfState {
+func (n *DockerNode) GetInterfacesState() map[string]link.IfState {
 	return n.Interfaces
 }
 

@@ -23,7 +23,6 @@ type INetemNode interface {
 	GetNetns() (netns.NsHandle, error)
 	GetInterfaceName(ifIndex int) string
 	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
-	GetInterfaces() map[string]link.IfState
 	LoadConfig(confPath string) error
 	CanRunConsole() error
 	Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
@@ -31,6 +30,7 @@ type INetemNode interface {
 	CopyFrom(srcPath, destPath string) error
 	CopyTo(srcPath, destPath string) error
 	Save(dstPath string) error
+	GetInterfacesState() map[string]link.IfState
 	SetInterfaceState(ifIndex int, state link.IfState) error
 	Close() error
 }

@@ -191,7 +191,7 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 				Name:    node.GetName(),
 				Running: node.IsRunning(),
 			}
-			for ifName, state := range node.GetInterfaces() {
+			for ifName, state := range node.GetInterfacesState() {
 				nodeStatus.Interfaces = append(nodeStatus.Interfaces, &proto.StatusResponse_IfStatus{
 					Name: ifName,
 					State: map[link.IfState]proto.IfState{

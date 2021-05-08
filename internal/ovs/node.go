@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/docker"
@@ -144,8 +145,14 @@ func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) er
 	return nil
 }
 
-func (o *OvsNode) GetInterfaces() map[string]link.IfState {
-	return o.Interfaces
+func (o *OvsNode) GetInterfacesState() map[string]link.IfState {
+	ifStates := make(map[string]link.IfState, 0)
+	for ifName, state := range o.Interfaces {
+		nArgs := strings.Split(ifName, ".")
+		ifStates[nArgs[len(nArgs)-1]] = state
+	}
+
+	return ifStates
 }
 
 func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
