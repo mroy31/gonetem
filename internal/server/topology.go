@@ -16,14 +16,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func shortName(name string) string {
-	if len(name) <= 4 {
-		return name
-	}
-
-	return name[len(name)-4:]
-}
-
 const (
 	networkFilename = "network.yml"
 	configDir       = "configs"
@@ -76,6 +68,7 @@ type NetemTopologyManager struct {
 	prjID string
 	path  string
 
+	IdGenerator *NodeIdentifierGenerator
 	nodes       []INetemNode
 	ovsInstance *ovs.OvsProjectInstance
 	links       []*NetemLink
@@ -92,7 +85,7 @@ func (t *NetemTopologyManager) Check() error {
 		for _, err := range errors {
 			msg += "\n\t" + err.Error()
 		}
-		return fmt.Errorf("Topology if not valid:%s\n", msg)
+		return fmt.Errorf("Topology is not valid:%s\n", msg)
 	}
 
 	return nil
@@ -127,7 +120,11 @@ func (t *NetemTopologyManager) Load() error {
 		g.Go(func() error {
 			t.logger.Debugf("Create node %s", name)
 
-			node, err := CreateNode(t.prjID, name, nConfig)
+			shortName, err := t.IdGenerator.GetId(name)
+			if err != nil {
+				return err
+			}
+			node, err := CreateNode(t.prjID, name, shortName, nConfig)
 
 			mutex.Lock()
 			t.nodes = append(t.nodes, node)
@@ -169,8 +166,13 @@ func (t *NetemTopologyManager) Load() error {
 	bIdx := 0
 	t.bridges = make([]*NetemBridge, len(topology.Bridges))
 	for bName, bConfig := range topology.Bridges {
+		shortName, err := t.IdGenerator.GetId(bName)
+		if err != nil {
+			return err
+		}
+
 		t.bridges[bIdx] = &NetemBridge{
-			Name:          options.NETEM_ID + t.prjID + "." + shortName(bName),
+			Name:          options.NETEM_ID + t.prjID + "." + shortName,
 			HostInterface: bConfig.Host,
 			Peers:         make([]NetemLinkPeer, len(bConfig.Interfaces)),
 		}
@@ -289,8 +291,8 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		}
 		defer peerNetns.Close()
 
-		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, shortName(peer.Node.GetName()), peer.IfIndex)
-		peerIfName := fmt.Sprintf("%s%s%d.%s", options.NETEM_ID, t.prjID, peer.IfIndex, shortName(peer.Node.GetName()))
+		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, peer.Node.GetShortName(), peer.IfIndex)
+		peerIfName := fmt.Sprintf("%s%s%d.%s", options.NETEM_ID, t.prjID, peer.IfIndex, peer.Node.GetShortName())
 		veth, err := link.CreateVethLink(
 			ifName, rootNs,
 			peerIfName, peerNetns,
@@ -329,8 +331,8 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 	defer peer2Netns.Close()
 
-	peer1IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer1.Node.GetName(), l.Peer1.IfIndex)
-	peer2IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer2.Node.GetName(), l.Peer2.IfIndex)
+	peer1IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer1.Node.GetShortName(), l.Peer1.IfIndex)
+	peer2IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer2.Node.GetShortName(), l.Peer2.IfIndex)
 	_, err = link.CreateVethLink(peer1IfName, peer1Netns, peer2IfName, peer2Netns)
 	if err != nil {
 		return fmt.Errorf(
@@ -466,7 +468,7 @@ func (t *NetemTopologyManager) Close() error {
 		for _, peer := range br.Peers {
 			ifName := fmt.Sprintf(
 				"%s%s%s.%d", options.NETEM_ID, t.prjID,
-				shortName(peer.Node.GetName()), peer.IfIndex)
+				peer.Node.GetShortName(), peer.IfIndex)
 			if err := link.DeleteLink(ifName, rootNs); err != nil {
 				t.logger.Warnf("Error when deleting link %s: %v", ifName, err)
 			}
@@ -476,9 +478,10 @@ func (t *NetemTopologyManager) Close() error {
 	t.nodes = make([]INetemNode, 0)
 	t.links = make([]*NetemLink, 0)
 	t.bridges = make([]*NetemBridge, 0)
+	t.IdGenerator.Close()
 
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
-		t.logger.Warnf("Error when closing ovwitch instance: %v", err)
+		t.logger.Warnf("Error when closing ovswitch instance: %v", err)
 	}
 	t.ovsInstance = nil
 
@@ -491,6 +494,9 @@ func LoadTopology(prjID, prjPath string) (*NetemTopologyManager, error) {
 		path:   prjPath,
 		nodes:  make([]INetemNode, 0),
 		logger: logrus.WithField("project", prjID),
+		IdGenerator: &NodeIdentifierGenerator{
+			lock: &sync.Mutex{},
+		},
 	}
 	if err := topo.Load(); err != nil {
 		return topo, fmt.Errorf("Unable to load the topology:\n\t%w", err)

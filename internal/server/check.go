@@ -12,6 +12,7 @@ import (
 
 var (
 	nameRE     = regexp.MustCompile(`^\w+$`)
+	switchRE   = regexp.MustCompile(`^\w{1,10}$`)
 	nodeTypeRE = regexp.MustCompile(`^docker\.\w+|ovs$`)
 	peerRE     = regexp.MustCompile(`^\w+.[0-9]+$`)
 )
@@ -31,6 +32,10 @@ func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 
 	// ovs node do not support MPLS
 	if nConfig.Type == "ovs" {
+		if !switchRE.MatchString(name) {
+			return fmt.Errorf("Switch Node: '%s' name field must have less than 10 caracters", name)
+		}
+
 		if nConfig.Mpls || len(nConfig.Vrfs) > 0 {
 			return fmt.Errorf("Mpls can not be enable on ovswitch")
 		}

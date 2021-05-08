@@ -151,15 +151,15 @@ func (o *OvsProjectInstance) DelPort(brName, ifName string) error {
 	return o.Exec(cmd)
 }
 
-func (o *OvsProjectInstance) LoadConfig(brName, confPath string) error {
+func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) error {
 	client, err := docker.NewDockerClient()
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	tmpConfFile := "/tmp/" + brName + ".conf"
-	confFile := path.Join(confPath, brName+".conf")
+	tmpConfFile := "/tmp/" + name + ".conf"
+	confFile := path.Join(confPath, name+".conf")
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		return nil
 	}
@@ -176,15 +176,15 @@ func (o *OvsProjectInstance) LoadConfig(brName, confPath string) error {
 	return nil
 }
 
-func (o *OvsProjectInstance) SaveConfig(brName, dstPath string) error {
+func (o *OvsProjectInstance) SaveConfig(name, brName, dstPath string) error {
 	client, err := docker.NewDockerClient()
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	tmpConfFile := "/tmp/" + brName + ".conf"
-	confFile := path.Join(dstPath, brName+".conf")
+	tmpConfFile := "/tmp/" + name + ".conf"
+	confFile := path.Join(dstPath, name+".conf")
 
 	cmd := []string{"ovs-config.py", "-a", "save", "-c", tmpConfFile, brName}
 	if _, err := client.Exec(o.containerId, cmd); err != nil {

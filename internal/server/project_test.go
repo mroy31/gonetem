@@ -24,23 +24,20 @@ func TestProject_OpenClose(t *testing.T) {
 
 	prjPath := "/tmp/prjtest-archive.gnet"
 	if err := createProject(prjPath, simpleNetwork); err != nil {
-		t.Errorf("Unable to create .gnet file: %v", err)
-		return
+		t.Fatalf("Unable to create .gnet file: %v", err)
 	}
 	defer os.Remove(prjPath)
 
 	data, err := ioutil.ReadFile(prjPath)
 	if err != nil {
-		t.Errorf("Unable to open created .gnet file: %v", err)
-		return
+		t.Fatalf("Unable to open created .gnet file: %v", err)
 	}
 
 	// open project
 	prjID := utils.RandString(4)
 	project, err := OpenProject(prjID, "PrjTest", data)
 	if err != nil {
-		t.Errorf("Unable to open project: %v", err)
-		return
+		t.Fatalf("Unable to open project: %v", err)
 	}
 	defer CloseProject(prjID)
 

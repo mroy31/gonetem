@@ -15,12 +15,13 @@ import (
 )
 
 type DockerNodeOptions struct {
-	Name    string
-	Type    string
-	ImgName string
-	Ipv6    bool
-	Mpls    bool
-	Vrfs    []string
+	Name      string
+	ShortName string
+	Type      string
+	ImgName   string
+	Ipv6      bool
+	Mpls      bool
+	Vrfs      []string
 }
 
 type DockerNodeStatus struct {
@@ -31,6 +32,7 @@ type DockerNode struct {
 	PrjID          string
 	ID             string
 	Name           string
+	ShortName      string
 	Type           string
 	Interfaces     map[string]link.IfState
 	LocalNetnsName string
@@ -43,6 +45,13 @@ type DockerNode struct {
 
 func (n *DockerNode) GetName() string {
 	return n.Name
+}
+
+func (n *DockerNode) GetShortName() string {
+	if n.ShortName == "" {
+		return n.Name
+	}
+	return n.ShortName
 }
 
 func (n *DockerNode) GetType() string {
@@ -508,6 +517,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		PrjID:      prjID,
 		ID:         "",
 		Name:       dockerOpts.Name,
+		ShortName:  dockerOpts.ShortName,
 		Type:       dockerOpts.Type,
 		Mpls:       dockerOpts.Mpls,
 		Vrfs:       dockerOpts.Vrfs,

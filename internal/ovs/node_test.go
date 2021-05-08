@@ -25,7 +25,7 @@ func TestOvsNode_StartStop(t *testing.T) {
 		return
 	}
 
-	node, err := NewOvsNode(prjID, name)
+	node, err := NewOvsNode(prjID, name, name)
 	if err != nil {
 		t.Errorf("Unable to create ovs node: %v", err)
 		return
@@ -59,14 +59,14 @@ func TestOvsNode_AttachLink(t *testing.T) {
 		return
 	}
 
-	node1, err := NewOvsNode(prjID, utils.RandString(4))
+	node1, err := NewOvsNode(prjID, utils.RandString(4), utils.RandString(4))
 	if err != nil {
 		t.Errorf("Unable to create ovs node: %v", err)
 		return
 	}
 	defer node1.Close()
 
-	node2, err := NewOvsNode(prjID, utils.RandString(4))
+	node2, err := NewOvsNode(prjID, utils.RandString(4), utils.RandString(4))
 	if err != nil {
 		t.Errorf("Unable to create ovs node: %v", err)
 		return

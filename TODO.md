@@ -3,7 +3,9 @@
 
 - UI with electron:
   - use https://github.com/konvajs/react-konva for canvas
-- Implement console for ovs switch
+- Improve console for ovs switch
+  - syntax close to hp switch
+  - LACP support
 - Add option to secure connection between server and console
 
 # Performance comparison with pynetem

@@ -54,6 +54,19 @@ build-deb: clean build
 		bin/gonetem-console=/usr/bin/ \
 		conf/config.yaml=/etc/gonetem/ \
 
+build-deb-pi: clean build-pi
+	docker run -v $(shell pwd):/src --rm gonetem-build fpm --output-type deb \
+		--architecture=armhf \
+		--input-type dir --name gonetem --version $(VERSION) \
+		--maintainer "<mickael.royer@enac.fr>" \
+		--config-files /etc/gonetem/config.yaml \
+		--deb-systemd conf/gonetem.service\
+		--deb-recommends xterm --deb-recommends wireshark \
+		--deb-recommends docker-ce \
+		bin/gonetem-server_armv7=/usr/sbin/gonetem-server \
+		bin/gonetem-console_armv7=/usr/bin/gonetem-console \
+		conf/config.yaml=/etc/gonetem/ \
+
 clean:
 	rm -rf bin
 

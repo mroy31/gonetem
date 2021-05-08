@@ -15,6 +15,7 @@ import (
 type OvsNode struct {
 	PrjID       string
 	Name        string
+	ShortName   string
 	Running     bool
 	OvsInstance *OvsProjectInstance
 	Interfaces  map[string]link.IfState
@@ -23,6 +24,13 @@ type OvsNode struct {
 
 func (s *OvsNode) GetName() string {
 	return s.Name
+}
+
+func (s *OvsNode) GetShortName() string {
+	if s.ShortName == "" {
+		return s.Name
+	}
+	return s.ShortName
 }
 
 func (s *OvsNode) GetType() string {
@@ -53,7 +61,7 @@ func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh 
 
 	cmd := []string{"/bin/bash"}
 	if !shell {
-		cmd = []string{"/usr/bin/ovs-console.py", o.Name}
+		cmd = []string{"/usr/bin/ovs-console.py", o.GetBridgeName()}
 	}
 
 	return client.ExecTty(o.OvsInstance.containerId, cmd, in, out, resizeCh)
@@ -71,8 +79,12 @@ func (o *OvsNode) GetNetns() (netns.NsHandle, error) {
 	return o.OvsInstance.GetNetns()
 }
 
+func (o *OvsNode) GetBridgeName() string {
+	return o.Name
+}
+
 func (o *OvsNode) GetInterfaceName(ifIndex int) string {
-	return fmt.Sprintf("%s.%d", o.Name, ifIndex)
+	return fmt.Sprintf("%s.%d", o.GetBridgeName(), ifIndex)
 }
 
 func (o *OvsNode) Capture(ifIndex int, out io.Writer) error {
@@ -85,13 +97,13 @@ func (o *OvsNode) Capture(ifIndex int, out io.Writer) error {
 
 func (o *OvsNode) Start() error {
 	if !o.Running {
-		if err := o.OvsInstance.AddBr(o.Name); err != nil {
+		if err := o.OvsInstance.AddBr(o.GetBridgeName()); err != nil {
 			return err
 		}
 		o.Running = true
 
 		for ifName := range o.Interfaces {
-			if err := o.OvsInstance.AddPort(o.Name, ifName); err != nil {
+			if err := o.OvsInstance.AddPort(o.GetBridgeName(), ifName); err != nil {
 				return err
 			}
 		}
@@ -103,12 +115,12 @@ func (o *OvsNode) Start() error {
 func (o *OvsNode) Stop() error {
 	if o.Running {
 		for ifName := range o.Interfaces {
-			if err := o.OvsInstance.DelPort(o.Name, ifName); err != nil {
+			if err := o.OvsInstance.DelPort(o.GetBridgeName(), ifName); err != nil {
 				return err
 			}
 		}
 
-		if err := o.OvsInstance.DelBr(o.Name); err != nil {
+		if err := o.OvsInstance.DelBr(o.GetBridgeName()); err != nil {
 			return err
 		}
 		o.Running = false
@@ -123,7 +135,7 @@ func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) er
 		return err
 	}
 
-	if err := o.OvsInstance.AddPort(o.Name, targetIfName); err != nil {
+	if err := o.OvsInstance.AddPort(o.GetBridgeName(), targetIfName); err != nil {
 		return err
 	}
 
@@ -165,7 +177,7 @@ func (o *OvsNode) LoadConfig(confPath string) error {
 		return nil
 	}
 
-	return o.OvsInstance.LoadConfig(o.Name, confPath)
+	return o.OvsInstance.LoadConfig(o.Name, o.GetBridgeName(), confPath)
 }
 
 func (o *OvsNode) Save(dstPath string) error {
@@ -174,20 +186,21 @@ func (o *OvsNode) Save(dstPath string) error {
 		return nil
 	}
 
-	return o.OvsInstance.SaveConfig(o.Name, dstPath)
+	return o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dstPath)
 }
 
 func (o *OvsNode) Close() error {
 	if o.OvsInstance != nil {
-		return o.OvsInstance.DelBr(o.Name)
+		return o.OvsInstance.DelBr(o.GetBridgeName())
 	}
 	return nil
 }
 
-func NewOvsNode(prjID, name string) (*OvsNode, error) {
+func NewOvsNode(prjID, name, shortName string) (*OvsNode, error) {
 	node := &OvsNode{
 		PrjID:      prjID,
 		Name:       name,
+		ShortName:  shortName,
 		Interfaces: make(map[string]link.IfState),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,
