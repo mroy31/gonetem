@@ -10,7 +10,7 @@ import (
 const (
 	VERSION               = "0.1.0"
 	NETEM_ID              = "ntm"
-	DEFAULT_CONFIG_FILE   = "/etc/gonetem/config.yaml"
+	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
 listen: "localhost:10110"
 workdir: /tmp
@@ -47,11 +47,11 @@ func InitServerConfig() {
 	}
 }
 
-func CreateConfigFile(config string) error {
+func CreateServerConfig(config string) error {
 	return ioutil.WriteFile(config, []byte(INITIAL_SERVER_CONFIG), 0644)
 }
 
-func ParseConfigFile(config string) error {
+func ParseServerConfig(config string) error {
 	data, err := ioutil.ReadFile(config)
 	if err != nil {
 		return err

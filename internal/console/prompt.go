@@ -1,8 +1,10 @@
 package console
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"github.com/docker/docker/pkg/system"
 	"github.com/fatih/color"
 	"github.com/google/shlex"
+	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
@@ -567,24 +570,42 @@ func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, sh
 		return
 	}
 
-	// search term command
-	termPath, err := exec.LookPath("xterm")
-	if err != nil {
-		RedPrintf("xterm is not installed\n")
-		return
-	}
-
 	node := fmt.Sprintf("%s.%s", p.prjID, nodeName)
 	shellOpt := ""
 	if shell {
 		shellOpt = "--shell "
 	}
+	consoleCmd := struct {
+		Name string
+		Cmd  string
+	}{Name: nodeName, Cmd: "gonetem-console console " + shellOpt + node}
 
-	termArgs := []string{
-		"-xrm", "XTerm.vt100.allowTitleOps: false",
-		"-title", nodeName,
-		"-e", "gonetem-console console " + shellOpt + node}
-	cmd := exec.Command(termPath, termArgs...)
+	var buf bytes.Buffer
+	tmpl, err := template.New("terminal").Parse(options.ConsoleConfig.Terminal)
+	if err != nil {
+		RedPrintf("Unable to parse terminal line in config file: %v", err)
+		return
+	}
+	err = tmpl.Execute(&buf, consoleCmd)
+	if err != nil {
+		RedPrintf("Unable to parse terminal line in config file: %v", err)
+		return
+	}
+
+	args, err := shlex.Split(buf.String())
+	if err != nil {
+		RedPrintf("Bad command line: %v", err)
+		return
+	}
+
+	// search term command
+	termPath, err := exec.LookPath(args[0])
+	if err != nil {
+		RedPrintf("terminal '%s' is not installed\n", args[0])
+		return
+	}
+
+	cmd := exec.Command(termPath, args[1:]...)
 	if err := cmd.Start(); err != nil {
 		RedPrintf("Error when starting console: %v\n", err)
 		return
@@ -711,6 +732,12 @@ func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) {
+	// first, check editor exists
+	if _, err := exec.LookPath(options.ConsoleConfig.Editor); err != nil {
+		RedPrintf("Editor set in config, %s, is not found\n", options.ConsoleConfig.Editor)
+		return
+	}
+
 	response, err := client.ReadNetworkFile(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get network file: %v\n", err)
@@ -724,7 +751,7 @@ func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) {
 	}
 	defer os.Remove(tempFilename)
 
-	if err := EditFile(tempFilename, "vim"); err != nil {
+	if err := EditFile(tempFilename, options.ConsoleConfig.Editor); err != nil {
 		RedPrintf("Unable to edit temp file: %v\n", err)
 		return
 	}

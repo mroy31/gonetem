@@ -19,7 +19,7 @@ var (
 	grpcServer *grpc.Server = nil
 	socket     net.Listener = nil
 	verbose                 = flag.Bool("verbose", false, "Display more messages")
-	conf                    = flag.String("conf-file", options.DEFAULT_CONFIG_FILE, "Configuration path")
+	conf                    = flag.String("conf-file", options.SERVER_CONFIG_FILE, "Configuration path")
 	logFile                 = flag.String("log-file", "", "Path of the log file (default: stdout)")
 )
 
@@ -50,7 +50,7 @@ func main() {
 	if _, err := os.Stat(*conf); os.IsNotExist(err) {
 		logrus.Warnf("Config file %s not exit, skip it", *conf)
 	} else {
-		if err := options.ParseConfigFile(*conf); err != nil {
+		if err := options.ParseServerConfig(*conf); err != nil {
 			logrus.Fatalf("Unable to parse config file %s: %v", *conf, err)
 		}
 	}

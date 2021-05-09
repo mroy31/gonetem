@@ -31,16 +31,23 @@ bridges:
 )
 
 var (
-	server         string
+	serverFlag     string
 	disableRun     bool
 	prjRunName     string
 	isConsoleShell bool
 )
 
+func getServerUri() string {
+	if serverFlag != "" {
+		return serverFlag
+	}
+	return options.ConsoleConfig.Server
+}
+
 func ListProjects() *proto.PrjListResponse {
-	client, err := NewClient(server)
+	client, err := NewClient(getServerUri())
 	if err != nil {
-		Fatal("Unable to connect to server: %v", err)
+		Fatal("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
 	}
 	defer client.Conn.Close()
 
@@ -68,9 +75,9 @@ func OpenProject(prjPath string) (string, string, error) {
 		return "", "", err
 	}
 
-	client, err := NewClient(server)
+	client, err := NewClient(getServerUri())
 	if err != nil {
-		return "", "", fmt.Errorf("Server not responding")
+		return "", "", fmt.Errorf("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
 	}
 	defer client.Conn.Close()
 
@@ -112,7 +119,7 @@ func OpenProject(prjPath string) (string, string, error) {
 }
 
 func NewPrompt(prjName, prjID, prjPath string) {
-	e := NewNetemPrompt(server, prjID, prjPath)
+	e := NewNetemPrompt(getServerUri(), prjID, prjPath)
 	c := NewPromptCompleter(e)
 
 	fmt.Println("Welcome to gonetem " + options.VERSION)
@@ -151,9 +158,9 @@ var cleanCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		confirm := prompt.Input("Are you sure you want prune unused containers ? ", ConfirmComplete)
 		if confirm == "yes" {
-			client, err := NewClient(server)
+			client, err := NewClient(getServerUri())
 			if err != nil {
-				Fatal("Unable to connect to server: %v", err)
+				Fatal("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
 			}
 			defer client.Conn.Close()
 
@@ -266,7 +273,7 @@ var consoleCmd = &cobra.Command{
 	Long:  `Open a console to the specified node"`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := StartRemoteConsole(server, args[0], isConsoleShell); err != nil {
+		if err := StartRemoteConsole(getServerUri(), args[0], isConsoleShell); err != nil {
 			Fatal("Console to node %s returns an error: %v", args[0], err)
 		}
 	},
@@ -280,9 +287,9 @@ var pullCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var s *spinner.Spinner
 
-		client, err := NewClient(server)
+		client, err := NewClient(getServerUri())
 		if err != nil {
-			Fatal("Unable to connect to server: %v", err)
+			Fatal("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
 		}
 		defer client.Conn.Close()
 
@@ -319,8 +326,8 @@ var pullCmd = &cobra.Command{
 
 func Init() {
 	rootCmd.PersistentFlags().StringVarP(
-		&server, "server", "s", "localhost:10110",
-		"Server uri for connection")
+		&serverFlag, "server", "s", "",
+		"Override server uri defined in config file")
 	openCmd.Flags().BoolVar(
 		&disableRun, "no-start", false,
 		"Do not start the project after open it")
@@ -339,6 +346,7 @@ func Init() {
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(consoleCmd)
 	rootCmd.AddCommand(pullCmd)
+	rootCmd.AddCommand(getConfigCmd())
 }
 
 func Execute() {
