@@ -35,6 +35,20 @@ You can compile gonetem with the command
 
 The 2 binaries are then available in the `bin` folder
 
+Import docker images
+--------------------
+
+Before using gonetem, you need to pull from docker hub images used by gonetem.
+
+* mroy31/gonetem-frr -> to emulate router based on frr software
+* mroy31/gonetem-host -> tp emulate host
+* mroy31/gonetem-server -> to emulate server
+* mroy31/gonetem-ovs -> to emulate switch with Openvswitch
+
+To do that, you can use the following command:
+
+    $gonetem-console pull
+
 Usage
 -----
 
@@ -55,20 +69,6 @@ And after to open it
     $[myproject]> reload # to reload the new topology
     $[myproject]> console all # to open all consoles
     $[myproject]> quit
-
-Docker Node
------------
-
-Before using gonetem, you need to pull from docker hub images used by gonetem.
-
-* mroy31/gonetem-frr -> to emulate router based on frr software
-* mroy31/gonetem-host -> tp emulate host
-* mroy31/gonetem-server -> to emulate server
-* mroy31/gonetem-ovs -> to emulate switch with Openvswitch
-
-To do that, you can use the following command:
-
-    $gonetem-console pull
 
 License
 -------

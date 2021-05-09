@@ -3,8 +3,12 @@
 Configuration
 =============
 
+Server Configuration
+--------------------
+
 Configuration file
-------------------
+``````````````````
+
 After the installation, the configuration of gonetem-server is done with the file
 ``/etc/gonetem/config.yaml``. Below, you will find the configuration by default :
 
@@ -20,8 +24,20 @@ After the installation, the configuration of gonetem-server is done with the fil
         ovs: mroy31/gonetem-ovs
 
 
-Server
-------
+Pull docker images
+``````````````````
+
+Before using gonetem, you have to pull docker images built for it
+and available on docker hub. For that, you can use the following command after
+the launch of gonetem-server:
+
+.. code-block:: bash
+
+    $ gonetem-console pull
+
+Launch server
+`````````````
+
 If you install gonetem manually, you have lo launch gonetem-server with the root
 right. It is required to execute docker or netlink actions. You can use
 the following command for example:
@@ -45,22 +61,44 @@ Below, you will find available arguments to launch gonetem-server
 If you use debian package, gonetem-server is launch thanks to systemd.
 
 
-Pull docker images
-------------------
-
-Before using gonetem, you have to pull docker images built for it
-and available on docker hub. For that, you can use the following command after
-the launch of gonetem-server:
-
-.. code-block:: bash
-
-    $ gonetem-console pull
-
 MPLS support
-------------
+````````````
 
 gonetem supports MPLS. To work, you must enable MPLS features
 in linux kernel by loading the following modules :
 
 - mpls_iptunnel
 - mpls_router
+
+Console Configuration
+---------------------
+
+The first time you launch `gonetem-console`, a configuration file is created
+at this location: ``~/.config/gonetem-console/console.yaml``
+You can view the current configuration with the following command:
+
+.. code-block:: bash
+
+    $ gonetem-console config show
+
+For each parameter, you can modify the configuration with the command:
+
+.. code-block:: bash
+
+    $ gonetem-console config set <param-key> <param-value>
+
+For example, to use `nano` as topology editor, simply enter the command:
+
+.. code-block:: bash
+
+    $ gonetem-console config set editor nano
+
+For now, the following options are available:
+
+- ``server`` to set the server uri used for connection (default to localhost:10110)
+- ``editor`` to select the editor used to edit the topology file (default to vim)
+- ``terminal`` to set the command line used to launch a console, default to
+
+.. code-block:: bash
+
+    xterm -xrm 'XTerm.vt100.allowTitleOps: false' -title {{.Name}} -e {{.Cmd}}

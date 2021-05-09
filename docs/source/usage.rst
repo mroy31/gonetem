@@ -37,6 +37,7 @@ Available commands
 
     Available Commands:
     clean       Prune containers not used by any project
+    config      Configure gonetem-console
     connect     Connect to a running project
     console     Open a console to the specified node
     create      Create a project
@@ -48,4 +49,4 @@ Available commands
 
     Flags:
     -h, --help            help for gonetem-console
-    -s, --server string   Server uri for connection (default "localhost:10110")
+    -s, --server string   Override server uri defined in config file
