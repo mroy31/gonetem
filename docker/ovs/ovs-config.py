@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import time
 import sys
 import json
 import os.path
@@ -42,16 +43,27 @@ def list_sw_ports(name: str) -> str:
 
 def load_ovs_config(_: str, conf: str):
     with open(conf) as f_hd:
+        last_error = ""
         ovs_config = json.load(f_hd)
 
-        try:
-            for p_config in ovs_config:
-                if "tag" in p_config:
-                    run_command("ovs-vsctl set port {} tag={}".format(p_config["name"], p_config["tag"]))
-                if "trunks" in p_config:
-                    run_command("ovs-vsctl set port {} trunks={}".format(p_config["name"], p_config["trunks"]))
-        except RunError as err:
-            sys.exit("Unable to load config: {}".format(err))
+        attempt = 0
+        while attempt < 10:
+            try:
+                for p_config in ovs_config:
+                    if "tag" in p_config:
+                        run_command("ovs-vsctl set port {} tag={}".format(p_config["name"], p_config["tag"]))
+                    if "trunks" in p_config:
+                        run_command("ovs-vsctl set port {} trunks={}".format(p_config["name"], p_config["trunks"]))
+            except RunError as err:
+                attempt += 1
+                last_error = str(err)
+                time.sleep(0.1)
+                continue
+            else:
+                return
+
+        # All attempts fail, exit with error
+        sys.exit("Unable to load config: {}".format(last_error))
 
 
 def save_ovs_config(sw_name: str, conf: str):
