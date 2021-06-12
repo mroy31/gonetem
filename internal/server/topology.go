@@ -25,11 +25,18 @@ var (
 	mutex = &sync.Mutex{}
 )
 
+type VrrpOptions struct {
+	Interface int
+	Group     int
+	Address   string
+}
+
 type NodeConfig struct {
-	Type string
-	IPv6 bool
-	Mpls bool
-	Vrfs []string
+	Type  string
+	IPv6  bool
+	Mpls  bool
+	Vrfs  []string
+	Vrrps []VrrpOptions
 }
 
 type LinkConfig struct {

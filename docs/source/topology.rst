@@ -47,12 +47,11 @@ Docker node
 ```````````
 A docker node is a container launch by gonetem. 3 kinds of docker node
 are available, each one associated to an image:
-  - mroy31/gonetem-host identified by the type *docker.host*,
-    which emulates a terminal node
-  - mroy31/gonetem-server identified by the type *docker.server*,
-    which emulates a server node (with http, tftp and dhcp server for now)
-  - mroy31/gonetem-frr identified by the type *docker.router*, which emulates
-    router based on the software `FRR <https://frrouting.org/>`_
+
+- mroy31/gonetem-host identified by the type *docker.host*, which emulates a terminal node
+- mroy31/gonetem-server identified by the type *docker.server*, which emulates a server node (with http, tftp and dhcp server for now)
+- mroy31/gonetem-frr identified by the type *docker.router*, which emulates router based on the software `FRR <https://frrouting.org/>`_
+
 All these images are available on docker hub.
 
 Options
@@ -66,7 +65,20 @@ VRF support
 """""""""""
 
 To facilitate the implementation of L3VPN with gonetem and FRR, it is possible to instantiate linux VRFs at the launch of FRR router.
-For that, you just need to declare list of VRF in the ``vrfs`` parameters.
+For that, you just need to declare list of VRF in the ``vrfs`` parameter.
+
+VRRP support
+""""""""""""
+
+FRR supports VRRP protocol. However, its implementation requires some prerequisite to work.
+  - The creation of a macvlan interface with the correct MAC/IP adresses for each VRRP group
+
+To facilitate the use of this protocol, gonetem support the parameter ``vrrps`` for ``docker.router`` nodes, for vrrp configuration.
+This parameter take a list of object with the following attributes :
+
+- *interface (int)*: physical interface id used for VRRP
+- *group (int)*: VRFRP group id
+- *address (string)*: VRRP IPv4 address
 
 Example of docker node
 """"""""""""""""""""""
@@ -79,7 +91,10 @@ Example of docker node
         ipv6: yes
         mpls: yes
         vrfs: [VRFA, VRFB]
-
+        vrrps:
+        - interface: 0
+          group: 1
+          address: 192.168.1.252/24
 
 Switches
 ````````

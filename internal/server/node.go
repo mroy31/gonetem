@@ -93,14 +93,23 @@ func CreateNode(prjID string, name string, shortName string, config NodeConfig) 
 	groups := re.FindStringSubmatch(config.Type)
 	if len(groups) == 2 {
 		// Create docker node
-		return docker.NewDockerNode(prjID, docker.DockerNodeOptions{
+		options := docker.DockerNodeOptions{
 			Name:      name,
 			ShortName: shortName,
 			Type:      groups[1],
 			Ipv6:      config.IPv6,
 			Mpls:      config.Mpls,
 			Vrfs:      config.Vrfs,
-		})
+		}
+		for _, group := range config.Vrrps {
+			options.Vrrps = append(options.Vrrps, docker.VrrpOptions{
+				Interface: group.Interface,
+				Group:     group.Group,
+				Address:   group.Address,
+			})
+		}
+
+		return docker.NewDockerNode(prjID, options)
 	}
 
 	// then test if it is a switch

@@ -14,6 +14,12 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+type VrrpOptions struct {
+	Interface int
+	Group     int
+	Address   string
+}
+
 type DockerNodeOptions struct {
 	Name      string
 	ShortName string
@@ -22,6 +28,7 @@ type DockerNodeOptions struct {
 	Ipv6      bool
 	Mpls      bool
 	Vrfs      []string
+	Vrrps     []VrrpOptions
 }
 
 type DockerNodeStatus struct {
@@ -40,6 +47,7 @@ type DockerNode struct {
 	ConfigLoaded   bool
 	Mpls           bool
 	Vrfs           []string
+	Vrrps          []VrrpOptions
 	Logger         *logrus.Entry
 }
 
@@ -302,6 +310,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 		ns, _ := n.GetNetns()
 		defer ns.Close()
 
+		// create vrfs
 		for idx, vrf := range n.Vrfs {
 			if _, err := link.CreateVrf(vrf, ns, 10+idx); err != nil {
 				return err
@@ -313,6 +322,29 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 			return err
 		}
 		defer client.Close()
+
+		// create vrrps interfaces
+		for _, vrrpGroup := range n.Vrrps {
+			name := fmt.Sprintf("vrrp-%d", vrrpGroup.Interface)
+			if _, err := link.CreateMacVlan(
+				name, fmt.Sprintf("eth%d", vrrpGroup.Interface),
+				vrrpGroup.Group, ns); err != nil {
+				return err
+			}
+			link.SetInterfaceState(name, ns, link.IFSTATE_UP)
+
+			// set ip address
+			if _, err := client.Exec(n.ID, []string{"ip", "addr", "add", vrrpGroup.Address, "dev", name}); err != nil {
+				return err
+			}
+
+			// modify kernel settings to disable routes when interface
+			// is in linkdown state
+			_, err := client.Exec(n.ID, []string{"sysctl", "-w", fmt.Sprintf("net.ipv4.conf.%s.ignore_routes_with_linkdown=1", name)})
+			if err != nil {
+				return err
+			}
+		}
 
 		if _, err := os.Stat(confPath); err == nil {
 			configFiles := make(map[string]string)
@@ -521,6 +553,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		Type:       dockerOpts.Type,
 		Mpls:       dockerOpts.Mpls,
 		Vrfs:       dockerOpts.Vrfs,
+		Vrrps:      dockerOpts.Vrrps,
 		Interfaces: make(map[string]link.IfState),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,

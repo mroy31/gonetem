@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"regexp"
 	"strings"
 
@@ -30,7 +31,7 @@ func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 		return fmt.Errorf("Node: '%s' type field is not valid", nConfig.Type)
 	}
 
-	// ovs node do not support MPLS
+	// more check on ovs node
 	if nConfig.Type == "ovs" {
 		if !switchRE.MatchString(name) {
 			return fmt.Errorf("Switch Node: '%s' name field must have less than 10 caracters", name)
@@ -38,6 +39,20 @@ func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 
 		if nConfig.Mpls || len(nConfig.Vrfs) > 0 {
 			return fmt.Errorf("Mpls can not be enable on ovswitch")
+		}
+	}
+
+	// check vrrp configuration
+	if len(nConfig.Vrrps) > 0 {
+		if nConfig.Type != "docker.router" {
+			return fmt.Errorf("Vrrp can only be enable on docker.router node")
+		}
+
+		for _, vrrpCnf := range nConfig.Vrrps {
+			_, _, err := net.ParseCIDR(vrrpCnf.Address)
+			if err != nil {
+				return fmt.Errorf("Vrrp address '%s' is not valid: %s", vrrpCnf.Address, err)
+			}
 		}
 	}
 

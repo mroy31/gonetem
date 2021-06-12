@@ -2,6 +2,7 @@ package link
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"sync"
@@ -81,6 +82,34 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 	}
 
 	return br, nil
+}
+
+func CreateMacVlan(name string, parent string, group int, namespace netns.NsHandle) (*netlink.Macvlan, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	netns.Set(namespace)
+	parentLink, err := netlink.LinkByName(parent)
+	if err != nil {
+		return &netlink.Macvlan{}, fmt.Errorf("Unable to find macvlan parent %s: %v", parent, err)
+	}
+
+	peerMAC, _ := net.ParseMAC(fmt.Sprintf("00:00:5E:00:01:%02X", group))
+
+	la := netlink.NewLinkAttrs()
+	la.Name = name
+	la.Namespace = netlink.NsFd(namespace)
+	la.ParentIndex = parentLink.Attrs().Index
+	la.HardwareAddr = peerMAC
+	macvlan := &netlink.Macvlan{
+		LinkAttrs: la,
+		Mode:      netlink.MACVLAN_MODE_BRIDGE,
+	}
+
+	if err := netlink.LinkAdd(macvlan); err != nil {
+		return macvlan, fmt.Errorf("Error when creating MACVLAN %s: %v", name, err)
+	}
+	return macvlan, nil
 }
 
 func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, error) {

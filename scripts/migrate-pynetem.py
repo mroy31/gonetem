@@ -82,6 +82,15 @@ def create_gnet_network(pnet_network):
             node["mpls"] = n_config.as_bool("mpls")
         if "vrfs" in n_config:
             node["vrfs"] = n_config["vrfs"].split(";")
+        if "vrrps" in n_config:
+            node["vrrps"] = []
+            for cnf in n_config["vrrps"].split(";"):
+                ifname, group, address = cnf.split("|")
+                node["vrrps"].append({
+                    "interface": int(ifname[-1]),
+                    "group": int(group),
+                    "address": address
+                })
 
         network["nodes"][name] = node
 
