@@ -1,14 +1,17 @@
 package options
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
+	"regexp"
 
 	"gopkg.in/yaml.v2"
 )
 
 const (
 	VERSION               = "0.1.0"
+	IMG_VERSION           = "0.1.0"
 	NETEM_ID              = "ntm"
 	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
@@ -21,6 +24,15 @@ docker:
     router: mroy31/gonetem-frr
     ovs: mroy31/gonetem-ovs
 `
+)
+
+type DockerImageT int
+
+const (
+	IMG_ROUTER DockerImageT = iota
+	IMG_HOST
+	IMG_SERVER
+	IMG_OVS
 )
 
 type NetemServerConfig struct {
@@ -58,4 +70,26 @@ func ParseServerConfig(config string) error {
 	}
 
 	return yaml.Unmarshal(data, &ServerConfig)
+}
+
+func GetDockerImageId(imgType DockerImageT) string {
+	var name string
+	hasTagRE := regexp.MustCompile(`^\S+:[\w\.]+$`)
+
+	switch imgType {
+	case IMG_ROUTER:
+		name = ServerConfig.Docker.Images.Router
+	case IMG_HOST:
+		name = ServerConfig.Docker.Images.Host
+	case IMG_SERVER:
+		name = ServerConfig.Docker.Images.Server
+	case IMG_OVS:
+		name = ServerConfig.Docker.Images.Ovs
+	}
+
+	if !hasTagRE.MatchString(name) {
+		name = fmt.Sprintf("%s:%s", name, IMG_VERSION)
+	}
+
+	return name
 }

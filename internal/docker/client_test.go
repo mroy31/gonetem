@@ -21,18 +21,11 @@ func setupClient(t *testing.T) (*DockerClient, func()) {
 	return client, func() { client.Close() }
 }
 
-func setupContainer(t *testing.T, image string) (*DockerClient, string, string, func()) {
+func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, string, string, func()) {
 	options.InitServerConfig()
 	client, _ := NewDockerClient()
 
-	switch image {
-	case "router":
-		image = fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Router, options.VERSION)
-	case "host":
-		image = fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Host, options.VERSION)
-	case "server":
-		image = fmt.Sprintf("%s:%s", options.ServerConfig.Docker.Images.Server, options.VERSION)
-	}
+	image := options.GetDockerImageId(imgId)
 	name := utils.RandString(10)
 	cID, err := client.Create(image, name, name, true, true)
 	if err != nil {
@@ -47,8 +40,8 @@ func setupContainer(t *testing.T, image string) (*DockerClient, string, string, 
 	}
 }
 
-func setupStartedContainer(t *testing.T, image string) (*DockerClient, string, string, func()) {
-	client, cID, name, teardown := setupContainer(t, image)
+func setupStartedContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, string, string, func()) {
+	client, cID, name, teardown := setupContainer(t, imgId)
 
 	if err := client.Start(cID); err != nil {
 		client.Rm(cID)
@@ -74,7 +67,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 	}{
 		{
 			name:    "ImagePresent: valid test",
-			imgName: fmt.Sprintf("mroy31/gonetem-ovs:%s", options.VERSION),
+			imgName: options.GetDockerImageId(options.IMG_OVS),
 			result:  true,
 		},
 		{
@@ -97,7 +90,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 }
 
 func TestDockerClient_CreateRm(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, "host")
+	client, cID, _, teardown := setupContainer(t, options.IMG_HOST)
 	defer teardown()
 
 	// check the existence of the container
@@ -129,7 +122,7 @@ func TestDockerClient_CreateRm(t *testing.T) {
 }
 
 func TestDockerClient_Exec(t *testing.T) {
-	client, cID, name, teardown := setupStartedContainer(t, "server")
+	client, cID, name, teardown := setupStartedContainer(t, options.IMG_SERVER)
 	defer teardown()
 
 	// get the hostname
@@ -143,7 +136,7 @@ func TestDockerClient_Exec(t *testing.T) {
 }
 
 func TestDockerClient_Copy(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, "router")
+	client, cID, _, teardown := setupContainer(t, options.IMG_ROUTER)
 	defer teardown()
 
 	// create a file and copy it in the container
@@ -179,7 +172,7 @@ func TestDockerClient_Copy(t *testing.T) {
 }
 
 func TestDockerClient_Pid(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, "router")
+	client, cID, _, teardown := setupContainer(t, options.IMG_ROUTER)
 	defer teardown()
 
 	// pid must be equal to -1
@@ -206,7 +199,7 @@ func TestDockerClient_Pid(t *testing.T) {
 }
 
 func TestDockerClient_List(t *testing.T) {
-	client, _, name, teardown := setupContainer(t, "router")
+	client, _, name, teardown := setupContainer(t, options.IMG_ROUTER)
 	defer teardown()
 
 	cList, err := client.List(name)

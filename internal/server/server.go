@@ -66,11 +66,11 @@ func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.Ack
 }
 
 func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImagesServer) error {
-	images := []string{
-		options.ServerConfig.Docker.Images.Host,
-		options.ServerConfig.Docker.Images.Server,
-		options.ServerConfig.Docker.Images.Router,
-		options.ServerConfig.Docker.Images.Ovs,
+	imageTypes := []options.DockerImageT{
+		options.IMG_HOST,
+		options.IMG_OVS,
+		options.IMG_ROUTER,
+		options.IMG_SERVER,
 	}
 
 	client, err := docker.NewDockerClient()
@@ -79,25 +79,25 @@ func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImag
 	}
 	defer client.Close()
 
-	for _, img := range images {
-		imgTag := fmt.Sprintf("%s:%s", img, options.VERSION)
+	for _, imgT := range imageTypes {
+		imgID := options.GetDockerImageId(imgT)
 
 		stream.Send(&proto.PullSrvMsg{
 			Code:  proto.PullSrvMsg_START,
-			Image: imgTag,
+			Image: imgID,
 		})
 
-		if err := client.ImagePull(imgTag); err != nil {
+		if err := client.ImagePull(imgID); err != nil {
 			stream.Send(&proto.PullSrvMsg{
 				Code:  proto.PullSrvMsg_ERROR,
-				Image: imgTag,
-				Error: fmt.Sprintf("%s: %v", imgTag, err),
+				Image: imgID,
+				Error: fmt.Sprintf("%s: %v", imgID, err),
 			})
 			continue
 		}
 		stream.Send(&proto.PullSrvMsg{
 			Code:  proto.PullSrvMsg_OK,
-			Image: imgTag,
+			Image: imgID,
 		})
 	}
 

@@ -529,17 +529,11 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		// use default image
 		switch dockerOpts.Type {
 		case "host":
-			imgName = fmt.Sprintf(
-				"%s:%s",
-				options.ServerConfig.Docker.Images.Host, options.VERSION)
+			imgName = options.GetDockerImageId(options.IMG_HOST)
 		case "server":
-			imgName = fmt.Sprintf(
-				"%s:%s",
-				options.ServerConfig.Docker.Images.Server, options.VERSION)
+			imgName = options.GetDockerImageId(options.IMG_SERVER)
 		case "router":
-			imgName = fmt.Sprintf(
-				"%s:%s",
-				options.ServerConfig.Docker.Images.Router, options.VERSION)
+			imgName = options.GetDockerImageId(options.IMG_ROUTER)
 		default:
 			return nil, errors.New(fmt.Sprintf("Docker type %s is not known", dockerOpts.Type))
 		}
