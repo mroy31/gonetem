@@ -102,3 +102,9 @@ For now, the following options are available:
 .. code-block:: bash
 
     xterm -xrm 'XTerm.vt100.allowTitleOps: false' -title {{.Name}} -e {{.Cmd}}
+
+For example, if you want to change the font family/size used by xterm, you can enter the following command:
+
+.. code-block:: bash
+
+    gonetem-console config set terminal "xterm -fa 'Monospace' -fs 13 -xrm 'XTerm.vt100.allowTitleOps: false' -title {{.Name}} -e {{.Cmd}}"

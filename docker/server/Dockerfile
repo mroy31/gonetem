@@ -1,6 +1,7 @@
 FROM debian:buster-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
     apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
