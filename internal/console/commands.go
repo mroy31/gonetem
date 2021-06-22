@@ -110,6 +110,10 @@ func OpenProject(prjPath string) (string, string, error) {
 		answer, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
 		s.Stop()
 
+		if err != nil {
+			return name, prjID, err
+		}
+
 		for _, nMessages := range answer.NodeMessages {
 			if len(nMessages.Messages) > 0 {
 				fmt.Println(color.YellowString(nMessages.Name + ":"))
@@ -121,9 +125,6 @@ func OpenProject(prjPath string) (string, string, error) {
 			}
 		}
 
-		if err != nil {
-			return name, prjID, err
-		}
 	}
 
 	return name, prjID, nil
