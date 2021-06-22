@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/link"
@@ -300,10 +301,12 @@ func (n *DockerNode) Stop() error {
 	return nil
 }
 
-func (n *DockerNode) LoadConfig(confPath string) error {
+func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
+	var messages []string
+
 	if !n.Running {
 		n.Logger.Warn("LoadConfig: node not running")
-		return nil
+		return messages, nil
 	}
 
 	if !n.ConfigLoaded {
@@ -313,13 +316,13 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 		// create vrfs
 		for idx, vrf := range n.Vrfs {
 			if _, err := link.CreateVrf(vrf, ns, 10+idx); err != nil {
-				return err
+				return messages, err
 			}
 		}
 
 		client, err := NewDockerClient()
 		if err != nil {
-			return err
+			return messages, err
 		}
 		defer client.Close()
 
@@ -329,20 +332,20 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 			if _, err := link.CreateMacVlan(
 				name, fmt.Sprintf("eth%d", vrrpGroup.Interface),
 				vrrpGroup.Group, ns); err != nil {
-				return err
+				return messages, err
 			}
 			link.SetInterfaceState(name, ns, link.IFSTATE_UP)
 
 			// set ip address
 			if _, err := client.Exec(n.ID, []string{"ip", "addr", "add", vrrpGroup.Address, "dev", name}); err != nil {
-				return err
+				return messages, err
 			}
 
 			// modify kernel settings to disable routes when interface
 			// is in linkdown state
 			_, err := client.Exec(n.ID, []string{"sysctl", "-w", fmt.Sprintf("net.ipv4.conf.%s.ignore_routes_with_linkdown=1", name)})
 			if err != nil {
-				return err
+				return messages, err
 			}
 		}
 
@@ -368,7 +371,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 				}
 
 				if err := client.CopyTo(n.ID, source, dest); err != nil {
-					return fmt.Errorf("Unable to load config file %s:\n\t%w", source, err)
+					return messages, fmt.Errorf("Unable to load config file %s:\n\t%w", source, err)
 				}
 			}
 
@@ -378,13 +381,16 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 		if n.Type == "router" {
 			// start FRR daemon
 			if _, err := client.Exec(n.ID, []string{"/usr/lib/frr/frrinit.sh", "start"}); err != nil {
-				return err
+				return messages, err
 			}
 		} else {
 			netconf := path.Join(confPath, n.Name+".net.conf")
 			if _, err := os.Stat(netconf); err == nil {
-				if _, err := client.Exec(n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"}); err != nil {
-					return err
+				output, err := client.Exec(n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"})
+				if err != nil {
+					return messages, err
+				} else if output != "" {
+					messages = strings.Split(output, "\n")
 				}
 			}
 		}
@@ -392,7 +398,7 @@ func (n *DockerNode) LoadConfig(confPath string) error {
 		n.ConfigLoaded = true
 	}
 
-	return nil
+	return messages, nil
 }
 
 func (n *DockerNode) Save(dstPath string) error {

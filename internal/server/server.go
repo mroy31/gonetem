@@ -239,33 +239,37 @@ func (s *netemServer) WriteNetworkFile(ctx context.Context, request *proto.WNetw
 	}, nil
 }
 
-func (s *netemServer) Run(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+func (s *netemServer) Run(ctx context.Context, request *proto.ProjectRequest) (*proto.RunResponse, error) {
 	project := GetProject(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
 
-	if err := project.Topology.Run(); err != nil {
+	nodeMessages, err := project.Topology.Run()
+	if err != nil {
 		return nil, err
 	}
 
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
+	return &proto.RunResponse{
+		Status:       &proto.Status{Code: proto.StatusCode_OK},
+		NodeMessages: nodeMessages,
 	}, nil
 }
 
-func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest) (*proto.RunResponse, error) {
 	project := GetProject(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
 
-	if err := project.Topology.Reload(); err != nil {
+	nodeMessages, err := project.Topology.Reload()
+	if err != nil {
 		return nil, err
 	}
 
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
+	return &proto.RunResponse{
+		Status:       &proto.Status{Code: proto.StatusCode_OK},
+		NodeMessages: nodeMessages,
 	}, nil
 }
 
@@ -275,7 +279,7 @@ func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*p
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
 
-	if err := project.Topology.Start(request.GetNode()); err != nil {
+	if _, err := project.Topology.Start(request.GetNode()); err != nil {
 		return nil, err
 	}
 
@@ -308,7 +312,7 @@ func (s *netemServer) Restart(ctx context.Context, request *proto.NodeRequest) (
 	if err := project.Topology.Stop(request.GetNode()); err != nil {
 		return nil, err
 	}
-	if err := project.Topology.Start(request.GetNode()); err != nil {
+	if _, err := project.Topology.Start(request.GetNode()); err != nil {
 		return nil, err
 	}
 

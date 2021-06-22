@@ -178,10 +178,10 @@ func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
 }
 
-func (o *OvsNode) LoadConfig(confPath string) error {
+func (o *OvsNode) LoadConfig(confPath string) ([]string, error) {
 	if !o.Running {
 		o.Logger.Warn("LoadConfig: node not running")
-		return nil
+		return []string{}, nil
 	}
 
 	return o.OvsInstance.LoadConfig(o.Name, o.GetBridgeName(), confPath)

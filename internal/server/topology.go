@@ -12,6 +12,7 @@ import (
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/ovs"
+	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
@@ -200,29 +201,34 @@ func (t *NetemTopologyManager) Load() error {
 	return nil
 }
 
-func (t *NetemTopologyManager) Reload() error {
-	if err := t.Close(); err != nil {
-		return err
+func (t *NetemTopologyManager) Reload() ([]*proto.RunResponse_NodeMessages, error) {
+	var err error
+	var nodeMessages []*proto.RunResponse_NodeMessages
+
+	if err = t.Close(); err != nil {
+		return nodeMessages, err
 	}
 
-	if err := t.Load(); err != nil {
-		return err
+	if err = t.Load(); err != nil {
+		return nodeMessages, err
 	}
 	if t.running {
 		t.running = false
 		return t.Run()
 	}
 
-	return nil
+	return nodeMessages, nil
 }
 
-func (t *NetemTopologyManager) Run() error {
+func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) {
 	t.logger.Debug("Topo/Run")
 
 	var err error
+	var nodeMessages []*proto.RunResponse_NodeMessages
+
 	if t.running {
 		t.logger.Warn("Topology is already running")
-		return nil
+		return nodeMessages, nil
 	}
 
 	g := new(errgroup.Group)
@@ -230,7 +236,7 @@ func (t *NetemTopologyManager) Run() error {
 	t.logger.Debug("Topo/Run: start ovswitch instance")
 	t.ovsInstance.Start()
 	if err != nil {
-		return err
+		return nodeMessages, err
 	}
 
 	// 2 - start all nodes
@@ -240,14 +246,14 @@ func (t *NetemTopologyManager) Run() error {
 		g.Go(func() error { return node.Start() })
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return nodeMessages, err
 	}
 
 	// 3 - create links
 	t.logger.Debug("Topo/Run: setup links")
 	for _, l := range t.links {
 		if err := t.setupLink(l); err != nil {
-			return err
+			return nodeMessages, err
 		}
 	}
 
@@ -260,7 +266,7 @@ func (t *NetemTopologyManager) Run() error {
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return nodeMessages, err
 	}
 
 	// 5 - load configs
@@ -268,14 +274,21 @@ func (t *NetemTopologyManager) Run() error {
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.LoadConfig(configPath) })
+		g.Go(func() error {
+			messages, err := node.LoadConfig(configPath)
+			nodeMessages = append(nodeMessages, &proto.RunResponse_NodeMessages{
+				Name:     node.GetName(),
+				Messages: messages,
+			})
+			return err
+		})
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return nodeMessages, err
 	}
 
 	t.running = true
-	return nil
+	return nodeMessages, nil
 }
 
 func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
@@ -389,17 +402,18 @@ func (t *NetemTopologyManager) GetNode(name string) INetemNode {
 	return nil
 }
 
-func (t *NetemTopologyManager) startNode(node INetemNode) error {
+func (t *NetemTopologyManager) startNode(node INetemNode) ([]string, error) {
 	if err := node.Start(); err != nil {
-		return fmt.Errorf("Unable to start node %s: %w", node.GetName(), err)
+		return []string{}, fmt.Errorf("Unable to start node %s: %w", node.GetName(), err)
 	}
 
 	configPath := path.Join(t.path, configDir)
-	if err := node.LoadConfig(configPath); err != nil {
-		return fmt.Errorf("Unable to load config of node %s: %w", node.GetName(), err)
+	messages, err := node.LoadConfig(configPath)
+	if err != nil {
+		return messages, fmt.Errorf("Unable to load config of node %s: %w", node.GetName(), err)
 	}
 
-	return nil
+	return messages, nil
 }
 
 func (t *NetemTopologyManager) stopNode(node INetemNode) error {
@@ -409,15 +423,15 @@ func (t *NetemTopologyManager) stopNode(node INetemNode) error {
 	return nil
 }
 
-func (t *NetemTopologyManager) Start(nodeName string) error {
+func (t *NetemTopologyManager) Start(nodeName string) ([]string, error) {
 	if !t.running {
 		t.logger.Warnf("Start %s: topology not running", nodeName)
-		return nil
+		return []string{}, nil
 	}
 
 	node := t.GetNode(nodeName)
 	if node == nil {
-		return fmt.Errorf("Node %s not found in the topology", nodeName)
+		return []string{}, fmt.Errorf("Node %s not found in the topology", nodeName)
 	}
 
 	return t.startNode(node)

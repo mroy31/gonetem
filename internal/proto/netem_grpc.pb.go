@@ -34,8 +34,8 @@ type NetemClient interface {
 	WriteNetworkFile(ctx context.Context, in *WNetworkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// topology actions
 	Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
+	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
 	// Node actions
 	CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error)
@@ -178,8 +178,8 @@ func (c *netemClient) Check(ctx context.Context, in *ProjectRequest, opts ...grp
 	return out, nil
 }
 
-func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
-	out := new(AckResponse)
+func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error) {
+	out := new(RunResponse)
 	err := c.cc.Invoke(ctx, "/netem.Netem/Reload", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -187,8 +187,8 @@ func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...gr
 	return out, nil
 }
 
-func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
-	out := new(AckResponse)
+func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error) {
+	out := new(RunResponse)
 	err := c.cc.Invoke(ctx, "/netem.Netem/Run", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -389,8 +389,8 @@ type NetemServer interface {
 	WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error)
 	// topology actions
 	Check(context.Context, *ProjectRequest) (*AckResponse, error)
-	Reload(context.Context, *ProjectRequest) (*AckResponse, error)
-	Run(context.Context, *ProjectRequest) (*AckResponse, error)
+	Reload(context.Context, *ProjectRequest) (*RunResponse, error)
+	Run(context.Context, *ProjectRequest) (*RunResponse, error)
 	// Node actions
 	CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error)
 	Console(Netem_ConsoleServer) error
@@ -441,10 +441,10 @@ func (UnimplementedNetemServer) WriteNetworkFile(context.Context, *WNetworkReque
 func (UnimplementedNetemServer) Check(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Check not implemented")
 }
-func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*AckResponse, error) {
+func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*RunResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Reload not implemented")
 }
-func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*AckResponse, error) {
+func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*RunResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
 }
 func (UnimplementedNetemServer) CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error) {

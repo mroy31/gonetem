@@ -84,5 +84,7 @@ uninstall:
 	rm ${CONFDIR}/config.yaml
 	rmdir ${CONFDIR}
 
+test:
+	sudo go test ./...
 
 .PHONY: clean proto build build-deb install

@@ -789,8 +789,20 @@ func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
 	s.Prefix = "Reload project " + p.prjPath + " : "
 	s.Start()
 
-	_, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	answer, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	s.Stop()
+
+	// Display warning messages from run command
+	for _, nMessages := range answer.NodeMessages {
+		if len(nMessages.Messages) > 0 {
+			fmt.Println(color.YellowString(nMessages.Name + ":"))
+			for _, msg := range nMessages.Messages {
+				if msg != "" {
+					fmt.Println(color.YellowString("  - " + msg))
+				}
+			}
+		}
+	}
 
 	if err != nil {
 		RedPrintf("Unable to reload the project: %v\n", err)

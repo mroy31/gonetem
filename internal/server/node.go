@@ -23,7 +23,7 @@ type INetemNode interface {
 	GetNetns() (netns.NsHandle, error)
 	GetInterfaceName(ifIndex int) string
 	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
-	LoadConfig(confPath string) error
+	LoadConfig(confPath string) ([]string, error)
 	CanRunConsole() error
 	Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
 	Capture(ifIndex int, out io.Writer) error

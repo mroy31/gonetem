@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"sync"
 
 	"github.com/mroy31/gonetem/internal/docker"
@@ -151,29 +152,34 @@ func (o *OvsProjectInstance) DelPort(brName, ifName string) error {
 	return o.Exec(cmd)
 }
 
-func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) error {
+func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) ([]string, error) {
+	var messages []string
+
 	client, err := docker.NewDockerClient()
 	if err != nil {
-		return err
+		return messages, err
 	}
 	defer client.Close()
 
 	tmpConfFile := "/tmp/" + name + ".conf"
 	confFile := path.Join(confPath, name+".conf")
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
-		return nil
+		return messages, nil
 	}
 
 	if err := client.CopyTo(o.containerId, confFile, tmpConfFile); err != nil {
-		return fmt.Errorf("Unable to copy config file %s:\n\t%w", confFile, err)
+		return messages, fmt.Errorf("Unable to copy config file %s:\n\t%w", confFile, err)
 	}
 
 	cmd := []string{"ovs-config.py", "-a", "load", "-c", tmpConfFile, brName}
-	if _, err := client.Exec(o.containerId, cmd); err != nil {
-		return fmt.Errorf("Unable to load config file %s:\n\t%w", confFile, err)
+	output, err := client.Exec(o.containerId, cmd)
+	if err != nil {
+		return messages, fmt.Errorf("Unable to load config file %s:\n\t%w", confFile, err)
+	} else if output != "" {
+		messages = strings.Split(output, "\n")
 	}
 
-	return nil
+	return messages, nil
 }
 
 func (o *OvsProjectInstance) SaveConfig(name, brName, dstPath string) error {

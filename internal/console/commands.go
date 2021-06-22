@@ -107,8 +107,19 @@ func OpenProject(prjPath string) (string, string, error) {
 		s.Prefix = "Start project " + name + " : "
 		s.Start()
 
-		_, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
+		answer, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
 		s.Stop()
+
+		for _, nMessages := range answer.NodeMessages {
+			if len(nMessages.Messages) > 0 {
+				fmt.Println(color.YellowString(nMessages.Name + ":"))
+				for _, msg := range nMessages.Messages {
+					if msg != "" {
+						fmt.Println(color.YellowString("  - " + msg))
+					}
+				}
+			}
+		}
 
 		if err != nil {
 			return name, prjID, err

@@ -70,7 +70,7 @@ func TestProject_Save(t *testing.T) {
 	}
 	defer CloseProject(prjID)
 
-	if err := project.Topology.Run(); err != nil {
+	if _, err := project.Topology.Run(); err != nil {
 		t.Errorf("Unable to start project: %v", err)
 		return
 	}

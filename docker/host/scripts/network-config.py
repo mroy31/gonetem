@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# pynetem: network emulator
+# gonetem: network emulator
 # Copyright (C) 2015-2017 Mickael Royer <mickael.royer@recherche.enac.fr>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -27,11 +27,13 @@ from pyroute2 import IPDB
 
 def is_ipv6_autoconf(if_name):
     proc_prefix = "/proc/sys/net/ipv6/conf/"
-    ret = subprocess.run(["cat", proc_prefix+"all/autoconf"], capture_output=True)
+    ret = subprocess.run(["cat", proc_prefix + "all/autoconf"], capture_output=True)
     if ret.output == "1":
         return True
 
-    ret = subprocess.run(["cat", proc_prefix+if_name+"/autoconf"], capture_output=True)
+    ret = subprocess.run(
+        ["cat", proc_prefix + if_name + "/autoconf"], capture_output=True
+    )
     if ret.output == "1":
         return True
 
@@ -49,11 +51,17 @@ def load_net_config(f_path):
                 with ipdb.interfaces[ifname] as i:
                     i.up()
                     for address in net_config["interfaces"][ifname]:
-                        i.add_ip(address)
+                        try:
+                            i.add_ip(address)
+                        except Exception as ex:
+                            print("Unable to load IP address {} to interface {} -> {}".format(address, ifname, ex))
             # configure routes
             for route in net_config["routes"]:
                 if route["gateway"] is not None:
-                    ipdb.routes.add(route).commit()
+                    try:
+                        ipdb.routes.add(route).commit()
+                    except Exception as ex:
+                        print("Unable to load route {} via {} -> {}".format(route["dst"], route["gateway"], ex))
 
 
 def save_net_config(f_path, all_if):
@@ -68,10 +76,7 @@ def save_net_config(f_path, all_if):
     def fmt_addr(addr_conf):
         return "%s/%s" % addr_conf
 
-    net_config = {
-        "interfaces": {},
-        "routes": []
-    }
+    net_config = {"interfaces": {}, "routes": []}
     with IPDB() as ipdb:
         # record ip addresses
         for if_name in ipdb.interfaces:
@@ -85,12 +90,14 @@ def save_net_config(f_path, all_if):
                 fmt_addr(a) for a in addresses if is_recordable(a[0], if_name)
             ]
         # record route
-        net_config["routes"] = [{
-            "dst": route["dst"],
-            "gateway": route["gateway"],
-            "family": route["family"]
-        } for route in ipdb.routes if route["gateway"] is not None and \
-            not route["gateway"].startswith("fe80")
+        net_config["routes"] = [
+            {
+                "dst": route["dst"],
+                "gateway": route["gateway"],
+                "family": route["family"],
+            }
+            for route in ipdb.routes
+            if route["gateway"] is not None and not route["gateway"].startswith("fe80")
         ]
 
     # remove old file if exist
@@ -103,12 +110,19 @@ def save_net_config(f_path, all_if):
 if __name__ == "__main__":
     usage = "usage: %prog [options] <network file>"
     parser = OptionParser(usage=usage)
-    parser.add_option("-s", "--save", action="store_true", dest="save",
-                      help="save network config")
-    parser.add_option("-l", "--load", action="store_true", dest="load",
-                      help="load network config")
-    parser.add_option("-a", "--all", action="store_true", dest="all",
-                      help="save config for all interfaces")
+    parser.add_option(
+        "-s", "--save", action="store_true", dest="save", help="save network config"
+    )
+    parser.add_option(
+        "-l", "--load", action="store_true", dest="load", help="load network config"
+    )
+    parser.add_option(
+        "-a",
+        "--all",
+        action="store_true",
+        dest="all",
+        help="save config for all interfaces",
+    )
     (options, args) = parser.parse_args()
 
     if len(args) != 1:
@@ -119,4 +133,7 @@ if __name__ == "__main__":
             sys.exit("%s file does not exist" % f_path)
         load_net_config(f_path)
     elif options.save:
-        save_net_config(f_path, options.all)
+        try:
+            save_net_config(f_path, options.all)
+        except Exception as ex:
+            sys.exit("Unable to save net config: {}".format(ex))

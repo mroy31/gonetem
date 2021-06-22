@@ -185,7 +185,7 @@ func TestDockerNode_Save(t *testing.T) {
 				t.Errorf("Unable to start node %s: %v", tt.name, err)
 				return
 			}
-			if err := node.LoadConfig("/tmp/fake"); err != nil {
+			if _, err := node.LoadConfig("/tmp/fake"); err != nil {
 				t.Errorf("Unable to load config for node %s: %v", tt.name, err)
 				return
 			}

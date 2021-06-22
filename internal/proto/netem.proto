@@ -24,8 +24,8 @@ service Netem {
 
     // topology actions
     rpc Check(ProjectRequest) returns (AckResponse) {}
-    rpc Reload(ProjectRequest) returns (AckResponse) {}
-    rpc Run(ProjectRequest) returns (AckResponse) {}
+    rpc Reload(ProjectRequest) returns (RunResponse) {}
+    rpc Run(ProjectRequest) returns (RunResponse) {}
 
     // Node actions
     rpc CanRunConsole(NodeRequest) returns (AckResponse) {}
@@ -166,6 +166,16 @@ message Status {
 
 message AckResponse {
     Status status = 1;
+}
+
+message RunResponse {
+    message NodeMessages {
+        string name = 1;
+        repeated string messages = 2;
+    }
+
+    Status status = 1;
+    repeated NodeMessages nodeMessages = 2;
 }
 
 message FileResponse {
