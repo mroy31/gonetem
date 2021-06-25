@@ -149,6 +149,23 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 		}
 
 		peers = append(peers, link.Peer1, link.Peer2)
+
+		// check netem parameters
+		if link.Delay < 0 {
+			errors = append(errors, fmt.Errorf("Link delay must be >= 0 and specified in ms"))
+		}
+		if link.Jitter < 0 {
+			errors = append(errors, fmt.Errorf("Link jitter must be >= 0 and specified in ms"))
+		}
+		if link.Loss < 0 {
+			errors = append(errors, fmt.Errorf("Link loss must be >= 0 and specified in percent"))
+		}
+		if link.Jitter > 0 && link.Delay == 0 {
+			errors = append(errors, fmt.Errorf("You must set delay with jitter"))
+		}
+		if link.Loss > 100 {
+			errors = append(errors, fmt.Errorf("Link loss must be =< 100 and specified in percent"))
+		}
 	}
 
 	// check bridges

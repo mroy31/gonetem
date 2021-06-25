@@ -41,8 +41,11 @@ type NodeConfig struct {
 }
 
 type LinkConfig struct {
-	Peer1 string
-	Peer2 string
+	Peer1  string
+	Peer2  string
+	Loss   int
+	Delay  int
+	Jitter int
 }
 
 type BridgeConfig struct {
@@ -62,8 +65,11 @@ type NetemLinkPeer struct {
 }
 
 type NetemLink struct {
-	Peer1 NetemLinkPeer
-	Peer2 NetemLinkPeer
+	Peer1  NetemLinkPeer
+	Peer2  NetemLinkPeer
+	Loss   int
+	Delay  int
+	Jitter int
 }
 
 type NetemBridge struct {
@@ -167,6 +173,9 @@ func (t *NetemTopologyManager) Load() error {
 				Node:    t.GetNode(peer2[0]),
 				IfIndex: peer2Idx,
 			},
+			Delay:  lConfig.Delay,
+			Jitter: lConfig.Jitter,
+			Loss:   lConfig.Loss,
 		}
 	}
 
@@ -361,6 +370,16 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 			l.Peer2.Node.GetName(), l.Peer2.IfIndex,
 			err,
 		)
+	}
+
+	// create netem qdisc if necessary
+	if l.Delay > 0 || l.Loss > 0 {
+		if err := link.CreateNetem(peer1IfName, peer1Netns, l.Delay, l.Jitter, l.Loss); err != nil {
+			return err
+		}
+		if err := link.CreateNetem(peer2IfName, peer2Netns, l.Delay, l.Jitter, l.Loss); err != nil {
+			return err
+		}
 	}
 
 	if err := l.Peer1.Node.AddInterface(peer1IfName, l.Peer1.IfIndex, peer1Netns); err != nil {

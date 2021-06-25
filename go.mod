@@ -13,6 +13,7 @@ require (
 	github.com/docker/docker v20.10.2+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/fatih/color v1.10.0
+	github.com/florianl/go-tc v0.3.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.4.3
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -27,7 +28,7 @@ require (
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
 	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
-	golang.org/x/sys v0.0.0-20210219172841-57ea560cfca1 // indirect
+	golang.org/x/sys v0.0.0-20210219172841-57ea560cfca1
 	golang.org/x/text v0.3.5 // indirect
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
 	google.golang.org/genproto v0.0.0-20210126160654-44e461bb6506 // indirect

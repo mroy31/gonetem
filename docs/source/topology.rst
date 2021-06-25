@@ -119,13 +119,16 @@ Links
 -----
 
 In gonetem, links between nodes are defined in the ``links``. Each link
-definition requires 2 parameters:
+definition requires the following parameters:
 
   * ``peer1`` (string, required): left connection of the link, following the format ``<node_name>.<if_number>``
   * ``peer2`` (string, required): right connection of the link, following the format ``<node_name>.<if_number>``
+  * ``delay`` (int, optional): delay on the link in ms
+  * ``jitter`` (int, optional): jitter on the link in ms
+  * ``loss`` (int, optional): loss on the link in percent (between 0 and 100)
 
-Example of link
-"""""""""""""""
+Example of links
+""""""""""""""""
 
 .. code-block:: yaml
 
@@ -139,8 +142,11 @@ Example of link
     links:
       - peer1: host.0
         peer2: sw.0
+        loss: 2
       - peer1: R1.0
         peer2: sw.1
+        delay: 100
+        jitter: 10
 
 Bridges
 -------
@@ -194,6 +200,8 @@ Below, you will find topology file to create the network above:
         peer2: R1.0
       - peer1: R1.1
         peer2: R2.1
+        delay: 100
+        jitter: 10
       - peer1: R2.0
         peer2: sw2.0
       - peer1: sw2.1
