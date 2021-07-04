@@ -166,6 +166,14 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 		if link.Loss > 100 {
 			errors = append(errors, fmt.Errorf("Link loss must be =< 100 and specified in percent"))
 		}
+
+		// check tbf parameters
+		if link.Rate < 0 {
+			errors = append(errors, fmt.Errorf("Link rate must be >= 0 and specified in kbps"))
+		}
+		if link.Rate > 0 && link.Delay == 0 {
+			errors = append(errors, fmt.Errorf("Delay must be > 0 when Link rate is configured"))
+		}
 	}
 
 	// check bridges

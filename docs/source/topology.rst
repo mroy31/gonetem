@@ -126,6 +126,7 @@ definition requires the following parameters:
   * ``delay`` (int, optional): delay on the link in ms
   * ``jitter`` (int, optional): jitter on the link in ms
   * ``loss`` (int, optional): loss on the link in percent (between 0 and 100)
+  * ``rate`` (int, optional): link rate in kbps
 
 Example of links
 """"""""""""""""
@@ -145,8 +146,9 @@ Example of links
         loss: 2
       - peer1: R1.0
         peer2: sw.1
-        delay: 100
-        jitter: 10
+        delay: 100 # ms
+        jitter: 10 # ms
+        rate: 1024 # 1Mbps
 
 Bridges
 -------

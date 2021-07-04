@@ -43,9 +43,10 @@ type NodeConfig struct {
 type LinkConfig struct {
 	Peer1  string
 	Peer2  string
-	Loss   int
-	Delay  int
-	Jitter int
+	Loss   int // percent
+	Delay  int // ms
+	Jitter int // ms
+	Rate   int // kbps
 }
 
 type BridgeConfig struct {
@@ -70,6 +71,7 @@ type NetemLink struct {
 	Loss   int
 	Delay  int
 	Jitter int
+	Rate   int
 }
 
 type NetemBridge struct {
@@ -176,6 +178,7 @@ func (t *NetemTopologyManager) Load() error {
 			Delay:  lConfig.Delay,
 			Jitter: lConfig.Jitter,
 			Loss:   lConfig.Loss,
+			Rate:   lConfig.Rate,
 		}
 	}
 
@@ -378,6 +381,15 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 			return err
 		}
 		if err := link.CreateNetem(peer2IfName, peer2Netns, l.Delay, l.Jitter, l.Loss); err != nil {
+			return err
+		}
+	}
+	// create tbf qdisc if necessary
+	if l.Rate > 0 {
+		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay, l.Rate); err != nil {
+			return err
+		}
+		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay, l.Rate); err != nil {
 			return err
 		}
 	}
