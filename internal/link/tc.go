@@ -27,6 +27,11 @@ func formatPercent(per int) uint32 {
 	return result
 }
 
+func formatTime(t int) uint32 {
+	// TODO: understand why we need 15.625 factor
+	return uint32(float64(t) * 1000 * 15.625)
+}
+
 func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss int) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -62,8 +67,8 @@ func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int,
 			Kind: "netem",
 			Netem: &tc.Netem{
 				Qopt: tc.NetemQopt{
-					Latency: uint32(delay * 10000),  // ms
-					Jitter:  uint32(jitter * 10000), // ms
+					Latency: formatTime(delay),
+					Jitter:  formatTime(jitter),
 					Limit:   1000,
 					Loss:    formatPercent(loss),
 				},

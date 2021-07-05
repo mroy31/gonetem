@@ -386,10 +386,10 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 	// create tbf qdisc if necessary
 	if l.Rate > 0 {
-		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay, l.Rate); err != nil {
+		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay+l.Jitter, l.Rate); err != nil {
 			return err
 		}
-		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay, l.Rate); err != nil {
+		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay+l.Jitter, l.Rate); err != nil {
 			return err
 		}
 	}
