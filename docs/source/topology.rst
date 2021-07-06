@@ -125,8 +125,8 @@ definition requires the following parameters:
   * ``peer2`` (string, required): right connection of the link, following the format ``<node_name>.<if_number>``
   * ``delay`` (int, optional): delay on the link in ms
   * ``jitter`` (int, optional): jitter on the link in ms
-  * ``loss`` (int, optional): loss on the link in percent (between 0 and 100)
-  * ``rate`` (int, optional): link rate in kbps
+  * ``loss`` (float, optional): loss on the link in percent (between 0.0 and 100.0)
+  * ``rate`` (int, optional): link rate in kbits per second
 
 Example of links
 """"""""""""""""

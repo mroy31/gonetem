@@ -43,10 +43,10 @@ type NodeConfig struct {
 type LinkConfig struct {
 	Peer1  string
 	Peer2  string
-	Loss   int // percent
-	Delay  int // ms
-	Jitter int // ms
-	Rate   int // kbps
+	Loss   float64 // percent
+	Delay  int     // ms
+	Jitter int     // ms
+	Rate   int     // kbps
 }
 
 type BridgeConfig struct {
@@ -68,7 +68,7 @@ type NetemLinkPeer struct {
 type NetemLink struct {
 	Peer1  NetemLinkPeer
 	Peer2  NetemLinkPeer
-	Loss   int
+	Loss   float64
 	Delay  int
 	Jitter int
 	Rate   int

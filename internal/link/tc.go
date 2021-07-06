@@ -20,8 +20,8 @@ var (
 	logger = logrus.WithField("module", "tc")
 )
 
-func formatPercent(per int) uint32 {
-	perF := float64(per) / 100.0
+func formatPercent(per float64) uint32 {
+	perF := per / 100.0
 	result := uint32(float64(uint32Max) * perF)
 
 	return result
@@ -32,7 +32,7 @@ func formatTime(t int) uint32 {
 	return uint32(float64(t) * 1000 * 15.625)
 }
 
-func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss int) error {
+func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss float64) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
