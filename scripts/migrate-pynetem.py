@@ -41,7 +41,7 @@ def create_gnet_network(pnet_network):
     sw_indexes = {}
 
     def type_translation(pnet_type):
-        if pnet_type == "docker.frr":
+        if pnet_type == "docker.frr" or pnet_type == "docker.quagga":
             return "docker.router"
         return pnet_type
 
