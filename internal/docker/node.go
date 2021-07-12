@@ -530,21 +530,6 @@ func (n *DockerNode) Close() error {
 }
 
 func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, error) {
-	imgName := dockerOpts.ImgName
-	if imgName == "" {
-		// use default image
-		switch dockerOpts.Type {
-		case "host":
-			imgName = options.GetDockerImageId(options.IMG_HOST)
-		case "server":
-			imgName = options.GetDockerImageId(options.IMG_SERVER)
-		case "router":
-			imgName = options.GetDockerImageId(options.IMG_ROUTER)
-		default:
-			return nil, errors.New(fmt.Sprintf("Docker type %s is not known", dockerOpts.Type))
-		}
-	}
-
 	node := &DockerNode{
 		PrjID:      prjID,
 		ID:         "",
@@ -559,6 +544,21 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 			"project": prjID,
 			"node":    dockerOpts.Name,
 		}),
+	}
+
+	imgName := dockerOpts.ImgName
+	if imgName == "" {
+		// use default image
+		switch dockerOpts.Type {
+		case "host":
+			imgName = options.GetDockerImageId(options.IMG_HOST)
+		case "server":
+			imgName = options.GetDockerImageId(options.IMG_SERVER)
+		case "router":
+			imgName = options.GetDockerImageId(options.IMG_ROUTER)
+		default:
+			return node, errors.New(fmt.Sprintf("Docker type %s is not known", dockerOpts.Type))
+		}
 	}
 
 	if err := node.Create(imgName, dockerOpts.Ipv6); err != nil {
