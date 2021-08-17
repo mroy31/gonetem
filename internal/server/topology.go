@@ -38,6 +38,7 @@ type NodeConfig struct {
 	Mpls  bool
 	Vrfs  []string
 	Vrrps []VrrpOptions
+	Image string
 }
 
 type LinkConfig struct {

@@ -52,7 +52,7 @@ are available, each one associated to an image:
 - mroy31/gonetem-server identified by the type *docker.server*, which emulates a server node (with http, tftp and dhcp server for now)
 - mroy31/gonetem-frr identified by the type *docker.router*, which emulates router based on the software `FRR <https://frrouting.org/>`_
 
-All these images are available on docker hub.
+All these images are available on docker hub. It is also possible to use a custom image thanks to the options ``image`` (see below).
 
 Options
 """""""
@@ -60,6 +60,7 @@ Options
 Several options are available when you declare a docker node:
   - ``ipv6`` (boolean, optional): set to yes if you want to enable ipv6 support on this node (no by default)
   - ``mpls`` (boolean, optional): set to yes to enable mpls support on this node (no by default).
+  - ``image`` (string, optional): set to provide a custom docker image for this node
 
 VRF support
 """""""""""
