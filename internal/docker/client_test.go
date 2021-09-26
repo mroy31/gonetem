@@ -27,7 +27,7 @@ func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, st
 
 	image := options.GetDockerImageId(imgId)
 	name := utils.RandString(10)
-	cID, err := client.Create(image, name, name, true, true)
+	cID, err := client.Create(image, name, name, []string{}, true, true)
 	if err != nil {
 		t.Fatalf("Unable to create the container: %v", err)
 	}

@@ -33,12 +33,13 @@ type VrrpOptions struct {
 }
 
 type NodeConfig struct {
-	Type  string
-	IPv6  bool
-	Mpls  bool
-	Vrfs  []string
-	Vrrps []VrrpOptions
-	Image string
+	Type    string
+	IPv6    bool
+	Mpls    bool
+	Vrfs    []string
+	Vrrps   []VrrpOptions
+	Volumes []string
+	Image   string
 }
 
 type LinkConfig struct {

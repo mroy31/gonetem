@@ -61,6 +61,7 @@ Several options are available when you declare a docker node:
   - ``ipv6`` (boolean, optional): set to yes if you want to enable ipv6 support on this node (no by default)
   - ``mpls`` (boolean, optional): set to yes to enable mpls support on this node (no by default).
   - ``image`` (string, optional): set to provide a custom docker image for this node
+  - ``volumes`` (string list, optional): Allow to bind host path in container filesystem (like -v option in ``docker run```). The syntax is ``/host/path:/container/path``
 
 VRF support
 """""""""""
@@ -91,6 +92,8 @@ Example of docker node
         type: docker.router
         ipv6: yes
         mpls: yes
+        volumes:
+        - /tmp:/tmp
         vrfs: [VRFA, VRFB]
         vrrps:
         - interface: 0

@@ -101,6 +101,7 @@ func CreateNode(prjID string, name string, shortName string, config NodeConfig) 
 			Ipv6:      config.IPv6,
 			Mpls:      config.Mpls,
 			Vrfs:      config.Vrfs,
+			Volumes:   config.Volumes,
 		}
 		for _, group := range config.Vrrps {
 			options.Vrrps = append(options.Vrrps, docker.VrrpOptions{

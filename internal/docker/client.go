@@ -113,12 +113,13 @@ func (c *DockerClient) GetState(containerId string) (string, error) {
 	return container.State, nil
 }
 
-func (c *DockerClient) Create(imgName, containerName, hostName string, ipv6, mpls bool) (string, error) {
+func (c *DockerClient) Create(imgName, containerName, hostName string, volumes []string, ipv6, mpls bool) (string, error) {
 	hostConfig := container.HostConfig{
 		NetworkMode: "none",
 		Privileged:  true,
 		CapAdd:      []string{"ALL"},
 		Sysctls:     make(map[string]string),
+		Binds:       volumes,
 	}
 	if ipv6 {
 		hostConfig.Sysctls["net.ipv6.conf.all.disable_ipv6"] = "0"

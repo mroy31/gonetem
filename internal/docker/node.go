@@ -30,6 +30,7 @@ type DockerNodeOptions struct {
 	Mpls      bool
 	Vrfs      []string
 	Vrrps     []VrrpOptions
+	Volumes   []string
 }
 
 type DockerNodeStatus struct {
@@ -49,6 +50,7 @@ type DockerNode struct {
 	Mpls           bool
 	Vrfs           []string
 	Vrrps          []VrrpOptions
+	Volumes        []string
 	Logger         *logrus.Entry
 }
 
@@ -114,7 +116,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 
 	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
-	if n.ID, err = client.Create(imgName, containerName, n.Name, ipv6, n.Mpls); err != nil {
+	if n.ID, err = client.Create(imgName, containerName, n.Name, n.Volumes, ipv6, n.Mpls); err != nil {
 		return err
 	}
 
@@ -539,6 +541,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		Mpls:       dockerOpts.Mpls,
 		Vrfs:       dockerOpts.Vrfs,
 		Vrrps:      dockerOpts.Vrrps,
+		Volumes:    dockerOpts.Volumes,
 		Interfaces: make(map[string]link.IfState),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,

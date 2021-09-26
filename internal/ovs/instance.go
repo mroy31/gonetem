@@ -244,7 +244,7 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 	}
 
 	containerName := fmt.Sprintf("%s%s.ovs", options.NETEM_ID, prjID)
-	containerId, err := client.Create(imgName, containerName, "ovs", false, false)
+	containerId, err := client.Create(imgName, containerName, "ovs", []string{}, false, false)
 	if err != nil {
 		return nil, err
 	}

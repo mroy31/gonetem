@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"regexp"
 	"strings"
 
@@ -16,6 +17,7 @@ var (
 	switchRE   = regexp.MustCompile(`^\w{1,10}$`)
 	nodeTypeRE = regexp.MustCompile(`^docker\.\w+|ovs$`)
 	peerRE     = regexp.MustCompile(`^\w+.[0-9]+$`)
+	volumeRE   = regexp.MustCompile(`^[^\0]+:[^\0]+$`)
 )
 
 func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
@@ -53,6 +55,20 @@ func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 			if err != nil {
 				return fmt.Errorf("Vrrp address '%s' is not valid: %s", vrrpCnf.Address, err)
 			}
+		}
+	}
+
+	// check volumes configuration
+	for _, vBind := range nConfig.Volumes {
+		// only hostPath:containerPath syntax is allowed
+		if !volumeRE.MatchString(vBind) {
+			return fmt.Errorf("[%s/volumes] volume bind '%s' is not valid", name, vBind)
+		}
+
+		// check that host path exists
+		split := strings.Split(vBind, ":")
+		if _, err := os.Stat(split[0]); os.IsNotExist(err) {
+			return fmt.Errorf("[%s/volumes] host path '%s' does not exist", name, split[0])
 		}
 	}
 
