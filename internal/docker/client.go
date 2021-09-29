@@ -188,6 +188,16 @@ func (c *DockerClient) Pid(containerId string) (int, error) {
 	return containerInfo.State.Pid, nil
 }
 
+func (c *DockerClient) IsFileExist(containerId, filepath string) bool {
+	ctx := context.Background()
+	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, filepath)
+	if err != nil {
+		return false
+	}
+
+	return sourceStat.Mode.IsRegular()
+}
+
 func (c *DockerClient) CopyFrom(containerId, source, dest string) error {
 	ctx := context.Background()
 	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, source)

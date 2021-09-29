@@ -15,6 +15,10 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+const (
+	initScript = "/gonetem-init.sh"
+)
+
 type VrrpOptions struct {
 	Interface int
 	Group     int
@@ -366,6 +370,7 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 				configFiles[n.Name+".tftpd-hpa.default"] = "/etc/default/tftpd-hpa"
 			}
 
+			configFiles[n.Name+".init.conf"] = initScript
 			for source, dest := range configFiles {
 				source = path.Join(confPath, source)
 				if _, err := os.Stat(source); os.IsNotExist(err) {
@@ -394,6 +399,16 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 				} else if output != "" {
 					messages = strings.Split(output, "\n")
 				}
+			}
+		}
+
+		// execute init script if it exists
+		if client.IsFileExist(n.ID, initScript) {
+			output, err := client.Exec(n.ID, []string{"sh", initScript})
+			if err != nil {
+				return messages, err
+			} else if output != "" {
+				messages = strings.Split(output, "\n")
 			}
 		}
 
@@ -446,13 +461,20 @@ func (n *DockerNode) Save(dstPath string) error {
 		configFiles[confFile] = fmt.Sprintf("%s.frr.conf", n.Name)
 	}
 
+	// Save init script if it exists
+	configFiles[initScript] = fmt.Sprintf("%s.init.conf", n.Name)
 	for source, dest := range configFiles {
 		dest = path.Join(dstPath, dest)
+		if !client.IsFileExist(n.ID, source) {
+			continue
+		}
+
 		if err := client.CopyFrom(n.ID, source, dest); err != nil {
 			msg := fmt.Sprintf("Unable to save file %s:\n\t%v", source, err)
 			return errors.New(msg)
 		}
 	}
+
 	return nil
 }
 

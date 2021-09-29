@@ -100,6 +100,12 @@ Example of docker node
           group: 1
           address: 192.168.1.252/24
 
+Extra : init script
+"""""""""""""""""""
+
+For specific situations, it is possible to include an init script in docker node.
+The path is ``/gonetem-init.sh``. If this file exits, it is saved in the .gnet project file and executed at the launch of the node.
+
 Switches
 ````````
 
