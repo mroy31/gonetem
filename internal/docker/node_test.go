@@ -268,3 +268,47 @@ func TestDockerNode_AttachLink(t *testing.T) {
 		t.Fatalf("Unable to create veth: %v", err)
 	}
 }
+
+func TestDockerNode_Volumes(t *testing.T) {
+	skipUnlessRoot(t)
+
+	options.InitServerConfig()
+	prjID := utils.RandString(4)
+
+	// Create 1 host node
+	config := DockerNodeOptions{
+		Name:    utils.RandString(3),
+		Type:    "host",
+		Volumes: []string{"/tmp:/tmp/volume"},
+	}
+	node, err := NewDockerNode(prjID, config)
+	if err != nil {
+		t.Fatalf("Unable to create docker node: %v", err)
+	}
+	defer node.Close()
+
+	// start node
+	if err := node.Start(); err != nil {
+		t.Fatalf("Unable to start docker node %s: %v", node.GetName(), err)
+	}
+
+	// create empty file in /tmp folder
+	filename := fmt.Sprintf("%s.txt", utils.RandString(6))
+	target := path.Join("/tmp", filename)
+	if err := os.WriteFile(target, []byte{}, 0666); err != nil {
+		t.Fatalf("Unable to create temp file %s: %v", target, err)
+	}
+	defer os.Remove(filename)
+
+	// check this file exist in node
+	nTarget := path.Join("/tmp/volume", filename)
+	client, err := NewDockerClient()
+	if err != nil {
+		t.Fatalf("Unable to create docker client: %v", err)
+	}
+	defer client.Close()
+
+	if !client.IsFileExist(node.ID, nTarget) {
+		t.Fatalf("File %s is not present in the binding volume", nTarget)
+	}
+}
