@@ -13,7 +13,7 @@ from configobj import ConfigObj
 import yaml
 
 
-def open_pnet_project(prj_path):
+def open_pnet_project(prj_path: str) -> str:
     tmp_folder = tempfile.mkdtemp(prefix="pnet")
     with zipfile.ZipFile(prj_path) as prj_zip:
         prj_zip.extractall(path=tmp_folder)
@@ -108,8 +108,8 @@ def create_gnet_network(pnet_network):
             elif peer2.startswith("br"):
                 (b_name,) = re.match(r"^br\.(\w+)$", peer2).groups()
                 for br in network["bridges"]:
-                    if br.name == b_name:
-                        br["interfaces"].append(peer1)
+                    if br == b_name:
+                        network["bridges"][br]["interfaces"].append(peer1)
             elif not is_peer_exist(peer2):
                 network["links"].append({"peer1": peer1, "peer2": peer2})
 
