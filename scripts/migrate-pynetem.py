@@ -30,9 +30,10 @@ def copy_config_files(pnet_path, gnet_path):
         ]
 
         for f in conf_files:
+            target = f.replace("quagga", "frr")
             shutil.copy(
                 os.path.join(c_path, f),
-                os.path.join(gnet_path, "configs"),
+                os.path.join(gnet_path, "configs", target),
             )
 
 
