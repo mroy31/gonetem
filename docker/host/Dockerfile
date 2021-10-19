@@ -1,4 +1,4 @@
-FROM golang:1.15
+FROM golang:1.17
 
 # download quic-go
 WORKDIR /go/src
@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
     apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
-	    telnet man traceroute hping3 iptables links htop ntp git \
+	    telnet man traceroute hping3 iptables links htop ntp git wget \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
         && rm -rf /var/lib/apt/lists/*
 
