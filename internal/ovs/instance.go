@@ -8,9 +8,11 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/options"
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netns"
 )
 
@@ -19,6 +21,10 @@ type State int
 const (
 	created State = 1 << iota
 	started
+)
+
+const (
+	maxAttempts = 10
 )
 
 var (
@@ -31,6 +37,7 @@ type OvsProjectInstance struct {
 	containerId string
 	state       State
 	bridges     []string
+	Logger      *logrus.Entry
 }
 
 func (o *OvsProjectInstance) Start() error {
@@ -42,6 +49,21 @@ func (o *OvsProjectInstance) Start() error {
 		defer client.Close()
 
 		if err := client.Start(o.containerId); err != nil {
+			return err
+		}
+
+		// wait that ovs server has been ready before return
+		attempt := 0
+		infoCmd := []string{"ovs-vsctl", "show"}
+		for attempt < maxAttempts {
+			o.Logger.Debugf("Wait ovs-server is ready - attempt %d\n", attempt)
+			if err = o.Exec(infoCmd); err == nil {
+				break
+			}
+			attempt++
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err != nil {
 			return err
 		}
 		o.state = started
@@ -253,6 +275,10 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 		prjID:       prjID,
 		containerId: containerId,
 		state:       created,
+		Logger: logrus.WithFields(logrus.Fields{
+			"project": prjID,
+			"node":    "ovs-instance",
+		}),
 	}
 
 	return ovsInstances[prjID], nil
