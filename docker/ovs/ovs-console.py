@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import re
 from cmd2 import Cmd
+from cmd2 import Cmd2ArgumentParser, with_argparser
 
 
 class ConsoleError(Exception):
@@ -39,12 +40,33 @@ def list_sw_ports(name: str) -> str:
     return run_command(f"ovs-vsctl list-ports {name}", check_output=True)
 
 
+def parse_bonding_infos(name: str, infos: str) -> str:
+    result = ""
+    members = []
+
+    for line in infos.split("\n"):
+        if line.startswith("bond_mode: "):
+            mode = line.replace("bond_mode: ", "")
+            result += f"Mode: {mode}\n"
+        elif line.startswith("member "):
+            groups = re.match(r"^member\s+(\S+): (\S+)$", line)
+            if groups is None:
+                continue
+            ifname = groups[1].split(".")[1]
+            members.append(f"{ifname}: {groups[2]}")
+
+    result += "Members:\n"
+    for member in members:
+        result += "\t" + member + "\n"
+    return result
+
+
 class OvsConsole(Cmd):
     intro = "Welcome to switch console. Type help or ? to list commands."
 
     def __init__(self, sw_name: str):
         self.prompt = f"[{sw_name}]>"
-        super(OvsConsole, self).__init__(allow_cli_args=False, use_ipython=False)
+        super(OvsConsole, self).__init__(allow_cli_args=False)
         # disable some commands
         disable_commmands = [
             "edit", "py", "set", "run_pyscript", "run_script",
@@ -58,6 +80,10 @@ class OvsConsole(Cmd):
     def emptyline(self):
         # do nothing when an empty line is entered
         pass
+
+    def do_exit(self, _: str):
+        """Alias for quit"""
+        return True
 
     def do_vlan_show(self, _: str):
         """Show actual configuration"""
@@ -139,6 +165,52 @@ class OvsConsole(Cmd):
             self.perror(
                 "Unable remove port {} to trunks {}: {}".format(port, trunks, err)
             )
+
+    add_argparser = Cmd2ArgumentParser()
+    add_argparser.add_argument('name', help='name of the bonding')
+    add_argparser.add_argument('ifaces', nargs="+", help='name of the bonding')
+
+    @with_argparser(add_argparser)
+    def do_bonding(self, opts):
+        """Create a bond interface (with LACP active) and attach ifaces"""
+        if len(opts.ifaces) < 2:
+            self.perror("A least 2 interfaces is required")
+            return
+
+        try:
+            ifaces = " ".join([f"{self.sw_name}.{i}" for i in opts.ifaces])
+            run_command(f"ovs-vsctl add-bond {self.sw_name} {self.sw_name}.{opts.name} {ifaces} lacp=active")
+        except ConsoleError as err:
+            self.perror(f"Unable to create bonding {opts.name}: {err}")
+
+    del_argparser = Cmd2ArgumentParser()
+    del_argparser.add_argument('name', help='name of the bonding')
+
+    @with_argparser(del_argparser)
+    def do_no_bonding(self, opts):
+        """Delete a bond interface"""
+        try:
+            run_command(f"ovs-vsctl del-port {self.sw_name} {self.sw_name}.{opts.name}")
+        except ConsoleError as err:
+            self.perror(f"Unable to delete bonding {opts.name}: {err}")
+
+    show_argparser = Cmd2ArgumentParser()
+    show_argparser.add_argument('name', help='name of the bonding', default=None)
+
+    @with_argparser(show_argparser)
+    def do_bonding_show(self, opts):
+        """Display information on a bond interface"""
+        if opts.name is None:
+            self.perror("You need to specify the name of the bond interface")
+            return
+
+        try:
+            infos = run_command(
+                f"ovs-appctl bond/show {self.sw_name}.{opts.name}",
+                check_output=True)
+            self.poutput(parse_bonding_infos(self.sw_name, infos))
+        except ConsoleError as err:
+            self.perror(f"Unable to get infos on bonding interface {opts.name}: {err}")
 
 
 if __name__ == "__main__":
