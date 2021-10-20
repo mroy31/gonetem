@@ -168,7 +168,7 @@ class OvsConsole(Cmd):
 
     add_argparser = Cmd2ArgumentParser()
     add_argparser.add_argument('name', help='name of the bonding')
-    add_argparser.add_argument('ifaces', nargs="+", help='name of the bonding')
+    add_argparser.add_argument('ifaces', nargs="+", help='name of the bonding', type=int)
 
     @with_argparser(add_argparser)
     def do_bonding(self, opts):
