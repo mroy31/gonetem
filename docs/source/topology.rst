@@ -125,6 +125,10 @@ Example of switch nodes
       sw2:
         type: ovs
 
+When you launch a console on a switch, a custom prompt appears allowing basic
+commands on the switch (for now, vlan and bonding configuration).
+For more details on available commands, see :ref:`here <ovs>`.
+
 Links
 -----
 
