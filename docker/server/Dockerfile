@@ -19,6 +19,7 @@ RUN apt-get update -y && \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool git \
+	bind9 isc-dhcp-relay \
         && rm -rf /var/lib/apt/lists/*
 
 ## install quic-go
