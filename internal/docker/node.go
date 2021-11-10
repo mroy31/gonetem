@@ -368,6 +368,7 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 				configFiles[n.Name+".ntp.conf"] = "/etc/ntp.conf"
 				configFiles[n.Name+".dhcpd.conf"] = "/etc/dhcp/dhcpd.conf"
 				configFiles[n.Name+".tftpd-hpa.default"] = "/etc/default/tftpd-hpa"
+				configFiles[n.Name+".isc-relay.default"] = "/etc/default/isc-dhcp-relay"
 			}
 
 			configFiles[n.Name+".init.conf"] = initScript
@@ -449,6 +450,7 @@ func (n *DockerNode) Save(dstPath string) error {
 		configFiles["/etc/ntp.conf"] = fmt.Sprintf("%s.ntp.conf", n.Name)
 		configFiles["/etc/dhcp/dhcpd.conf"] = fmt.Sprintf("%s.dhcpd.conf", n.Name)
 		configFiles["/etc/default/tftpd-hpa"] = fmt.Sprintf("%s.tftpd-hpa.default", n.Name)
+		configFiles["/etc/default/isc-dhcp-relay"] = fmt.Sprintf("%s.isc-relay.default", n.Name)
 
 	case "router":
 		confFile := "/etc/frr/frr.conf"

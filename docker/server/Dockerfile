@@ -1,4 +1,7 @@
-FROM golang:1.15
+FROM golang:1.17
+
+ENV http_proxy=http://squid.recherche.enac.fr:3128
+ENV https_proxy=http://squid.recherche.enac.fr:3128
 
 # download quic-go
 WORKDIR /go/src
@@ -19,8 +22,7 @@ RUN apt-get update -y && \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool git \
-	bind9 isc-dhcp-relay \
-        && rm -rf /var/lib/apt/lists/*
+	isc-dhcp-relay && rm -rf /var/lib/apt/lists/*
 
 ## install quic-go
 # install certs
