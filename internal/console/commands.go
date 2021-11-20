@@ -258,6 +258,39 @@ var createCmd = &cobra.Command{
 	},
 }
 
+var extractCmd = &cobra.Command{
+	Use:   "extract",
+	Short: "Extract files from a project",
+	Long:  `Extract files from a project, and save their in a specified folder`,
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		if filepath.Ext(args[0]) != ".gnet" {
+			Fatal("gonetem accepts only project with .gnet extension")
+		}
+		if _, err := os.Stat(args[0]); err != nil {
+			if os.IsNotExist(err) {
+				Fatal("Project %s does not exist", args[0])
+			} else {
+				Fatal("Unable to get infos on project %s: %s", args[0], err)
+			}
+		}
+
+		if stat, err := os.Stat(args[1]); err == nil && stat.IsDir() {
+			// extract project in the dst folder
+			f, err := os.Open(args[0])
+			if err != nil {
+				Fatal("Unable to open project %s: %s", args[0], err)
+			}
+
+			if err := utils.OpenArchive(args[1], f); err != nil {
+				Fatal("Unable to extract project %s: %s", args[0], err)
+			}
+		} else {
+			Fatal("Directory %s does not exist", args[1])
+		}
+	},
+}
+
 var openCmd = &cobra.Command{
 	Use:   "open",
 	Short: "Open a project",
@@ -358,6 +391,7 @@ func Init() {
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(consoleCmd)
 	rootCmd.AddCommand(pullCmd)
+	rootCmd.AddCommand(extractCmd)
 	rootCmd.AddCommand(getConfigCmd())
 }
 

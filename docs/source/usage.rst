@@ -41,6 +41,7 @@ Available commands
     connect     Connect to a running project
     console     Open a console to the specified node
     create      Create a project
+    extract     Extract files from a project
     help        Help about any command
     list        List running projects on the server
     open        Open a project
