@@ -6,7 +6,6 @@ RUN git clone https://github.com/mroy31/quic-go.git
 
 # build quic client / server
 WORKDIR /go/src/quic-go
-RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./enac/server/server.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-client ./enac/client/client.go
 
 FROM debian:buster-slim
@@ -36,7 +35,6 @@ RUN apt autoremove -y build-essential
 COPY ./certs/* /certs/
 RUN ln -sf /certs/ca.pem /etc/ssl/certs/Quic-Go.pem
 # copy quic binaries
-COPY --from=0 /quic-server /usr/local/bin/quic-server
 COPY --from=0 /quic-client /usr/local/bin/quic-client
 
 COPY ./scripts/iinit.py /usr/bin/
