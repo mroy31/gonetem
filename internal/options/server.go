@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	VERSION               = "0.1.3"
+	VERSION               = "0.1.4"
 	IMG_VERSION           = "0.1.0"
 	NETEM_ID              = "ntm"
 	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
