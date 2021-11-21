@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"time"
 
 	"github.com/mroy31/gonetem/internal/options"
@@ -105,6 +106,25 @@ func SaveProject(prjId string) (*bytes.Buffer, error) {
 
 	buffer := new(bytes.Buffer)
 	if err := utils.CreateArchive(project.Dir, buffer); err != nil {
+		return nil, err
+	}
+	return buffer, nil
+}
+
+func GetProjectConfigs(prjId string) (*bytes.Buffer, error) {
+	project := GetProject(prjId)
+	if project == nil {
+		return nil, &ProjectNotFoundError{prjId}
+	}
+
+	// save project before return config archive
+	if err := project.Topology.Save(); err != nil {
+		return nil, err
+	}
+
+	configPath := path.Join(project.Dir, configDir)
+	buffer := new(bytes.Buffer)
+	if err := utils.CreateArchive(configPath, buffer); err != nil {
 		return nil, err
 	}
 	return buffer, nil

@@ -28,6 +28,7 @@ type NetemClient interface {
 	OpenProject(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*PrjOpenResponse, error)
 	CloseProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	SaveProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
+	GetProjectConfigs(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
 	GetProjectStatus(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Read/Write network topology
 	ReadNetworkFile(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
@@ -136,6 +137,15 @@ func (c *netemClient) CloseProject(ctx context.Context, in *ProjectRequest, opts
 func (c *netemClient) SaveProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error) {
 	out := new(FileResponse)
 	err := c.cc.Invoke(ctx, "/netem.Netem/SaveProject", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) GetProjectConfigs(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error) {
+	out := new(FileResponse)
+	err := c.cc.Invoke(ctx, "/netem.Netem/GetProjectConfigs", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +393,7 @@ type NetemServer interface {
 	OpenProject(context.Context, *OpenRequest) (*PrjOpenResponse, error)
 	CloseProject(context.Context, *ProjectRequest) (*AckResponse, error)
 	SaveProject(context.Context, *ProjectRequest) (*FileResponse, error)
+	GetProjectConfigs(context.Context, *ProjectRequest) (*FileResponse, error)
 	GetProjectStatus(context.Context, *ProjectRequest) (*StatusResponse, error)
 	// Read/Write network topology
 	ReadNetworkFile(context.Context, *ProjectRequest) (*FileResponse, error)
@@ -428,6 +439,9 @@ func (UnimplementedNetemServer) CloseProject(context.Context, *ProjectRequest) (
 }
 func (UnimplementedNetemServer) SaveProject(context.Context, *ProjectRequest) (*FileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SaveProject not implemented")
+}
+func (UnimplementedNetemServer) GetProjectConfigs(context.Context, *ProjectRequest) (*FileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProjectConfigs not implemented")
 }
 func (UnimplementedNetemServer) GetProjectStatus(context.Context, *ProjectRequest) (*StatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProjectStatus not implemented")
@@ -612,6 +626,24 @@ func _Netem_SaveProject_Handler(srv interface{}, ctx context.Context, dec func(i
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NetemServer).SaveProject(ctx, req.(*ProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Netem_GetProjectConfigs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).GetProjectConfigs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/netem.Netem/GetProjectConfigs",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).GetProjectConfigs(ctx, req.(*ProjectRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -938,6 +970,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SaveProject",
 			Handler:    _Netem_SaveProject_Handler,
+		},
+		{
+			MethodName: "GetProjectConfigs",
+			Handler:    _Netem_GetProjectConfigs_Handler,
 		},
 		{
 			MethodName: "GetProjectStatus",

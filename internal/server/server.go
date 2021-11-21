@@ -171,6 +171,18 @@ func (s *netemServer) SaveProject(ctx context.Context, request *proto.ProjectReq
 	}, nil
 }
 
+func (s *netemServer) GetProjectConfigs(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {
+	data, err := GetProjectConfigs(request.GetId())
+	if err != nil {
+		return nil, err
+	}
+
+	return &proto.FileResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+		Data:   data.Bytes(),
+	}, nil
+}
+
 func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.ProjectRequest) (*proto.StatusResponse, error) {
 	project := GetProject(request.GetId())
 	if project == nil {

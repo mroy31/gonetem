@@ -22,6 +22,16 @@ check
 -----
 Check that the topology file is correct. If not, return found errors
 
+config
+------
+Save all the node configuration files in a specific folder.
+
+Usage:
+
+.. code-block:: bash
+
+  config <dest_path>
+
 copy
 ----
 Copy files/folder between a docker node and the host fs or vice versa.
@@ -41,14 +51,8 @@ The kind of console opened by this command depends on the type of node:
 
 * For docker host/server node: ``bash``
 * For docker frr node, run directly ``vtysh``
-* For ovswitch node, it runs a custom prompt to manage switch. For now,
-  only commands related to VLAN are available:
-
-  * ``vlan_show``: show VLAN configuration for this switch
-  * ``vlan_access``: set a port to a VLAN in access mode, syntax:
-    ``vlan_access port <port-number> vlan <vlan-id>``
-  * ``vlan_trunks``: set a port to a list VLAN in trunk mode, syntax:
-    ``vlan_trunks port <port-number> vlans <vlan-id1>,<vlan-id2>``
+* For ovswitch node, it runs a custom prompt to manage switch.
+  Commands available in this prompt are detailed :ref:`here <ovs>`.
 
 edit
 ----

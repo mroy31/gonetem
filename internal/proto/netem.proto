@@ -16,6 +16,7 @@ service Netem {
     rpc OpenProject(OpenRequest) returns (PrjOpenResponse) {}
     rpc CloseProject(ProjectRequest) returns (AckResponse) {}
     rpc SaveProject(ProjectRequest) returns (FileResponse) {}
+    rpc GetProjectConfigs(ProjectRequest) returns (FileResponse) {}
     rpc GetProjectStatus(ProjectRequest) returns (StatusResponse) {}
 
     // Read/Write network topology

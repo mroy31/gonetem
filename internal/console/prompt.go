@@ -21,6 +21,7 @@ import (
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
+	"github.com/mroy31/gonetem/internal/utils"
 )
 
 type copyDirection int
@@ -93,6 +94,14 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, p.Check)
+		},
+	}
+	p.commands["config"] = &NetemCommand{
+		Desc:  "Save the configuration files in the specified folder",
+		Usage: "config <dest_path>",
+		Args:  []string{`^.+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Config)
 		},
 	}
 	p.commands["console"] = &NetemCommand{
@@ -553,6 +562,29 @@ func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
 		} else {
 			RedPrintf(ack.Status.Error + "\n")
 		}
+	}
+}
+
+func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
+	dstPath := cmdArgs[0]
+	stat, err := os.Stat(dstPath)
+	if err != nil {
+		RedPrintf("Unable to get stat on dest path '%s'\n\t%v\n", dstPath, err)
+		return
+	} else if !stat.IsDir() {
+		RedPrintf("Dest path '%s' is not a directory\n", dstPath)
+		return
+	}
+
+	response, err := client.GetProjectConfigs(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		RedPrintf("Unable to get project configuration files: %v\n", err)
+		return
+	}
+
+	buffer := bytes.NewBuffer(response.GetData())
+	if err := utils.OpenArchive(dstPath, buffer); err != nil {
+		RedPrintf("Unable to extract configuration files: %v\n", err)
 	}
 }
 
