@@ -190,6 +190,12 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 		if link.Rate > 0 && link.Delay == 0 {
 			errors = append(errors, fmt.Errorf("Delay must be > 0 when Link rate is configured"))
 		}
+		if link.Buffer < 0.0 {
+			errors = append(errors, fmt.Errorf("Link buffer must be >= 0 and specified in BDP scale factor"))
+		}
+		if link.Buffer > 0.0 && link.Rate == 0 {
+			errors = append(errors, fmt.Errorf("Link rate must be > 0 when Link buffer is configured"))
+		}
 	}
 
 	// check bridges

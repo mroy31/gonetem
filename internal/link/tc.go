@@ -84,7 +84,7 @@ func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int,
 	return nil
 }
 
-func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int) error {
+func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFactor float64) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -108,8 +108,9 @@ func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int) error {
 	}()
 
 	linklayerEthernet := uint8(1)
-	tbfBurst := uint32(rate * 4)  // rate (in bps) / 250 HZ
-	limit := uint32(rate * delay) // rate * latency
+	tbfBurst := uint32(rate * 4) // rate (in bps) / 250 HZ
+	// limit (as rate) has to specified in bytes
+	limit := uint32(bufFactor * float64(rate) * float64(delay) / 8.0) // rate * latency * BDPFactor
 
 	qdisc := tc.Object{
 		Msg: tc.Msg{

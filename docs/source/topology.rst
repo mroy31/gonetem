@@ -141,6 +141,7 @@ definition requires the following parameters:
   * ``jitter`` (int, optional): jitter on the link in ms
   * ``loss`` (float, optional): loss on the link in percent (between 0.0 and 100.0)
   * ``rate`` (int, optional): link rate in kbits per second
+  * ``buffer`` (float, optional): buffer size (equivalent to ``limit`` param in the ``tc`` command). The value has to be set in BDP (Bandwith Delay Product) scale factor (1.0 per default).
 
 Example of links
 """"""""""""""""

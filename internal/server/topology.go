@@ -49,6 +49,7 @@ type LinkConfig struct {
 	Delay  int     // ms
 	Jitter int     // ms
 	Rate   int     // kbps
+	Buffer float64 // BDP scale factor
 }
 
 type BridgeConfig struct {
@@ -72,8 +73,9 @@ type NetemLink struct {
 	Peer2  NetemLinkPeer
 	Loss   float64
 	Delay  int
-	Jitter int
-	Rate   int
+	Jitter int     // ms
+	Rate   int     // kbps
+	Buffer float64 // BDP scale factor
 }
 
 type NetemBridge struct {
@@ -168,6 +170,11 @@ func (t *NetemTopologyManager) Load() error {
 		peer1Idx, _ := strconv.Atoi(peer1[1])
 		peer2Idx, _ := strconv.Atoi(peer2[1])
 
+		if lConfig.Buffer == 0.0 {
+			// by default set limit buffer to 1.0 * BDP
+			lConfig.Buffer = 1.0
+		}
+
 		t.links[idx] = &NetemLink{
 			Peer1: NetemLinkPeer{
 				Node:    t.GetNode(peer1[0]),
@@ -181,6 +188,7 @@ func (t *NetemTopologyManager) Load() error {
 			Jitter: lConfig.Jitter,
 			Loss:   lConfig.Loss,
 			Rate:   lConfig.Rate,
+			Buffer: lConfig.Buffer,
 		}
 	}
 
@@ -388,10 +396,10 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 	// create tbf qdisc if necessary
 	if l.Rate > 0 {
-		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay+l.Jitter, l.Rate); err != nil {
+		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay+l.Jitter, l.Rate, l.Buffer); err != nil {
 			return err
 		}
-		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay+l.Jitter, l.Rate); err != nil {
+		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay+l.Jitter, l.Rate, l.Buffer); err != nil {
 			return err
 		}
 	}
