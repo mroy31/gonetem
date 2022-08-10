@@ -8,16 +8,19 @@ RUN git clone https://github.com/mroy31/quic-go.git
 WORKDIR /go/src/quic-go
 RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-client ./enac/client/client.go
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
-    apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
+    apt-get install -y python3 python3-pip less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
-	    telnet man traceroute hping3 iptables links htop ntp git wget \
+	    telnet man traceroute hping3 iptables links htop ntp git wget at \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
         && rm -rf /var/lib/apt/lists/*
+
+## install recent version of pyroute2
+RUN pip3 install pyroute2==0.7.2
 
 ## build and install multicast programs
 COPY ./programs/mult_receive.c /tmp/

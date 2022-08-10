@@ -22,7 +22,7 @@ import os.path
 import subprocess
 import ipaddress
 from optparse import OptionParser
-from pyroute2 import IPDB
+from pyroute2 import NDB
 
 
 def is_ipv6_autoconf(if_name):
@@ -43,29 +43,31 @@ def is_ipv6_autoconf(if_name):
 def load_net_config(f_path):
     with open(f_path) as f_hd:
         net_config = json.load(f_hd)
-        with IPDB() as ipdb:
+        with NDB() as ndb:
             # configure ip addresses
             for ifname in net_config["interfaces"]:
-                if ifname not in ipdb.interfaces:
-                    continue
-                with ipdb.interfaces[ifname] as i:
-                    i.up()
-                    for address in net_config["interfaces"][ifname]:
-                        try:
-                            i.add_ip(address)
-                        except Exception as ex:
-                            print("Unable to load IP address {} to interface {} -> {}".format(address, ifname, ex))
+                try:
+                    i = ndb.interfaces[ifname].set('state', 'up').commit()
+                except KeyError:
+                    continue  # interface not found
+
+                for address in net_config["interfaces"][ifname]:
+                    try:
+                        i = i.add_ip(address).commit()
+                    except Exception as ex:
+                        print("Unable to load IP address {} to interface {} -> {}".format(address, ifname, ex))
+
             # configure routes
             for route in net_config["routes"]:
                 if route["gateway"] is not None:
                     try:
-                        ipdb.routes.add(route).commit()
+                        ndb.routes.create(**route).commit()
                     except Exception as ex:
                         print("Unable to load route {} via {} -> {}".format(route["dst"], route["gateway"], ex))
 
 
 def save_net_config(f_path, all_if):
-    def is_recordable(addr, if_name):
+    def is_recordable(addr):
         ip_address = ipaddress.ip_address(addr)
         if ip_address.version == 6:
             if addr.startswith("fe80"):
@@ -74,31 +76,38 @@ def save_net_config(f_path, all_if):
         return True
 
     def fmt_addr(addr_conf):
-        return "%s/%s" % addr_conf
+        return f"{addr_conf['address']}/{addr_conf['prefixlen']}"
 
     net_config = {"interfaces": {}, "routes": []}
-    with IPDB() as ipdb:
+    with NDB() as ndb:
         # record ip addresses
-        for if_name in ipdb.interfaces:
-            if isinstance(if_name, int):
-                continue
+        for k in ndb.interfaces:
+            if_obj = ndb.interfaces[k]
+            if_name = if_obj["ifname"]
+
             if not all_if and not if_name.startswith("eth"):
                 continue
-            addresses = ipdb.interfaces[if_name]["ipaddr"]
+            addresses = if_obj.ipaddr
 
             net_config["interfaces"][if_name] = [
-                fmt_addr(a) for a in addresses if is_recordable(a[0], if_name)
+                fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
             ]
+
         # record route
-        net_config["routes"] = [
-            {
-                "dst": route["dst"],
+        net_config["routes"] = []
+        for route in ndb.routes:
+            if route["gateway"] is None or route["gateway"].startswith("fe80"):
+                continue
+
+            dst = f"{route['dst']}/{route['dst_len']}"
+            if dst == "/0": ## default route
+                dst = "default"
+
+            net_config["routes"].append({
+                "dst": dst,
                 "gateway": route["gateway"],
                 "family": route["family"],
-            }
-            for route in ipdb.routes
-            if route["gateway"] is not None and not route["gateway"].startswith("fe80")
-        ]
+            })
 
     # remove old file if exist
     os.path.isfile(f_path) and os.remove(f_path)

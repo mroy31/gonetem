@@ -9,16 +9,19 @@ WORKDIR /go/src/quic-go
 RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./enac/server/server.go
 
 
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
-    apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
+    apt-get install -y python3 python3-pip less nano vim tcpdump \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool git \
 	isc-dhcp-relay && rm -rf /var/lib/apt/lists/*
+
+## install recent version of pyroute2
+RUN pip3 install pyroute2==0.7.2
 
 ## install quic-go
 # install certs

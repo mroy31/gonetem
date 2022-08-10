@@ -1,4 +1,4 @@
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND noninteractive
