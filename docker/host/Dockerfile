@@ -46,7 +46,7 @@ RUN chmod +x /usr/bin/iinit.py
 COPY ./scripts/network-config.py /usr/bin/
 RUN chmod +x /usr/bin/network-config.py
 
-COPY ./conf/dhclient-nodnsupdate /etc/dhcp/dhclient-enter-hooks.d/dnsupdate
+COPY ./conf/dhclient-dnsupdate /etc/dhcp/dhclient-enter-hooks.d/dnsupdate
 RUN chmod +x /etc/dhcp/dhclient-enter-hooks.d/dnsupdate
 
 WORKDIR /root
