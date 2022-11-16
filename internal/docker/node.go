@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/moby/term"
@@ -357,6 +358,8 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 
 		if _, err := os.Stat(confPath); err == nil {
 			configFiles := make(map[string]string)
+			configFolders := make(map[string]string)
+
 			switch n.Type {
 			case "router":
 				configFiles[n.Name+".frr.conf"] = "/etc/frr/frr.conf"
@@ -369,6 +372,10 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 				configFiles[n.Name+".dhcpd.conf"] = "/etc/dhcp/dhcpd.conf"
 				configFiles[n.Name+".tftpd-hpa.default"] = "/etc/default/tftpd-hpa"
 				configFiles[n.Name+".isc-relay.default"] = "/etc/default/isc-dhcp-relay"
+				configFiles[n.Name+".bind.default"] = "/etc/default/named"
+
+				configFolders[n.Name+".tftp-data.tgz"] = "/srv/tftp"
+				configFolders[n.Name+".bind-etc.tgz"] = "/etc/bind"
 			}
 
 			configFiles[n.Name+".init.conf"] = initScript
@@ -379,10 +386,24 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 				}
 
 				if err := client.CopyTo(n.ID, source, dest); err != nil {
-					return messages, fmt.Errorf("Unable to load config file %s:\n\t%w", source, err)
+					return messages, fmt.Errorf("unable to load config file %s:\n\t%w", source, err)
 				}
 			}
 
+			for source := range configFolders {
+				sourcePath := path.Join(confPath, source)
+				if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+					continue
+				}
+
+				if err := client.CopyTo(n.ID, sourcePath, filepath.Join("/tmp", source)); err != nil {
+					return messages, fmt.Errorf("unable to copy archile file %s:\n\t%w", source, err)
+				}
+
+				if _, err := client.ExecWithWorkingDir(n.ID, []string{"tar", "xzf", filepath.Join("/tmp", source)}, "/"); err != nil {
+					return messages, fmt.Errorf("unable to extract archile file %s in the node:\n\t%w", source, err)
+				}
+			}
 		}
 
 		// Start process when necessary
@@ -432,6 +453,7 @@ func (n *DockerNode) Save(dstPath string) error {
 	defer client.Close()
 
 	configFiles := make(map[string]string)
+	configFolders := make(map[string]string)
 	switch n.Type {
 	case "host":
 		confFile := "/tmp/custom.net.conf"
@@ -451,6 +473,10 @@ func (n *DockerNode) Save(dstPath string) error {
 		configFiles["/etc/dhcp/dhcpd.conf"] = fmt.Sprintf("%s.dhcpd.conf", n.Name)
 		configFiles["/etc/default/tftpd-hpa"] = fmt.Sprintf("%s.tftpd-hpa.default", n.Name)
 		configFiles["/etc/default/isc-dhcp-relay"] = fmt.Sprintf("%s.isc-relay.default", n.Name)
+		configFiles["/etc/default/named"] = fmt.Sprintf("%s.bind.default", n.Name)
+
+		configFolders["/srv/tftp"] = fmt.Sprintf("%s.tftp-data.tgz", n.Name)
+		configFolders["/etc/bind"] = fmt.Sprintf("%s.bind-etc.tgz", n.Name)
 
 	case "router":
 		confFile := "/etc/frr/frr.conf"
@@ -473,6 +499,22 @@ func (n *DockerNode) Save(dstPath string) error {
 
 		if err := client.CopyFrom(n.ID, source, dest); err != nil {
 			msg := fmt.Sprintf("Unable to save file %s:\n\t%v", source, err)
+			return errors.New(msg)
+		}
+	}
+
+	for source, dest := range configFolders {
+		destPath := path.Join(dstPath, dest)
+		if !client.IsFolderExist(n.ID, source) {
+			continue
+		}
+
+		if _, err := client.ExecWithWorkingDir(n.ID, []string{"tar", "czf", "/tmp/" + dest, source}, "/"); err != nil {
+			return err
+		}
+
+		if err := client.CopyFrom(n.ID, "/tmp/"+dest, destPath); err != nil {
+			msg := fmt.Sprintf("Unable to save archive file %s:\n\t%v", source, err)
 			return errors.New(msg)
 		}
 	}

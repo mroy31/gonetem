@@ -198,6 +198,16 @@ func (c *DockerClient) IsFileExist(containerId, filepath string) bool {
 	return sourceStat.Mode.IsRegular()
 }
 
+func (c *DockerClient) IsFolderExist(containerId, filepath string) bool {
+	ctx := context.Background()
+	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, filepath)
+	if err != nil {
+		return false
+	}
+
+	return sourceStat.Mode.IsDir()
+}
+
 func (c *DockerClient) CopyFrom(containerId, source, dest string) error {
 	ctx := context.Background()
 	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, source)
@@ -277,11 +287,12 @@ func (c *DockerClient) CopyTo(containerId, source, dest string) error {
 		pReader, types.CopyToContainerOptions{})
 }
 
-func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
+func (c *DockerClient) ExecWithWorkingDir(containerId string, cmd []string, workingDir string) (string, error) {
 	config := types.ExecConfig{
 		AttachStderr: true,
 		AttachStdout: true,
 		Cmd:          cmd,
+		WorkingDir:   workingDir,
 	}
 
 	ctx := context.Background()
@@ -337,6 +348,10 @@ func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
 		return "", errors.New(msg)
 	}
 	return string(stdout), nil
+}
+
+func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
+	return c.ExecWithWorkingDir(containerId, cmd, "")
 }
 
 func (c *DockerClient) ExecOutStream(containerId string, cmd []string, out io.Writer) error {

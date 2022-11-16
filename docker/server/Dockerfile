@@ -18,7 +18,7 @@ RUN apt-get update -y && \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool git \
-	isc-dhcp-relay && rm -rf /var/lib/apt/lists/*
+	isc-dhcp-relay bind9 bind9-dnsutils && rm -rf /var/lib/apt/lists/*
 
 ## install recent version of pyroute2
 RUN pip3 install pyroute2==0.7.2
