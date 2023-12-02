@@ -20,11 +20,12 @@ To run ``gonetem-console``, you have to install the following programs
 
 Manual Installation
 -------------------
-You can install GoNetem with the following command (with superuser privileges):
+You can install GoNetem with the following command (with superuser privileges 
+ and adapted to your architecture):
 
 .. code-block:: bash
 
-    $ sudo make install
+    $ sudo make install-[amd64|arm64]
 
 With this command, gonetem-console/server are installed in ``/usr/local/bin`` folder.
 And server configuration file are copied in ``/etc/gonetem/config.yaml``

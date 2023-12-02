@@ -31,7 +31,7 @@ Installation
 
 You can compile gonetem with the command
 
-    $make build
+    $make build-[amd64|armv7|arm64]
 
 The 2 binaries are then available in the `bin` folder
 
