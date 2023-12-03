@@ -1,29 +1,26 @@
-FROM golang:1.17
+FROM golang:1.20
 
 # download quic-go
 WORKDIR /go/src
-RUN git clone https://github.com/mroy31/quic-go.git
+RUN git clone --depth 1 --branch v0.40.0 https://github.com/quic-go/quic-go.git
 
 # build quic client / server
 WORKDIR /go/src/quic-go
-RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./enac/server/server.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./example/main.go
 
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
-    apt-get install -y python3 python3-pip less nano vim tcpdump \
+    apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool git \
 	isc-dhcp-relay bind9 bind9-dnsutils && rm -rf /var/lib/apt/lists/*
 
-## install recent version of pyroute2
-RUN pip3 install pyroute2==0.7.2
-
-## install quic-go
+## install quic-go server
 # install certs
 COPY ./certs/* /certs/
 RUN ln -sf /certs/ca.pem /etc/ssl/certs/Quic-Go.pem
