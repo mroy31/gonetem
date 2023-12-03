@@ -6,7 +6,6 @@ require (
 	github.com/Microsoft/go-winio v0.4.16 // indirect
 	github.com/Microsoft/hcsshim v0.8.14 // indirect
 	github.com/briandowns/spinner v1.23.0
-	github.com/c-bata/go-prompt v0.2.6
 	github.com/containerd/containerd v1.4.3 // indirect
 	github.com/containerd/continuity v0.0.0-20210208174643-50096c924a4e // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
@@ -37,10 +36,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
+require github.com/elk-language/go-prompt v1.1.5
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/google/go-cmp v0.5.4 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/josharian/native v0.0.0-20200817173448-b6b71def0850 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -54,5 +55,6 @@ require (
 	github.com/pkg/term v1.2.0-beta.2 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df // indirect
 	golang.org/x/term v0.15.0 // indirect
 )

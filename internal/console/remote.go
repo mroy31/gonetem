@@ -24,7 +24,7 @@ func StartRemoteConsole(server, node string, shell bool) error {
 	if file, ok := out.(*os.File); ok {
 		terminalFd = file.Fd()
 	} else {
-		return errors.New("Not a terminal!")
+		return errors.New("not a terminal")
 	}
 
 	args := strings.Split(node, ".")

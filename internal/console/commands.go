@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
-	"github.com/c-bata/go-prompt"
-	"github.com/c-bata/go-prompt/completer"
+	"github.com/elk-language/go-prompt"
+	"github.com/elk-language/go-prompt/completer"
 	"github.com/fatih/color"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
@@ -70,14 +69,14 @@ func CreateProject(prjPath string) error {
 }
 
 func OpenProject(prjPath string) (string, string, error) {
-	data, err := ioutil.ReadFile(prjPath)
+	data, err := os.ReadFile(prjPath)
 	if err != nil {
 		return "", "", err
 	}
 
 	client, err := NewClient(getServerUri())
 	if err != nil {
-		return "", "", fmt.Errorf("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
+		return "", "", fmt.Errorf("unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
 	}
 	defer client.Conn.Close()
 
@@ -136,12 +135,13 @@ func NewPrompt(prjName, prjID, prjPath string) {
 
 	fmt.Println("Welcome to gonetem " + options.VERSION)
 	fmt.Println("Please use `exit` to close the project")
+
 	p := prompt.New(
 		e.Execute,
-		c.Complete,
-		prompt.OptionTitle("gonetem-emulator"),
-		prompt.OptionPrefix(fmt.Sprintf("[%s]> ", prjName)),
-		prompt.OptionCompletionWordSeparator(completer.FilePathCompletionSeparator),
+		prompt.WithCompleter(c.Complete),
+		prompt.WithPrefix(fmt.Sprintf("[%s]> ", prjName)),
+		prompt.WithTitle("gonetem-emulator"),
+		prompt.WithCompletionWordSeparator(completer.FilePathCompletionSeparator),
 	)
 	p.Run()
 }
@@ -168,7 +168,10 @@ var cleanCmd = &cobra.Command{
 	Long:  "Prune containers not used by any project",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		confirm := prompt.Input("Are you sure you want prune unused containers ? ", ConfirmComplete)
+		confirm := prompt.Input(
+			prompt.WithPrefix("Are you sure you want prune unused containers ? "),
+			prompt.WithCompleter(ConfirmComplete),
+		)
 		if confirm == "yes" {
 			client, err := NewClient(getServerUri())
 			if err != nil {
@@ -220,7 +223,10 @@ var connectCmd = &cobra.Command{
 			fmt.Println(color.YellowString("No project open on the server"))
 		} else {
 			prjID := ""
-			prjName := prompt.Input("Select project: ", NewConnectCompleter(projects).Complete)
+			prjName := prompt.Input(
+				prompt.WithPrefix("Select project: "),
+				prompt.WithCompleter(NewConnectCompleter(projects).Complete),
+			)
 
 			// find project in list
 			for _, prj := range projects.GetProjects() {
