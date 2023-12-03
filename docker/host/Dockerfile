@@ -1,26 +1,23 @@
-FROM golang:1.17
+FROM golang:1.20
 
 # download quic-go
 WORKDIR /go/src
-RUN git clone https://github.com/mroy31/quic-go.git
+RUN git clone --depth 1 --branch v0.40.0 https://github.com/quic-go/quic-go.git
 
-# build quic client / server
+# build quic client
 WORKDIR /go/src/quic-go
-RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-client ./enac/client/client.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-client ./example/client/main.go
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
-    apt-get install -y python3 python3-pip less nano vim tcpdump \
+    apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
 	    telnet man traceroute hping3 iptables links htop ntp git wget at \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
-        && rm -rf /var/lib/apt/lists/*
-
-## install recent version of pyroute2
-RUN pip3 install pyroute2==0.7.2
+		bind9-dnsutils && rm -rf /var/lib/apt/lists/*
 
 ## build and install multicast programs
 COPY ./programs/mult_receive.c /tmp/
