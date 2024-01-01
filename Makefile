@@ -41,12 +41,12 @@ build-server-armv7:
 build-armv7: build-console-armv7 build-server-armv7
 
 build-console-arm64:
-	env GOOS=linux GOARCH=arm64 GOOS=linux go build -o ./bin/gonetem-console_arm64 \
+	env GOOS=linux GOARCH=arm64 go build -o ./bin/gonetem-console_arm64 \
 		-ldflags "-X main.Version=$(VERSION)" \
 		cmd/gonetem-console/main.go
 
 build-server-arm64:
-	env GOOS=linux GOARCH=arm64 GOOS=linux go build -o ./bin/gonetem-server_arm64 \
+	env GOOS=linux GOARCH=arm64 go build -o ./bin/gonetem-server_arm64 \
 		-ldflags "-X main.Version=$(VERSION)" \
 		cmd/gonetem-server/main.go
 
