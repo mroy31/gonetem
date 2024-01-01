@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -57,7 +55,7 @@ func (c *DockerClient) ImagePull(imgName string) error {
 	}
 	defer out.Close()
 
-	io.Copy(ioutil.Discard, out)
+	io.Copy(io.Discard, out)
 	return nil
 }
 
@@ -153,8 +151,11 @@ func (c *DockerClient) Stop(containerId string) error {
 	}
 
 	if state == "running" {
-		timeout := time.Second * 2
-		return c.cli.ContainerStop(context.Background(), containerId, &timeout)
+		timeout := 2
+		return c.cli.ContainerStop(
+			context.Background(),
+			containerId,
+			container.StopOptions{Timeout: &timeout})
 	}
 
 	return nil
@@ -328,11 +329,11 @@ func (c *DockerClient) ExecWithWorkingDir(containerId string, cmd []string, work
 		return "", ctx.Err()
 	}
 
-	stdout, err := ioutil.ReadAll(&outBuf)
+	stdout, err := io.ReadAll(&outBuf)
 	if err != nil {
 		return "", err
 	}
-	stderr, err := ioutil.ReadAll(&errBuf)
+	stderr, err := io.ReadAll(&errBuf)
 	if err != nil {
 		return "", err
 	}
