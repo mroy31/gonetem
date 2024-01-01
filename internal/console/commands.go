@@ -143,7 +143,6 @@ func NewPrompt(prjName, prjID, prjPath string) {
 		prompt.WithTitle("gonetem-emulator"),
 		prompt.WithCompletionWordSeparator(completer.FilePathCompletionSeparator),
 	)
-	defer p.Close()
 	p.Run()
 }
 
