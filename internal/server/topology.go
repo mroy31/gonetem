@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strconv"
@@ -423,11 +422,11 @@ func (t *NetemTopologyManager) GetNetFilePath() string {
 }
 
 func (t *NetemTopologyManager) ReadNetworkFile() ([]byte, error) {
-	return ioutil.ReadFile(t.GetNetFilePath())
+	return os.ReadFile(t.GetNetFilePath())
 }
 
 func (t *NetemTopologyManager) WriteNetworkFile(data []byte) error {
-	return ioutil.WriteFile(t.GetNetFilePath(), data, 0644)
+	return os.WriteFile(t.GetNetFilePath(), data, 0644)
 }
 
 func (t *NetemTopologyManager) GetAllNodes() []INetemNode {

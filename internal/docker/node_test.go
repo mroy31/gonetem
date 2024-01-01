@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -191,7 +190,7 @@ func TestDockerNode_Save(t *testing.T) {
 			}
 
 			// create temp dir to save configuration files
-			dir, err := ioutil.TempDir("/tmp", "ntmtst")
+			dir, err := os.MkdirTemp("/tmp", "ntmtst")
 			if err != nil {
 				t.Errorf("Unable to create temp folder: %v", err)
 				return

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -28,7 +27,7 @@ func TestProject_OpenClose(t *testing.T) {
 	}
 	defer os.Remove(prjPath)
 
-	data, err := ioutil.ReadFile(prjPath)
+	data, err := os.ReadFile(prjPath)
 	if err != nil {
 		t.Fatalf("Unable to open created .gnet file: %v", err)
 	}
@@ -55,7 +54,7 @@ func TestProject_Save(t *testing.T) {
 	}
 	defer os.Remove(prjPath)
 
-	data, err := ioutil.ReadFile(prjPath)
+	data, err := os.ReadFile(prjPath)
 	if err != nil {
 		t.Errorf("Unable to open created .gnet file: %v", err)
 		return

@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"regexp"
@@ -129,7 +128,7 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 	var peers []string
 	var topology NetemTopology
 
-	data, err := ioutil.ReadFile(filepath)
+	data, err := os.ReadFile(filepath)
 	if err != nil {
 		errors = append(errors, fmt.Errorf("Unable to read topology file '%s':\n\t%w", filepath, err))
 		return nil, errors

@@ -2,7 +2,6 @@ package docker
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -142,7 +141,7 @@ func TestDockerClient_Copy(t *testing.T) {
 	// create a file and copy it in the container
 	tmpData := utils.RandString(32)
 	tmpFilename := fmt.Sprintf("/tmp/%s.temp", utils.RandString(12))
-	err := ioutil.WriteFile(tmpFilename, []byte(tmpData), 0644)
+	err := os.WriteFile(tmpFilename, []byte(tmpData), 0644)
 	if err != nil {
 		t.Fatalf("Unable to create a temp file: %v", err)
 	}
@@ -162,7 +161,7 @@ func TestDockerClient_Copy(t *testing.T) {
 	defer os.Remove(newTmpFilename)
 
 	// check the content of the new file
-	data, err := ioutil.ReadFile(newTmpFilename)
+	data, err := os.ReadFile(newTmpFilename)
 	if err != nil {
 		t.Fatalf("Unable to read the new temp file: %v", err)
 	}

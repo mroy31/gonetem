@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
 	stdlog "log"
 	"net"
 	"os"
@@ -90,7 +89,7 @@ func TestServer_Project(t *testing.T) {
 		return
 	}
 	defer os.Remove(prjPath)
-	data, err := ioutil.ReadFile(prjPath)
+	data, err := os.ReadFile(prjPath)
 	if err != nil {
 		t.Errorf("Unable to open created .gnet file: %v", err)
 		return
@@ -141,7 +140,7 @@ func TestServer_Save(t *testing.T) {
 		return
 	}
 	defer os.Remove(prjPath)
-	data, err := ioutil.ReadFile(prjPath)
+	data, err := os.ReadFile(prjPath)
 	if err != nil {
 		t.Errorf("Unable to open created .gnet file: %v", err)
 		return
@@ -208,7 +207,7 @@ nodes:
 		t.Errorf("Unable to extract saved project: %v", err)
 		return
 	}
-	newNetworkData, err := ioutil.ReadFile(path.Join(newPrjPath, networkFilename))
+	newNetworkData, err := os.ReadFile(path.Join(newPrjPath, networkFilename))
 	if err != nil {
 		t.Errorf("Unable to read new network file: %v", err)
 		return

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -105,14 +104,14 @@ func TestTopology_Load(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			prjID := utils.RandString(4)
 			// create temp dir to save configuration files
-			dir, err := ioutil.TempDir("/tmp", "ntmtst")
+			dir, err := os.MkdirTemp("/tmp", "ntmtst")
 			if err != nil {
 				t.Errorf("Unable to create temp folder: %v", err)
 				return
 			}
 			defer os.RemoveAll(dir)
 
-			if err := ioutil.WriteFile(path.Join(dir, "network.yml"), []byte(tt.topology), 0644); err != nil {
+			if err := os.WriteFile(path.Join(dir, "network.yml"), []byte(tt.topology), 0644); err != nil {
 				t.Errorf("Unable to create topology file: %v", err)
 				return
 			}
@@ -141,14 +140,14 @@ func TestTopology_Load(t *testing.T) {
 func TestTopology_Save(t *testing.T) {
 	prjID := utils.RandString(4)
 	// create temp dir to save configuration files
-	dir, err := ioutil.TempDir("/tmp", "ntmtst")
+	dir, err := os.MkdirTemp("/tmp", "ntmtst")
 	if err != nil {
 		t.Errorf("Unable to create temp folder: %v", err)
 		return
 	}
 	defer os.RemoveAll(dir)
 
-	if err := ioutil.WriteFile(path.Join(dir, "network.yml"), []byte(simpleNetwork.network), 0644); err != nil {
+	if err := os.WriteFile(path.Join(dir, "network.yml"), []byte(simpleNetwork.network), 0644); err != nil {
 		t.Errorf("Unable to create topology file: %v", err)
 		return
 	}
