@@ -1,13 +1,14 @@
 package options
 
 import (
+	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
 	"path"
 
+	"google.golang.org/grpc/credentials"
 	"gopkg.in/yaml.v2"
 )
 
@@ -17,6 +18,11 @@ const (
 server: "localhost:10110"
 editor: vim
 terminal: "xterm -xrm 'XTerm.vt100.allowTitleOps: false' -title {{.Name}} -e {{.Cmd}}"
+tls:
+  enabled: false
+  ca: ""
+  cert: ""
+  key: ""
 `
 )
 
@@ -24,6 +30,7 @@ type NetemConsoleConfig struct {
 	Server   string
 	Editor   string
 	Terminal string
+	Tls      TLSOptions
 }
 
 var (
@@ -47,7 +54,7 @@ func InitConsoleConfig() {
 	}
 
 	if _, err := os.Stat(config); err == nil {
-		data, err := ioutil.ReadFile(config)
+		data, err := os.ReadFile(config)
 		if err != nil {
 			log.Fatalf("Unable to read user config file %s: %s", config, err)
 		}
@@ -64,10 +71,25 @@ func InitConsoleConfig() {
 func SaveConsoleConfig() error {
 	currentUser, err := user.Current()
 	if err != nil {
-		return fmt.Errorf("Unable to get current user: %f", err)
+		return fmt.Errorf("unable to get current user: %f", err)
 	}
 
 	config := path.Join(currentUser.HomeDir, ".config", "gonetem-console", CONSOLE_CONFIG_FILENAME)
 	data, _ := yaml.Marshal(ConsoleConfig)
-	return ioutil.WriteFile(config, data, 0644)
+	return os.WriteFile(config, data, 0644)
+}
+
+func LoadConsoleTLSCredentials() (credentials.TransportCredentials, error) {
+	certPool, consoleCerts, err := loadTLSCerts(ConsoleConfig.Tls)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the credentials and return it
+	config := &tls.Config{
+		Certificates: consoleCerts,
+		RootCAs:      certPool,
+	}
+
+	return credentials.NewTLS(config), nil
 }

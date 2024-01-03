@@ -1,4 +1,9 @@
 listen: "localhost:10110"
+tls:
+  enabled: false
+  ca: ""
+  cert: ""
+  key: ""
 workdir: /tmp
 docker:
   images:

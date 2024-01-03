@@ -17,7 +17,6 @@ import (
 
 var (
 	grpcServer *grpc.Server = nil
-	socket     net.Listener = nil
 	verbose                 = flag.Bool("verbose", false, "Display more messages")
 	conf                    = flag.String("conf-file", options.SERVER_CONFIG_FILE, "Configuration path")
 	logFile                 = flag.String("log-file", "", "Path of the log file (default: stdout)")
@@ -59,20 +58,34 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	interrupt := make(chan os.Signal)
+	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(interrupt)
 
 	netemServer := server.NewServer()
 	go func() {
+		var serverOptions []grpc.ServerOption = make([]grpc.ServerOption, 0)
+
+		logrus.Infof("TLS enabled: %t", options.ServerConfig.Tls.Enabled)
+		if options.ServerConfig.Tls.Enabled {
+			tlsCredentials, err := options.LoadServerTLSCredentials()
+			if err != nil {
+				logrus.Errorf("cannot load TLS credentials: %v", err)
+				os.Exit(2)
+			}
+			serverOptions = append(serverOptions, grpc.Creds(tlsCredentials))
+		}
+
+		grpcServer = grpc.NewServer(serverOptions...)
+		pb.RegisterNetemServer(grpcServer, netemServer)
+
+		logrus.Infof("Listen on: %s", options.ServerConfig.Listen)
 		socket, err := net.Listen("tcp", options.ServerConfig.Listen)
 		if err != nil {
-			logrus.Errorf("Unable to listen on socket: %v", err)
+			logrus.Errorf("unable to listen on socket: %v", err)
 			os.Exit(2)
 		}
 
-		grpcServer = grpc.NewServer()
-		pb.RegisterNetemServer(grpcServer, netemServer)
 		err = grpcServer.Serve(socket)
 		if err != nil {
 			logrus.Errorf("Error in grpc server: %v", err)

@@ -1,11 +1,13 @@
 package options
 
 import (
+	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 
+	"google.golang.org/grpc/credentials"
 	"gopkg.in/yaml.v2"
 )
 
@@ -16,6 +18,11 @@ const (
 	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
 	INITIAL_SERVER_CONFIG = `
 listen: "localhost:10110"
+tls:
+  enabled: false
+  ca: ""
+  cert: ""
+  key: ""
 workdir: /tmp
 docker:
   images:
@@ -37,6 +44,7 @@ const (
 
 type NetemServerConfig struct {
 	Listen  string
+	Tls     TLSOptions
 	Workdir string
 	Docker  struct {
 		Images struct {
@@ -60,11 +68,11 @@ func InitServerConfig() {
 }
 
 func CreateServerConfig(config string) error {
-	return ioutil.WriteFile(config, []byte(INITIAL_SERVER_CONFIG), 0644)
+	return os.WriteFile(config, []byte(INITIAL_SERVER_CONFIG), 0644)
 }
 
 func ParseServerConfig(config string) error {
-	data, err := ioutil.ReadFile(config)
+	data, err := os.ReadFile(config)
 	if err != nil {
 		return err
 	}
@@ -92,4 +100,20 @@ func GetDockerImageId(imgType DockerImageT) string {
 	}
 
 	return name
+}
+
+func LoadServerTLSCredentials() (credentials.TransportCredentials, error) {
+	certPool, serverCerts, err := loadTLSCerts(ServerConfig.Tls)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the credentials and return it
+	config := &tls.Config{
+		Certificates: serverCerts,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    certPool,
+	}
+
+	return credentials.NewTLS(config), nil
 }
