@@ -2,15 +2,23 @@ package console
 
 import (
 	"html/template"
-	"log"
 	"os"
+	"strconv"
 
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/spf13/cobra"
 )
 
 const (
-	CONFIG_TPL = "Server: {{.Server}}\nEditor: {{.Editor}}\nTerminal: {{.Terminal}}\n"
+	CONFIG_TPL = `server: {{.Server}}
+editor: {{.Editor}}
+terminal: {{.Terminal}}\n
+tls:
+  enabled: {{.Tls.Enabled}}
+  ca: {{.Tls.Ca}}
+  cert: {{.Tls.Cert}}
+  key: {{.Tls.Key}}
+`
 )
 
 func getConfigCmd() *cobra.Command {
@@ -50,8 +58,20 @@ func getConfigCmd() *cobra.Command {
 				options.ConsoleConfig.Server = args[1]
 			case "terminal":
 				options.ConsoleConfig.Terminal = args[1]
+			case "tls.enabled":
+				v, err := strconv.ParseBool(args[1])
+				if err != nil {
+					Fatal("Unable to parse value '%s' as boolean - %v", args[1], err)
+				}
+				options.ConsoleConfig.Tls.Enabled = v
+			case "tls.ca":
+				options.ConsoleConfig.Tls.Ca = args[1]
+			case "tls.cert":
+				options.ConsoleConfig.Tls.Cert = args[1]
+			case "tls.key":
+				options.ConsoleConfig.Tls.Key = args[1]
 			default:
-				log.Fatalf("Unknown config key '%s'", args[0])
+				Fatal("Unknown config key '%s'", args[0])
 			}
 
 			options.SaveConsoleConfig()
