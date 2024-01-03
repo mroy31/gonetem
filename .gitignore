@@ -2,3 +2,6 @@
 bin/*
 docs/build/*
 docs/source/_build/*
+# openssl certificates and configuration files
+*.pem
+*.cnf
