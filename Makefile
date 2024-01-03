@@ -52,6 +52,11 @@ build-server-arm64:
 
 build-arm64: build-console-arm64 build-server-arm64
 
+build-console-darwin-arm64:
+	env GOOS=darwin GOARCH=arm64 go build -o ./bin/gonetem-console_darwin_arm64 \
+		-ldflags "-X main.Version=$(VERSION)" \
+		cmd/gonetem-console/main.go
+
 build-deb-amd64: clean build-amd64
 	docker run -v $(shell pwd):/src --rm gonetem-build fpm --output-type deb \
 		--architecture=amd64 \
