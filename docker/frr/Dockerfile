@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -8,10 +8,11 @@ ARG REPO_KEY=frr.repo.gpg
 ARG SOURCE_LIST=frr.source.list
 
 ## add FRR repository
-COPY conf/${REPO_KEY} /tmp/
-RUN apt-get update -y && apt-get install -y gnupg ca-certificates && \
-	apt-key add /tmp/${REPO_KEY} && rm /tmp/${REPO_KEY}
-COPY conf/${SOURCE_LIST} /etc/apt/sources.list.d/frr.list
+RUN apt-get update -y && apt-get install -y gnupg ca-certificates curl
+RUN curl -s https://deb.frrouting.org/frr/keys.gpg \
+	| tee /usr/share/keyrings/frrouting.gpg > /dev/null
+RUN echo deb '[signed-by=/usr/share/keyrings/frrouting.gpg]' https://deb.frrouting.org/frr \
+     bookworm frr-stable | tee -a /etc/apt/sources.list.d/frr.list
 
 
 ## install FRR and tools
