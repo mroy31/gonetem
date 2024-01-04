@@ -1,12 +1,12 @@
-FROM golang:1.20
+FROM golang:1.21
 
 # download quic-go
 WORKDIR /go/src
-RUN git clone --depth 1 --branch v0.40.0 https://github.com/quic-go/quic-go.git
+RUN git clone https://github.com/mroy31/quic-go-example
 
 # build quic client / server
-WORKDIR /go/src/quic-go
-RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./example/main.go
+WORKDIR /go/src/quic-go-example
+RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./cmd/server/main.go
 
 
 FROM debian:bookworm-slim
@@ -21,10 +21,6 @@ RUN apt-get update -y && \
 	isc-dhcp-relay bind9 bind9-dnsutils && rm -rf /var/lib/apt/lists/*
 
 ## install quic-go server
-# install certs
-COPY ./certs/* /certs/
-RUN ln -sf /certs/ca.pem /etc/ssl/certs/Quic-Go.pem
-# copy quic binaries
 COPY --from=0 /quic-server /usr/local/bin/quic-server
 
 COPY ./scripts/iinit.py /usr/bin/
