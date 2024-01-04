@@ -12,7 +12,7 @@ GoNetem is composed of 2 binaries:
 Requirements
 ------------
 To run ``gonetem-server``, you have to install the following programs
- * docker-ce
+ * docker-ce (or the docker version available with your linux distribution)
 
 To run ``gonetem-console``, you have to install the following programs
  * xterm
@@ -39,7 +39,7 @@ Debian Package
 --------------
 
 A Debian packages are available on `github <https://github.com/mroy31/gonetem/releases>`_
-for amd64 architecture. It includes:
+for amd64, armv7 and arm64 architectures. It includes:
 
 * gonetem-console/server
 * a default configuration file for the server located at ``/etc/gonetem/config.yaml``

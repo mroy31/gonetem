@@ -15,6 +15,11 @@ After the installation, the configuration of gonetem-server is done with the fil
 .. code-block:: yaml
 
     listen: "localhost:10110"
+    tls:
+      enabled: false
+      ca: ""
+      cert: ""
+      key: ""
     workdir: /tmp
     docker:
       images:
@@ -22,6 +27,13 @@ After the installation, the configuration of gonetem-server is done with the fil
         host: mroy31/gonetem-host
         router: mroy31/gonetem-frr
         ovs: mroy31/gonetem-ovs
+
+Description of available options:
+
+- ``listen``: ip address (or dns name) / port on which the server listen when launched
+- ``wordir``: the directory used by the server to store open project folders (with topology/configurations)
+- ``docker.images``: name of docker images used by the server when a network is loaded. You can also set a specific version for each image (ex: `my-server-img:0.1.0`)
+- ``tls.*``: options to enable and confgure a secure gRPC connection betwwen the console and the server. See :ref:`tls` for more detail to secure this connection
 
 
 Pull docker images
@@ -102,6 +114,8 @@ For now, the following options are available:
 .. code-block:: bash
 
     xterm -xrm 'XTerm.vt100.allowTitleOps: false' -title {{.Name}} -e {{.Cmd}}
+
+- ``tls.[enabled|ca|cert|key]`` to enabled and set tls options. See :ref:`tls` for more detail to secure gRPC connection
 
 For example, if you want to change the font family/size used by xterm, you can enter the following command:
 
