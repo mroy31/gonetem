@@ -440,7 +440,7 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 	return messages, nil
 }
 
-func (n *DockerNode) ReadConfigFiles(prjDir string) (map[string][]byte, error) {
+func (n *DockerNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
 	configFilesData := make(map[string][]byte)
 
 	client, err := NewDockerClient()
@@ -450,7 +450,7 @@ func (n *DockerNode) ReadConfigFiles(prjDir string) (map[string][]byte, error) {
 	defer client.Close()
 
 	var configFiles map[string]string
-	filesDir := prjDir
+	filesDir := confDir
 	if n.Running || n.ConfigLoaded {
 		// create temp directory for the project
 		dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-config-node"+n.Name+"-")

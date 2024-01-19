@@ -456,17 +456,7 @@ func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRe
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
 
-	node := project.Topology.GetNode(request.GetNode())
-	if node == nil {
-		return &proto.ConfigFilesResponse{
-			Status: &proto.Status{
-				Code:  proto.StatusCode_ERROR,
-				Error: fmt.Sprintf("Node %s not found", request.GetNode()),
-			},
-		}, nil
-	}
-
-	configFiles, err := node.ReadConfigFiles(project.Dir)
+	configFiles, err := project.Topology.ReadConfigFiles(request.GetNode())
 	if err != nil {
 		return &proto.ConfigFilesResponse{
 			Status: &proto.Status{
@@ -482,7 +472,7 @@ func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRe
 		},
 		Source: proto.ConfigFilesResponse_ARCHIVE,
 	}
-	if node.IsRunning() {
+	if project.Topology.GetNode(request.GetNode()).IsRunning() {
 		answer.Source = proto.ConfigFilesResponse_RUNNING
 	}
 

@@ -181,10 +181,10 @@ func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
 }
 
-func (o *OvsNode) ReadConfigFiles(prjDir string) (map[string][]byte, error) {
+func (o *OvsNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
 	configFilesData := make(map[string][]byte)
 
-	filesDir := prjDir
+	filesDir := confDir
 	if o.Running {
 		// create temp directory for the project
 		dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-config-sw"+o.Name+"-")

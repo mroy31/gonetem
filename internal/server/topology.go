@@ -491,6 +491,16 @@ func (t *NetemTopologyManager) Stop(nodeName string) error {
 	return t.stopNode(node)
 }
 
+func (t *NetemTopologyManager) ReadConfigFiles(nodeName string) (map[string][]byte, error) {
+	node := t.GetNode(nodeName)
+	if node == nil {
+		return map[string][]byte{}, fmt.Errorf("Node %s not found in the topology", nodeName)
+	}
+
+	confPath := path.Join(t.path, configDir)
+	return node.ReadConfigFiles(confPath)
+}
+
 func (t *NetemTopologyManager) Save() error {
 	// create config folder if not exist
 	destPath := path.Join(t.path, configDir)
