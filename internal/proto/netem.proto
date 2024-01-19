@@ -29,6 +29,7 @@ service Netem {
     rpc Run(ProjectRequest) returns (RunResponse) {}
 
     // Node actions
+    rpc ReadConfigFiles(NodeRequest) returns (ConfigFilesResponse) {}
     rpc CanRunConsole(NodeRequest) returns (AckResponse) {}
     rpc Console(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
     rpc Start(NodeRequest) returns (AckResponse) {}
@@ -207,6 +208,22 @@ message StatusResponse {
     string openAt = 4;
     bool running = 5;
     repeated NodeStatus nodes = 10;
+}
+
+message ConfigFilesResponse {
+    enum Source {
+        ARCHIVE = 0;
+        RUNNING = 1;
+    }
+
+    message ConfigFile {
+        string name = 1;
+        bytes data = 2;
+    }
+
+    Status status = 1;
+    Source source = 2;
+    repeated ConfigFile files = 3;
 }
 
 message PrjListResponse {

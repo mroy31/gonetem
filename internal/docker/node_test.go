@@ -123,6 +123,78 @@ func TestDockerNode_Copy(t *testing.T) {
 	}
 }
 
+func TestDockerNode_ReadConfigFiles(t *testing.T) {
+	skipUnlessRoot(t)
+
+	options.InitServerConfig()
+	prefix := utils.RandString(3)
+	tests := []struct {
+		desc          string
+		name          string
+		nType         string
+		confFileNames []string
+	}{
+		{
+			desc:          "DockerNode: read config files of host node",
+			name:          fmt.Sprintf("%s-%s", prefix, "host"),
+			nType:         "host",
+			confFileNames: []string{"Network", "NTP"},
+		},
+		{
+			desc:          "DockerNode: read config files of server node",
+			name:          fmt.Sprintf("%s-%s", prefix, "server"),
+			nType:         "server",
+			confFileNames: []string{"Network", "NTP"},
+		},
+		{
+			desc:          "DockerNode: read config files of router node",
+			name:          fmt.Sprintf("%s-%s", prefix, "router"),
+			nType:         "router",
+			confFileNames: []string{"FRR"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			prjID := utils.RandString(4)
+			config := DockerNodeOptions{
+				Name: tt.name,
+				Type: tt.nType,
+			}
+
+			node, err := NewDockerNode(prjID, config)
+			if err != nil {
+				t.Fatalf("Unable to create docker node: %v", err)
+			}
+			defer node.Close()
+
+			// Start the node and load config
+			if err := node.Start(); err != nil {
+				t.Fatalf("Unable to start node %s: %v", tt.name, err)
+			}
+
+			// create temp dir to save configuration files
+			dir, err := os.MkdirTemp("/tmp", "ntmtst")
+			if err != nil {
+				t.Fatalf("Unable to create temp folder: %v", err)
+			}
+			defer os.RemoveAll(dir)
+
+			// read config files
+			configFiles, err := node.ReadConfigFiles(dir)
+			if err != nil {
+				t.Fatalf("Unable to read config files of %s: %v", tt.name, err)
+			}
+
+			if len(configFiles) != len(tt.confFileNames) {
+				t.Errorf(
+					"Wrong number of config files of %d != %d: %v",
+					len(configFiles), len(tt.confFileNames), err)
+			}
+		})
+	}
+}
+
 func TestDockerNode_Save(t *testing.T) {
 	skipUnlessRoot(t)
 

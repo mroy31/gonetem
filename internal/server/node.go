@@ -29,6 +29,7 @@ type INetemNode interface {
 	Capture(ifIndex int, out io.Writer) error
 	CopyFrom(srcPath, destPath string) error
 	CopyTo(srcPath, destPath string) error
+	ReadConfigFiles(prjDir string) (map[string][]byte, error)
 	Save(dstPath string) error
 	GetInterfacesState() map[string]link.IfState
 	SetInterfaceState(ifIndex int, state link.IfState) error

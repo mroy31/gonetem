@@ -440,6 +440,66 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 	return messages, nil
 }
 
+func (n *DockerNode) ReadConfigFiles(prjDir string) (map[string][]byte, error) {
+	configFilesData := make(map[string][]byte)
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	var configFiles map[string]string
+	filesDir := prjDir
+	if n.Running || n.ConfigLoaded {
+		// create temp directory for the project
+		dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-config-node"+n.Name+"-")
+		if err != nil {
+			return nil, fmt.Errorf("unable to create temp folder to save node config: %w", err)
+		}
+
+		if err := n.Save(dir); err != nil {
+			return nil, fmt.Errorf("unable to save node configs in temp folder %s: %w", dir, err)
+		}
+		filesDir = dir
+
+		defer os.RemoveAll(dir)
+	}
+
+	switch n.Type {
+	case "host":
+		configFiles = map[string]string{
+			"Network": fmt.Sprintf("%s.net.conf", n.Name),
+			"NTP":     fmt.Sprintf("%s.ntp.conf", n.Name),
+		}
+	case "server":
+		configFiles = map[string]string{
+			"Network": fmt.Sprintf("%s.net.conf", n.Name),
+			"NTP":     fmt.Sprintf("%s.ntp.conf", n.Name),
+		}
+	case "router":
+		configFiles = map[string]string{
+			"FRR": fmt.Sprintf("%s.frr.conf", n.Name),
+		}
+	}
+
+	for name, filename := range configFiles {
+		filepath := path.Join(filesDir, filename)
+		if _, err := os.Stat(filepath); os.IsNotExist(err) {
+			configFilesData[name] = []byte{}
+			continue
+		}
+
+		data, err := os.ReadFile(filepath)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read config file '%s':\n\t%w", filepath, err)
+		}
+		configFilesData[name] = data
+	}
+
+	return configFilesData, nil
+}
+
 func (n *DockerNode) Save(dstPath string) error {
 	if !n.Running || !n.ConfigLoaded {
 		n.Logger.Warn("Save: node not running")

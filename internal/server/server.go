@@ -450,6 +450,52 @@ func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.
 	return <-waitCh
 }
 
+func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRequest) (*proto.ConfigFilesResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return &proto.ConfigFilesResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: fmt.Sprintf("Node %s not found", request.GetNode()),
+			},
+		}, nil
+	}
+
+	configFiles, err := node.ReadConfigFiles(project.Dir)
+	if err != nil {
+		return &proto.ConfigFilesResponse{
+			Status: &proto.Status{
+				Code:  proto.StatusCode_ERROR,
+				Error: fmt.Sprintf("Unable to read config files of node %s: %v", request.GetNode(), err),
+			},
+		}, nil
+	}
+
+	answer := &proto.ConfigFilesResponse{
+		Status: &proto.Status{
+			Code: proto.StatusCode_OK,
+		},
+		Source: proto.ConfigFilesResponse_ARCHIVE,
+	}
+	if node.IsRunning() {
+		answer.Source = proto.ConfigFilesResponse_RUNNING
+	}
+
+	for name, data := range configFiles {
+		answer.Files = append(answer.Files, &proto.ConfigFilesResponse_ConfigFile{
+			Name: name,
+			Data: data,
+		})
+	}
+
+	return answer, nil
+}
+
 func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
 	project := GetProject(request.GetPrjId())
 	if project == nil {

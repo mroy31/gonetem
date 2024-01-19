@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/docker"
 	"github.com/mroy31/gonetem/internal/link"
+	"github.com/mroy31/gonetem/internal/options"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netns"
 )
@@ -176,6 +179,41 @@ func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 	}
 
 	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
+}
+
+func (o *OvsNode) ReadConfigFiles(prjDir string) (map[string][]byte, error) {
+	configFilesData := make(map[string][]byte)
+
+	filesDir := prjDir
+	if o.Running {
+		// create temp directory for the project
+		dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-config-sw"+o.Name+"-")
+		if err != nil {
+			return nil, fmt.Errorf("unable to create temp folder to save ovs config: %w", err)
+		}
+
+		err = o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dir)
+		if err != nil {
+			return nil, fmt.Errorf("unable to save ovs config in temp folder %s: %w", dir, err)
+		}
+		filesDir = dir
+
+		defer os.RemoveAll(dir)
+	}
+
+	confpath := path.Join(filesDir, o.Name+".conf")
+	if _, err := os.Stat(confpath); os.IsNotExist(err) {
+		configFilesData["OVS"] = []byte{}
+		return configFilesData, nil
+	}
+
+	data, err := os.ReadFile(confpath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read ovs config file '%s':\n\t%w", confpath, err)
+	}
+
+	configFilesData["OVS"] = data
+	return configFilesData, nil
 }
 
 func (o *OvsNode) LoadConfig(confPath string) ([]string, error) {
