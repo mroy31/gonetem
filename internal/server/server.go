@@ -197,12 +197,12 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 		Running: project.Topology.IsRunning(),
 	}
 
-	if project.Topology.IsRunning() {
-		for _, node := range project.Topology.GetAllNodes() {
-			nodeStatus := &proto.StatusResponse_NodeStatus{
-				Name:    node.GetName(),
-				Running: node.IsRunning(),
-			}
+	for _, node := range project.Topology.GetAllNodes() {
+		nodeStatus := &proto.StatusResponse_NodeStatus{
+			Name:    node.GetName(),
+			Running: node.IsRunning(),
+		}
+		if project.Topology.IsRunning() {
 			for ifName, state := range node.GetInterfacesState() {
 				nodeStatus.Interfaces = append(nodeStatus.Interfaces, &proto.StatusResponse_IfStatus{
 					Name: ifName,
@@ -212,9 +212,9 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 					}[state],
 				})
 			}
-
-			response.Nodes = append(response.Nodes, nodeStatus)
 		}
+
+		response.Nodes = append(response.Nodes, nodeStatus)
 	}
 
 	return response, nil
