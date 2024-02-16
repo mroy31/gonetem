@@ -31,7 +31,7 @@ func NewClient(server string) (*NetemConsoleClient, error) {
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
 	defer cancel()
 
 	conn, err := grpc.DialContext(ctx, server, opts...)
