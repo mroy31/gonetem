@@ -19,19 +19,14 @@ RUN apt-get update -y && \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
 		bind9-dnsutils && rm -rf /var/lib/apt/lists/*
 
-## build and install multicast programs
-COPY ./programs/mult_receive.c /tmp/
-COPY ./programs/mult_send.c /tmp/
-RUN gcc -o /usr/bin/mult_receive /tmp/mult_receive.c
-RUN gcc -o /usr/bin/mult_send /tmp/mult_send.c
-RUN rm /tmp/mult_receive.c /tmp/mult_send.c
-
-## cleanup build env
-RUN apt-get remove -y build-essential
-RUN apt autoremove -y build-essential
-
 ## install quic-go client
 COPY --from=0 /quic-client /usr/local/bin/quic-client
+
+## install multicast programs
+COPY ./programs/mult-receive.py /usr/bin/mult_receive
+RUN chmod +x /usr/bin/mult_receive
+COPY ./programs/mult-send.py /usr/bin/mult_send
+RUN chmod +x /usr/bin/mult_send
 
 COPY ./scripts/iinit.py /usr/bin/
 RUN chmod +x /usr/bin/iinit.py
