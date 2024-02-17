@@ -8,7 +8,7 @@ DEB_OPTIONS := --input-type dir --name gonetem --version $(VERSION) \
 		--config-files /etc/gonetem/config.yaml \
 		--deb-systemd conf/gonetem.service\
 		--deb-systemd-auto-start --deb-systemd-enable \
-		--depends xterm --depends wireshark \
+		--deb-recommends xterm --deb-recommends wireshark \
 		--deb-recommends "docker-ce | docker.io"
 
 proto: internal/proto/netem.proto
