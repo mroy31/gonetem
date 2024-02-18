@@ -6,6 +6,7 @@ RUN git clone https://github.com/mroy31/quic-go-example
 
 # build quic client
 WORKDIR /go/src/quic-go-example
+RUN go get -d ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-client ./cmd/client/main.go
 
 FROM debian:bookworm-slim

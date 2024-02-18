@@ -6,6 +6,7 @@ RUN git clone https://github.com/mroy31/quic-go-example
 
 # build quic client / server
 WORKDIR /go/src/quic-go-example
+RUN go get -d ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /quic-server ./cmd/server/main.go
 
 
