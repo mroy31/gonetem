@@ -47,6 +47,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/ttrpc v1.2.2 // indirect
 	github.com/containerd/typeurl/v2 v2.1.1 // indirect
+	github.com/creasty/defaults v1.7.0 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -89,4 +90,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231212172506-995d672761c0 // indirect
 )
 
-// replace github.com/elk-language/go-prompt => /Users/mroyer/Oss/emulator/gomods/go-prompt
+//replace github.com/elk-language/go-prompt => ../gomods/go-prompt

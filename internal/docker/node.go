@@ -102,7 +102,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	nsName := fmt.Sprintf("%s%s", n.PrjID, n.Name)
 	ns, err := netns.NewNamed(nsName)
 	if err != nil {
-		return fmt.Errorf("Error when creating node netns '%s': %v", nsName, err)
+		return fmt.Errorf("error when creating node netns '%s': %v", nsName, err)
 	}
 	ns.Close()
 	n.LocalNetnsName = nsName
@@ -117,7 +117,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	if err != nil {
 		return err
 	} else if !present {
-		return fmt.Errorf("Docker image %s not present", imgName)
+		return fmt.Errorf("docker image %s not present", imgName)
 	}
 
 	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
@@ -129,8 +129,16 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 }
 
 func (n *DockerNode) GetNetns() (netns.NsHandle, error) {
+	if n.Running {
+		return n.GetRunningNetns()
+	}
+
+	return n.GetLocalNetns()
+}
+
+func (n *DockerNode) GetRunningNetns() (netns.NsHandle, error) {
 	if !n.Running {
-		return netns.NsHandle(0), fmt.Errorf("Node %s Not running", n.GetName())
+		return netns.NsHandle(0), fmt.Errorf("node %s Not running", n.GetName())
 	}
 
 	client, err := NewDockerClient()
@@ -146,6 +154,15 @@ func (n *DockerNode) GetNetns() (netns.NsHandle, error) {
 	return netns.GetFromPid(pid)
 }
 
+func (n *DockerNode) GetLocalNetns() (netns.NsHandle, error) {
+	localNS, err := netns.GetFromName(n.LocalNetnsName)
+	if err != nil {
+		return netns.NsHandle(0), fmt.Errorf("unable to get netns associated to node %s: %v", n.Name, err)
+	}
+
+	return localNS, nil
+}
+
 func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 	return fmt.Sprintf("eth%d", ifIndex)
 }
@@ -157,7 +174,9 @@ func (n *DockerNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle)
 	}
 
 	n.Interfaces[targetIfName] = link.IFSTATE_UP
-	n.PrepareInterface(targetIfName)
+	if n.Running {
+		n.PrepareInterface(targetIfName)
+	}
 
 	return nil
 }
@@ -186,14 +205,14 @@ func (n *DockerNode) PrepareInterface(ifName string) {
 
 func (n *DockerNode) CanRunConsole() error {
 	if !n.Running {
-		return errors.New("Not running")
+		return errors.New("not running")
 	}
 	return nil
 }
 
 func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 	if !n.Running {
-		return errors.New("Not running")
+		return errors.New("not running")
 	}
 
 	client, err := NewDockerClient()
@@ -209,7 +228,7 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 
 func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	if !n.Running {
-		return errors.New("Not running")
+		return errors.New("not running")
 	}
 
 	client, err := NewDockerClient()
@@ -245,20 +264,20 @@ func (n *DockerNode) Start() error {
 		n.Running = true
 
 		// Attach existing interfaces
-		currentNS, err := netns.GetFromName(n.LocalNetnsName)
+		currentNS, err := n.GetLocalNetns()
 		if err != nil {
-			return fmt.Errorf("Unable to get netns associated to node %s: %v", n.Name, err)
+			return err
 		}
 		defer currentNS.Close()
 
-		targetNS, err := n.GetNetns()
+		targetNS, err := n.GetRunningNetns()
 		if err != nil {
 			return err
 		}
 		defer targetNS.Close()
 
 		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
-			return fmt.Errorf("Unable to attach interfaces: %v", err)
+			return fmt.Errorf("unable to attach interfaces: %v", err)
 		}
 
 		// Configure interfaces
@@ -281,20 +300,20 @@ func (n *DockerNode) Stop() error {
 		defer client.Close()
 
 		// Detach interfaces
-		currentNS, err := n.GetNetns()
+		currentNS, err := n.GetRunningNetns()
 		if err != nil {
-			return fmt.Errorf("Unable to get netns associated to node %s: %v", n.Name, err)
+			return err
 		}
 		defer currentNS.Close()
 
-		targetNS, err := netns.GetFromName(n.LocalNetnsName)
+		targetNS, err := n.GetLocalNetns()
 		if err != nil {
 			return err
 		}
 		defer targetNS.Close()
 
 		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
-			return fmt.Errorf("Unable to attach interfaces: %v", err)
+			return fmt.Errorf("unable to attach interfaces: %v", err)
 		}
 
 		if err := client.Stop(n.ID); err != nil {
@@ -312,12 +331,12 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 	var messages []string
 
 	if !n.Running {
-		n.Logger.Warn("LoadConfig: node not running")
+		n.Logger.Info("LoadConfig: node not running")
 		return messages, nil
 	}
 
 	if !n.ConfigLoaded {
-		ns, _ := n.GetNetns()
+		ns, _ := n.GetRunningNetns()
 		defer ns.Close()
 
 		// create vrfs
@@ -502,7 +521,7 @@ func (n *DockerNode) ReadConfigFiles(confDir string) (map[string][]byte, error) 
 
 func (n *DockerNode) Save(dstPath string) error {
 	if !n.Running || !n.ConfigLoaded {
-		n.Logger.Warn("Save: node not running")
+		n.Logger.Info("Save: node not running")
 		return nil
 	}
 
@@ -626,7 +645,7 @@ func (n *DockerNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 		}
 	}
 
-	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
+	return fmt.Errorf("interface %s.%d not found", n.GetName(), ifIndex)
 }
 
 func (n *DockerNode) Close() error {
@@ -686,7 +705,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		case "router":
 			imgName = options.GetDockerImageId(options.IMG_ROUTER)
 		default:
-			return node, errors.New(fmt.Sprintf("Docker type %s is not known", dockerOpts.Type))
+			return node, fmt.Errorf("docker type %s is not known", dockerOpts.Type)
 		}
 	}
 

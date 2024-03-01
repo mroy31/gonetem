@@ -82,9 +82,9 @@ func TestProject_Save(t *testing.T) {
 	for _, n := range simpleNetwork.nodes {
 		node := project.Topology.GetNode(n.name)
 		if node == nil {
-			t.Errorf("Node %s is not found", n)
-		} else if !node.IsRunning() {
-			t.Errorf("Node %s is not running", n)
+			t.Errorf("Node %s is not found", n.name)
+		} else if n.launch && !node.IsRunning() {
+			t.Errorf("Node %s is not running", n.name)
 		}
 	}
 }

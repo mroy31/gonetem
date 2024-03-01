@@ -12,8 +12,9 @@ import (
 type TopologyTestData struct {
 	network string
 	nodes   []struct {
-		name string
-		kind string
+		name   string
+		kind   string
+		launch bool
 	}
 }
 
@@ -29,26 +30,40 @@ nodes:
     mpls: true
   host:
     type: docker.host
+  hostNotLaunch:
+    type: docker.host
+    launch: false
 links:
 - peer1: R1.0
   peer2: switch.0
 - peer1: host.0
-  peer2: switch.1`,
+  peer2: switch.1
+- peer1: hostNotLaunch.0
+  peer2: switch.2`,
 		nodes: []struct {
-			name string
-			kind string
+			name   string
+			kind   string
+			launch bool
 		}{
 			{
-				name: "switch",
-				kind: "ovs",
+				name:   "switch",
+				kind:   "ovs",
+				launch: true,
 			},
 			{
-				name: "R1",
-				kind: "docker",
+				name:   "R1",
+				kind:   "docker",
+				launch: true,
 			},
 			{
-				name: "host",
-				kind: "docker",
+				name:   "host",
+				kind:   "docker",
+				launch: true,
+			},
+			{
+				name:   "hostNotLaunch",
+				kind:   "docker",
+				launch: false,
 			},
 		},
 	}
@@ -67,13 +82,16 @@ func checkTopology(data TopologyTestData, topology *NetemTopologyManager, t *tes
 	for _, n := range data.nodes {
 		node := topology.GetNode(n.name)
 		if node == nil {
-			t.Errorf("Node %s is not found", n)
+			t.Errorf("Node %s is not found", n.name)
 		} else {
 			if node.GetName() != n.name {
 				t.Errorf("Node has wrong name %s != %s", n.name, node.GetName())
 			}
 			if node.GetType() != n.kind {
 				t.Errorf("Node %s has wrong type %s != %s", n.name, n.kind, node.GetType())
+			}
+			if topology.IsNodeLaunchAtStartup(n.name) != n.launch {
+				t.Errorf("Node %s has wrong launch argument", n.name)
 			}
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/creasty/defaults"
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/ovs"
@@ -33,12 +34,24 @@ type VrrpOptions struct {
 
 type NodeConfig struct {
 	Type    string
-	IPv6    bool
-	Mpls    bool
+	IPv6    bool `default:"false"`
+	Mpls    bool `default:"false"`
 	Vrfs    []string
 	Vrrps   []VrrpOptions
 	Volumes []string
 	Image   string
+	Launch  bool `default:"true"`
+}
+
+func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	defaults.Set(n)
+
+	type plain NodeConfig
+	if err := unmarshal((*plain)(n)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type LinkConfig struct {
@@ -83,12 +96,17 @@ type NetemBridge struct {
 	Peers         []NetemLinkPeer
 }
 
+type NetemNode struct {
+	Instance        INetemNode
+	LaunchAtStartup bool
+}
+
 type NetemTopologyManager struct {
 	prjID string
 	path  string
 
 	IdGenerator *NodeIdentifierGenerator
-	nodes       []INetemNode
+	nodes       []NetemNode
 	ovsInstance *ovs.OvsProjectInstance
 	links       []*NetemLink
 	bridges     []*NetemBridge
@@ -104,7 +122,7 @@ func (t *NetemTopologyManager) Check() error {
 		for _, err := range errors {
 			msg += "\n\t" + err.Error()
 		}
-		return fmt.Errorf("Topology is not valid:%s\n", msg)
+		return fmt.Errorf("topology is not valid:%s", msg)
 	}
 
 	return nil
@@ -118,7 +136,7 @@ func (t *NetemTopologyManager) Load() error {
 		for _, err := range errors {
 			msg += "\n\t" + err.Error()
 		}
-		return fmt.Errorf("Topology if not valid:%s\n", msg)
+		return fmt.Errorf("topology if not valid:%s", msg)
 	}
 
 	var err error
@@ -129,7 +147,7 @@ func (t *NetemTopologyManager) Load() error {
 	}
 
 	// Create nodes
-	t.nodes = make([]INetemNode, 0)
+	t.nodes = make([]NetemNode, 0)
 	g := new(errgroup.Group)
 
 	for name, nConfig := range topology.Nodes {
@@ -146,11 +164,14 @@ func (t *NetemTopologyManager) Load() error {
 			node, err := CreateNode(t.prjID, name, shortName, nConfig)
 
 			mutex.Lock()
-			t.nodes = append(t.nodes, node)
+			t.nodes = append(t.nodes, NetemNode{
+				Instance:        node,
+				LaunchAtStartup: nConfig.Launch,
+			})
 			mutex.Unlock()
 
 			if err != nil {
-				return fmt.Errorf("Unable to create node %s: %w", name, err)
+				return fmt.Errorf("unable to create node %s: %w", name, err)
 			}
 
 			return nil
@@ -255,16 +276,18 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	g := new(errgroup.Group)
 	// 1 - start ovswitch container and init p2pSwitch
 	t.logger.Debug("Topo/Run: start ovswitch instance")
-	t.ovsInstance.Start()
+	err = t.ovsInstance.Start()
 	if err != nil {
 		return nodeMessages, err
 	}
 
-	// 2 - start all nodes
-	t.logger.Debug("Topo/Run: start all nodes")
+	// 2 - start all required nodes
+	t.logger.Debug("Topo/Run: start nodes")
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.Start() })
+		if node.LaunchAtStartup {
+			g.Go(func() error { return node.Instance.Start() })
+		}
 	}
 	if err := g.Wait(); err != nil {
 		return nodeMessages, err
@@ -295,14 +318,16 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error {
-			messages, err := node.LoadConfig(configPath)
-			nodeMessages = append(nodeMessages, &proto.RunResponse_NodeMessages{
-				Name:     node.GetName(),
-				Messages: messages,
+		if node.LaunchAtStartup {
+			g.Go(func() error {
+				messages, err := node.Instance.LoadConfig(configPath)
+				nodeMessages = append(nodeMessages, &proto.RunResponse_NodeMessages{
+					Name:     node.Instance.GetName(),
+					Messages: messages,
+				})
+				return err
 			})
-			return err
-		})
+		}
 	}
 	if err := g.Wait(); err != nil {
 		return nodeMessages, err
@@ -322,7 +347,7 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 	}
 
 	if err := link.AttachToBridge(brId, br.HostInterface, rootNs); err != nil {
-		return fmt.Errorf("Unable to attach HostIf to bridge %s: %v", br.Name, err)
+		return fmt.Errorf("unable to attach HostIf to bridge %s: %v", br.Name, err)
 	}
 
 	for _, peer := range br.Peers {
@@ -340,7 +365,7 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		)
 		if err != nil {
 			return fmt.Errorf(
-				"Unable to create link %s-%s.%d: %v",
+				"unable to create link %s-%s.%d: %v",
 				br.Name, peer.Node.GetName(), peer.IfIndex, err,
 			)
 		}
@@ -377,7 +402,7 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	_, err = link.CreateVethLink(peer1IfName, peer1Netns, peer2IfName, peer2Netns)
 	if err != nil {
 		return fmt.Errorf(
-			"Unable to create link %s.%d-%s.%d: %v",
+			"unable to create link %s.%d-%s.%d: %v",
 			l.Peer1.Node.GetName(), l.Peer1.IfIndex,
 			l.Peer2.Node.GetName(), l.Peer2.IfIndex,
 			err,
@@ -430,13 +455,26 @@ func (t *NetemTopologyManager) WriteNetworkFile(data []byte) error {
 }
 
 func (t *NetemTopologyManager) GetAllNodes() []INetemNode {
-	return t.nodes
+	nodeInstances := make([]INetemNode, len(t.nodes))
+	for i := range t.nodes {
+		nodeInstances[i] = t.nodes[i].Instance
+	}
+	return nodeInstances
+}
+
+func (t *NetemTopologyManager) IsNodeLaunchAtStartup(name string) bool {
+	for _, node := range t.nodes {
+		if node.Instance.GetName() == name {
+			return node.LaunchAtStartup
+		}
+	}
+	return false
 }
 
 func (t *NetemTopologyManager) GetNode(name string) INetemNode {
 	for _, node := range t.nodes {
-		if node.GetName() == name {
-			return node
+		if node.Instance.GetName() == name {
+			return node.Instance
 		}
 	}
 	return nil
@@ -444,13 +482,13 @@ func (t *NetemTopologyManager) GetNode(name string) INetemNode {
 
 func (t *NetemTopologyManager) startNode(node INetemNode) ([]string, error) {
 	if err := node.Start(); err != nil {
-		return []string{}, fmt.Errorf("Unable to start node %s: %w", node.GetName(), err)
+		return []string{}, fmt.Errorf("unable to start node %s: %w", node.GetName(), err)
 	}
 
 	configPath := path.Join(t.path, configDir)
 	messages, err := node.LoadConfig(configPath)
 	if err != nil {
-		return messages, fmt.Errorf("Unable to load config of node %s: %w", node.GetName(), err)
+		return messages, fmt.Errorf("unable to load config of node %s: %w", node.GetName(), err)
 	}
 
 	return messages, nil
@@ -458,7 +496,7 @@ func (t *NetemTopologyManager) startNode(node INetemNode) ([]string, error) {
 
 func (t *NetemTopologyManager) stopNode(node INetemNode) error {
 	if err := node.Stop(); err != nil {
-		return fmt.Errorf("Unable to stop node %s: %w", node.GetName(), err)
+		return fmt.Errorf("unable to stop node %s: %w", node.GetName(), err)
 	}
 	return nil
 }
@@ -471,7 +509,7 @@ func (t *NetemTopologyManager) Start(nodeName string) ([]string, error) {
 
 	node := t.GetNode(nodeName)
 	if node == nil {
-		return []string{}, fmt.Errorf("Node %s not found in the topology", nodeName)
+		return []string{}, fmt.Errorf("node %s not found in the topology", nodeName)
 	}
 
 	return t.startNode(node)
@@ -485,7 +523,7 @@ func (t *NetemTopologyManager) Stop(nodeName string) error {
 
 	node := t.GetNode(nodeName)
 	if node == nil {
-		return fmt.Errorf("Node %s not found in the topology", nodeName)
+		return fmt.Errorf("node %s not found in the topology", nodeName)
 	}
 
 	return t.stopNode(node)
@@ -494,7 +532,7 @@ func (t *NetemTopologyManager) Stop(nodeName string) error {
 func (t *NetemTopologyManager) ReadConfigFiles(nodeName string) (map[string][]byte, error) {
 	node := t.GetNode(nodeName)
 	if node == nil {
-		return map[string][]byte{}, fmt.Errorf("Node %s not found in the topology", nodeName)
+		return map[string][]byte{}, fmt.Errorf("node %s not found in the topology", nodeName)
 	}
 
 	confPath := path.Join(t.path, configDir)
@@ -506,14 +544,14 @@ func (t *NetemTopologyManager) Save() error {
 	destPath := path.Join(t.path, configDir)
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
 		if err := os.Mkdir(destPath, 0755); err != nil {
-			return fmt.Errorf("Unable to create configs dir %s: %w", destPath, err)
+			return fmt.Errorf("unable to create configs dir %s: %w", destPath, err)
 		}
 	}
 
 	g := new(errgroup.Group)
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.Save(destPath) })
+		g.Go(func() error { return node.Instance.Save(destPath) })
 	}
 	return g.Wait()
 }
@@ -523,7 +561,7 @@ func (t *NetemTopologyManager) Close() error {
 	// close all nodes
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.Close() })
+		g.Go(func() error { return node.Instance.Close() })
 	}
 	if err := g.Wait(); err != nil {
 		t.logger.Errorf("Error when closing nodes: %v", err)
@@ -546,7 +584,7 @@ func (t *NetemTopologyManager) Close() error {
 		}
 	}
 
-	t.nodes = make([]INetemNode, 0)
+	t.nodes = make([]NetemNode, 0)
 	t.links = make([]*NetemLink, 0)
 	t.bridges = make([]*NetemBridge, 0)
 	t.IdGenerator.Close()
@@ -563,14 +601,14 @@ func LoadTopology(prjID, prjPath string) (*NetemTopologyManager, error) {
 	topo := &NetemTopologyManager{
 		prjID:  prjID,
 		path:   prjPath,
-		nodes:  make([]INetemNode, 0),
+		nodes:  make([]NetemNode, 0),
 		logger: logrus.WithField("project", prjID),
 		IdGenerator: &NodeIdentifierGenerator{
 			lock: &sync.Mutex{},
 		},
 	}
 	if err := topo.Load(); err != nil {
-		return topo, fmt.Errorf("Unable to load the topology:\n\t%w", err)
+		return topo, fmt.Errorf("unable to load the topology:\n\t%w", err)
 	}
 	return topo, nil
 }

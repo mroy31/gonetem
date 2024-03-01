@@ -58,6 +58,7 @@ Options
 """""""
 
 Several options are available when you declare a docker node:
+  - ``launch`` (boolean, optional): set to no to not start the node at the launch of the project (yes by default) 
   - ``ipv6`` (boolean, optional): set to yes if you want to enable ipv6 support on this node (no by default)
   - ``mpls`` (boolean, optional): set to yes to enable mpls support on this node (no by default).
   - ``image`` (string, optional): set to provide a custom docker image for this node

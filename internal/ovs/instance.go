@@ -133,7 +133,7 @@ func (o *OvsProjectInstance) AddBr(brName string) error {
 	defer mutex.Unlock()
 
 	if o.findBr(brName) != -1 {
-		return fmt.Errorf("Switch %s already exists", brName)
+		return fmt.Errorf("switch %s already exists", brName)
 	}
 
 	cmd := []string{"ovs-vsctl", "add-br", brName}
@@ -190,13 +190,13 @@ func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) ([]string
 	}
 
 	if err := client.CopyTo(o.containerId, confFile, tmpConfFile); err != nil {
-		return messages, fmt.Errorf("Unable to copy config file %s:\n\t%w", confFile, err)
+		return messages, fmt.Errorf("unable to copy config file %s:\n\t%w", confFile, err)
 	}
 
 	cmd := []string{"ovs-config.py", "-a", "load", "-c", tmpConfFile, brName}
 	output, err := client.Exec(o.containerId, cmd)
 	if err != nil {
-		return messages, fmt.Errorf("Unable to load config file %s:\n\t%w", confFile, err)
+		return messages, fmt.Errorf("unable to load config file %s:\n\t%w", confFile, err)
 	} else if output != "" {
 		messages = strings.Split(output, "\n")
 	}
@@ -216,7 +216,7 @@ func (o *OvsProjectInstance) SaveConfig(name, brName, dstPath string) error {
 
 	cmd := []string{"ovs-config.py", "-a", "save", "-c", tmpConfFile, brName}
 	if _, err := client.Exec(o.containerId, cmd); err != nil {
-		return fmt.Errorf("Unable to save config in file %s:\n\t%w", confFile, err)
+		return fmt.Errorf("unable to save config in file %s:\n\t%w", confFile, err)
 	}
 
 	if err := client.CopyFrom(o.containerId, tmpConfFile, confFile); err != nil {
@@ -262,7 +262,7 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 	if err != nil {
 		return nil, err
 	} else if !present {
-		return nil, fmt.Errorf("Ovswitch image %s not present", imgName)
+		return nil, fmt.Errorf("ovswitch image %s not present", imgName)
 	}
 
 	containerName := fmt.Sprintf("%s%s.ovs", options.NETEM_ID, prjID)

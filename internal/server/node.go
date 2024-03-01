@@ -78,7 +78,7 @@ func (nIdGen *NodeIdentifierGenerator) GetId(name string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("Unable to generate a short id for node %s: all attempts fail", name)
+	return "", fmt.Errorf("unable to generate a short id for node %s: all attempts fail", name)
 }
 
 func (nIdGen *NodeIdentifierGenerator) Close() {
@@ -120,5 +120,5 @@ func CreateNode(prjID string, name string, shortName string, config NodeConfig) 
 		return ovs.NewOvsNode(prjID, name, shortName)
 	}
 
-	return nil, fmt.Errorf("Unknown node type '%s'", config.Type)
+	return nil, fmt.Errorf("unknown node type '%s'", config.Type)
 }

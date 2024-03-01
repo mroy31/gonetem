@@ -47,14 +47,14 @@ func (o *OvsNode) IsRunning() bool {
 
 func (o *OvsNode) CanRunConsole() error {
 	if !o.Running {
-		return errors.New("Not running")
+		return errors.New("not running")
 	}
 	return nil
 }
 
 func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	if !o.Running {
-		return errors.New("Not running")
+		return errors.New("not running")
 	}
 
 	client, err := docker.NewDockerClient()
@@ -93,7 +93,7 @@ func (o *OvsNode) GetInterfaceName(ifIndex int) string {
 
 func (o *OvsNode) Capture(ifIndex int, out io.Writer) error {
 	if !o.Running {
-		return fmt.Errorf("Not running")
+		return fmt.Errorf("not running")
 	}
 
 	return o.OvsInstance.Capture(o.GetInterfaceName(ifIndex), out)
@@ -139,8 +139,10 @@ func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) er
 		return err
 	}
 
-	if err := o.OvsInstance.AddPort(o.GetBridgeName(), targetIfName); err != nil {
-		return err
+	if o.Running {
+		if err := o.OvsInstance.AddPort(o.GetBridgeName(), targetIfName); err != nil {
+			return err
+		}
 	}
 
 	o.Interfaces[targetIfName] = link.IFSTATE_UP
@@ -178,7 +180,7 @@ func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 		}
 	}
 
-	return fmt.Errorf("Interface %s.%d not found", n.GetName(), ifIndex)
+	return fmt.Errorf("interface %s.%d not found", n.GetName(), ifIndex)
 }
 
 func (o *OvsNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
@@ -255,7 +257,7 @@ func NewOvsNode(prjID, name, shortName string) (*OvsNode, error) {
 
 	node.OvsInstance = GetOvsInstance(prjID)
 	if node.OvsInstance == nil {
-		return node, fmt.Errorf("Ovswitch instance for project %s not found", prjID)
+		return node, fmt.Errorf("ovswitch instance for project %s not found", prjID)
 	}
 	return node, nil
 }
