@@ -55,10 +55,24 @@ func CreateVethLink(name string, namespace netns.NsHandle, peerName string, peer
 	}
 
 	if err := netlink.LinkAdd(veth); err != nil {
-		return nil, fmt.Errorf("Error when creating Veth: %v", err)
+		return nil, fmt.Errorf("error when creating Veth: %v", err)
 	}
 
 	return veth, nil
+}
+
+func CreateNetns(name string) (netns.NsHandle, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	return netns.NewNamed(name)
+}
+
+func DeleteNetns(name string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	return netns.DeleteNamed(name)
 }
 
 func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error) {
@@ -74,11 +88,11 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 
 	err := netlink.LinkAdd(br)
 	if err != nil {
-		return br, fmt.Errorf("Error when creating bridge %s: %v", name, err)
+		return br, fmt.Errorf("error when creating bridge %s: %v", name, err)
 	}
 
 	if err := netlink.LinkSetUp(br); err != nil {
-		return br, fmt.Errorf("Error when set %s up: %v", name, err)
+		return br, fmt.Errorf("error when set %s up: %v", name, err)
 	}
 
 	return br, nil
@@ -91,7 +105,7 @@ func CreateMacVlan(name string, parent string, group int, namespace netns.NsHand
 	netns.Set(namespace)
 	parentLink, err := netlink.LinkByName(parent)
 	if err != nil {
-		return &netlink.Macvlan{}, fmt.Errorf("Unable to find macvlan parent %s: %v", parent, err)
+		return &netlink.Macvlan{}, fmt.Errorf("unable to find macvlan parent %s: %v", parent, err)
 	}
 
 	peerMAC, _ := net.ParseMAC(fmt.Sprintf("00:00:5E:00:01:%02X", group))
@@ -107,7 +121,7 @@ func CreateMacVlan(name string, parent string, group int, namespace netns.NsHand
 	}
 
 	if err := netlink.LinkAdd(macvlan); err != nil {
-		return macvlan, fmt.Errorf("Error when creating MACVLAN %s: %v", name, err)
+		return macvlan, fmt.Errorf("error when creating MACVLAN %s: %v", name, err)
 	}
 	return macvlan, nil
 }
@@ -125,11 +139,11 @@ func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, 
 
 	err := netlink.LinkAdd(vrf)
 	if err != nil {
-		return vrf, fmt.Errorf("Error when creating VRF %s: %v", name, err)
+		return vrf, fmt.Errorf("error when creating VRF %s: %v", name, err)
 	}
 
 	if err := netlink.LinkSetUp(vrf); err != nil {
-		return vrf, fmt.Errorf("Error when set %s up: %v", name, err)
+		return vrf, fmt.Errorf("error when set %s up: %v", name, err)
 	}
 
 	return vrf, nil
@@ -142,7 +156,7 @@ func AttachToBridge(br *netlink.Bridge, ifName string, namespace netns.NsHandle)
 	netns.Set(namespace)
 	ifObj, err := netlink.LinkByName(ifName)
 	if err != nil {
-		return fmt.Errorf("Unable to get %s: %v", ifName, err)
+		return fmt.Errorf("unable to get %s: %v", ifName, err)
 	}
 
 	return netlink.LinkSetMaster(ifObj, br)
@@ -155,7 +169,7 @@ func DeleteLink(name string, namespace netns.NsHandle) error {
 	netns.Set(namespace)
 	br, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("Unable to get link %s: %v", name, err)
+		return fmt.Errorf("unable to get link %s: %v", name, err)
 	}
 
 	return netlink.LinkDel(br)
@@ -166,19 +180,19 @@ func RenameLink(name string, target string, namespace netns.NsHandle) error {
 	defer runtime.UnlockOSThread()
 
 	if err := netns.Set(namespace); err != nil {
-		return fmt.Errorf("RenameLink - Error when switching netns: %v", err)
+		return fmt.Errorf("renameLink - Error when switching netns: %v", err)
 	}
 
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("RenameLink - Unable get link %s: %v", name, err)
+		return fmt.Errorf("renameLink - Unable get link %s: %v", name, err)
 	}
 
 	if err := netlink.LinkSetName(link, target); err != nil {
-		return fmt.Errorf("Error when renaming link %s->%s: %v", name, target, err)
+		return fmt.Errorf("error when renaming link %s->%s: %v", name, target, err)
 	}
 	if err := netlink.LinkSetUp(link); err != nil {
-		return fmt.Errorf("Error when set %s up: %v", name, err)
+		return fmt.Errorf("error when set %s up: %v", name, err)
 	}
 
 	return nil
@@ -189,22 +203,22 @@ func SetInterfaceState(name string, namespace netns.NsHandle, state IfState) err
 	defer runtime.UnlockOSThread()
 
 	if err := netns.Set(namespace); err != nil {
-		return fmt.Errorf("Error when switching netns: %v", err)
+		return fmt.Errorf("error when switching netns: %v", err)
 	}
 
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("Unable get link %s: %v", name, err)
+		return fmt.Errorf("unable get link %s: %v", name, err)
 	}
 
 	switch state {
 	case IFSTATE_UP:
 		if err := netlink.LinkSetUp(link); err != nil {
-			return fmt.Errorf("Error when set %s up: %v", name, err)
+			return fmt.Errorf("error when set %s up: %v", name, err)
 		}
 	case IFSTATE_DOWN:
 		if err := netlink.LinkSetDown(link); err != nil {
-			return fmt.Errorf("Error when set %s down: %v", name, err)
+			return fmt.Errorf("error when set %s down: %v", name, err)
 		}
 	}
 
@@ -222,17 +236,17 @@ func MoveInterfacesNetns(ifNames map[string]IfState, current netns.NsHandle, tar
 	defer runtime.UnlockOSThread()
 
 	if err := netns.Set(current); err != nil {
-		return fmt.Errorf("Error when switching netns: %v", err)
+		return fmt.Errorf("error when switching netns: %v", err)
 	}
 
-	for ifName, _ := range ifNames {
+	for ifName := range ifNames {
 		link, err := netlink.LinkByName(ifName)
 		if err != nil {
-			return fmt.Errorf("Unable get link %s: %v", ifName, err)
+			return fmt.Errorf("unable get link %s: %v", ifName, err)
 		}
 
 		if err := netlink.LinkSetNsFd(link, int(target)); err != nil {
-			return fmt.Errorf("Error when update netns for %s: %v", ifName, err)
+			return fmt.Errorf("error when update netns for %s: %v", ifName, err)
 		}
 	}
 

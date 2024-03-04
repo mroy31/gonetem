@@ -96,17 +96,6 @@ func (n *DockerNode) IsRunning() bool {
 }
 
 func (n *DockerNode) Create(imgName string, ipv6 bool) error {
-	var err error
-
-	// first created local named ns to detach interface without delete it
-	nsName := fmt.Sprintf("%s%s", n.PrjID, n.Name)
-	ns, err := netns.NewNamed(nsName)
-	if err != nil {
-		return fmt.Errorf("error when creating node netns '%s': %v", nsName, err)
-	}
-	ns.Close()
-	n.LocalNetnsName = nsName
-
 	client, err := NewDockerClient()
 	if err != nil {
 		return err
@@ -155,6 +144,19 @@ func (n *DockerNode) GetRunningNetns() (netns.NsHandle, error) {
 }
 
 func (n *DockerNode) GetLocalNetns() (netns.NsHandle, error) {
+	if n.LocalNetnsName == "" {
+		// first created local named ns to detach interface without delete it
+		n.LocalNetnsName = fmt.Sprintf("%s%s", n.PrjID, n.Name)
+		ns, err := link.CreateNetns(n.LocalNetnsName)
+		if err != nil {
+			n.LocalNetnsName = ""
+			return netns.NsHandle(0),
+				fmt.Errorf("error when creating node netns '%s': %v", n.LocalNetnsName, err)
+		}
+
+		return ns, nil
+	}
+
 	localNS, err := netns.GetFromName(n.LocalNetnsName)
 	if err != nil {
 		return netns.NsHandle(0), fmt.Errorf("unable to get netns associated to node %s: %v", n.Name, err)
@@ -321,7 +323,6 @@ func (n *DockerNode) Stop() error {
 		}
 		n.Running = false
 		n.ConfigLoaded = false
-
 	}
 
 	return nil
@@ -670,7 +671,10 @@ func (n *DockerNode) Close() error {
 		// clean attributes
 		n.ConfigLoaded = false
 		n.Interfaces = make(map[string]link.IfState)
-		netns.DeleteNamed(n.LocalNetnsName)
+		if n.LocalNetnsName != "" {
+			link.DeleteNetns(n.LocalNetnsName)
+			n.LocalNetnsName = ""
+		}
 	}
 
 	return nil
