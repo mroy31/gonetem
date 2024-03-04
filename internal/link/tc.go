@@ -32,30 +32,8 @@ func formatTime(t int) uint32 {
 	return uint32(float64(t) * 1000 * 15.625)
 }
 
-func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss float64) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	netns.Set(namespace)
-
-	// get interface ID
-	devID, err := netlink.LinkByName(ifname)
-	if err != nil {
-		return fmt.Errorf("Could not get interface ID for %s: %v\n", ifname, err)
-	}
-
-	// open a rtnetlink socket
-	rtnl, err := tc.Open(&tc.Config{})
-	if err != nil {
-		return fmt.Errorf("Could not open rtnetlink socket: %v", err)
-	}
-	defer func() {
-		if err := rtnl.Close(); err != nil {
-			logger.Errorf("Could not close rtnetlink socket: %v", err)
-		}
-	}()
-
-	qdisc := tc.Object{
+func netemQdisc(devID netlink.Link, delay int, jitter int, loss float64) tc.Object {
+	return tc.Object{
 		Msg: tc.Msg{
 			Family:  unix.AF_UNSPEC,
 			Ifindex: uint32(devID.Attrs().Index),
@@ -75,10 +53,42 @@ func CreateNetem(ifname string, namespace netns.NsHandle, delay int, jitter int,
 			},
 		},
 	}
+}
 
-	// tc qdisc add dev ifname root netem ...
-	if err := rtnl.Qdisc().Add(&qdisc); err != nil {
-		return fmt.Errorf("Could not assign qdisc netem to %s: %v\n", ifname, err)
+func Netem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss float64, change bool) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	netns.Set(namespace)
+
+	// get interface ID
+	devID, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return fmt.Errorf("could not get interface ID for %s: %v", ifname, err)
+	}
+
+	// open a rtnetlink socket
+	rtnl, err := tc.Open(&tc.Config{})
+	if err != nil {
+		return fmt.Errorf("could not open rtnetlink socket: %v", err)
+	}
+	defer func() {
+		if err := rtnl.Close(); err != nil {
+			logger.Errorf("Could not close rtnetlink socket: %v", err)
+		}
+	}()
+
+	qdisc := netemQdisc(devID, delay, jitter, loss)
+	if !change {
+		// tc qdisc add dev ifname root netem ...
+		if err := rtnl.Qdisc().Add(&qdisc); err != nil {
+			return fmt.Errorf("could not assign qdisc netem to %s: %v", ifname, err)
+		}
+	} else {
+		// tc qdisc change dev ifname root netem ...
+		if err := rtnl.Qdisc().Change(&qdisc); err != nil {
+			return fmt.Errorf("could not assign qdisc netem to %s: %v", ifname, err)
+		}
 	}
 
 	return nil
@@ -93,13 +103,13 @@ func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFact
 	// get interface ID
 	devID, err := netlink.LinkByName(ifname)
 	if err != nil {
-		return fmt.Errorf("Could not get interface ID for %s: %v\n", ifname, err)
+		return fmt.Errorf("could not get interface ID for %s: %v", ifname, err)
 	}
 
 	// open a rtnetlink socket
 	rtnl, err := tc.Open(&tc.Config{})
 	if err != nil {
-		return fmt.Errorf("Could not open rtnetlink socket: %v", err)
+		return fmt.Errorf("could not open rtnetlink socket: %v", err)
 	}
 	defer func() {
 		if err := rtnl.Close(); err != nil {
@@ -139,7 +149,7 @@ func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFact
 
 	// tc qdisc add dev ifname root netem ...
 	if err := rtnl.Qdisc().Add(&qdisc); err != nil {
-		return fmt.Errorf("Could not assign qdisc tbf to %s: %v\n", ifname, err)
+		return fmt.Errorf("could not assign qdisc tbf to %s: %v", ifname, err)
 	}
 
 	return nil

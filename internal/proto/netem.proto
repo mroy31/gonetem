@@ -40,6 +40,9 @@ service Netem {
     rpc CopyFrom(CopyMsg) returns (stream CopyMsg) {}
     rpc CopyTo(stream CopyMsg) returns (AckResponse) {}
 
+    // Link actions
+    rpc LinkUpdate(LinkRequest) returns (AckResponse) {}
+
 }
 
 // global enums
@@ -126,6 +129,19 @@ message CaptureSrvMsg {
 }
 
 // Request messages
+
+message LinkConfig {
+    string peer1 = 1;
+    string peer2 = 2;
+    float loss = 3;
+    int32 delay = 4;
+    int32 jitter = 5;
+}
+
+message LinkRequest {
+    string prjId = 1;
+    LinkConfig link = 2;
+}
 
 message NodeIfStateRequest {
     string prjId = 1;

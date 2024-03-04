@@ -67,6 +67,16 @@ links:
 			},
 		},
 	}
+	updateLinkTopo = `
+nodes:
+  R1:
+    type: docker.router
+  R2:
+    type: docker.router
+links:
+- peer1: R1.0
+  peer2: R2.0
+`
 	wrongTopology = `
 nodes:
   R1
@@ -96,6 +106,88 @@ func checkTopology(data TopologyTestData, topology *NetemTopologyManager, t *tes
 		}
 	}
 
+}
+
+func TestTopology_UpdateLink(t *testing.T) {
+	options.InitServerConfig()
+	tests := []struct {
+		desc          string
+		topology      string
+		peer1         string
+		peer2         string
+		delay         int
+		jitter        int
+		loss          float64
+		expectedError bool
+	}{
+		{
+			desc:     "Topology: update existing link",
+			topology: updateLinkTopo,
+			peer1:    "R1.0",
+			peer2:    "R2.0",
+			delay:    50,
+			jitter:   10,
+			loss:     0.1,
+		},
+		{
+			desc:          "Topology: update wrong link",
+			topology:      updateLinkTopo,
+			peer1:         "R1.0",
+			peer2:         "R3.0",
+			expectedError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			prjID := utils.RandString(4)
+			// create temp dir to save configuration files
+			dir, err := os.MkdirTemp("/tmp", "ntmtst")
+			if err != nil {
+				t.Errorf("Unable to create temp folder: %v", err)
+				return
+			}
+			defer os.RemoveAll(dir)
+
+			if err := os.WriteFile(path.Join(dir, "network.yml"), []byte(tt.topology), 0644); err != nil {
+				t.Errorf("Unable to create topology file: %v", err)
+				return
+			}
+
+			topology, err := LoadTopology(prjID, dir)
+			if err != nil {
+				t.Errorf("LoadTopology returns an unexpected error: %v", err)
+				return
+			}
+			defer topology.Close()
+
+			if _, err := topology.Run(); err != nil {
+				t.Errorf("Run returns an error: %v", err)
+				return
+			}
+
+			if err := topology.LinkUpdate(LinkConfig{
+				Peer1:  tt.peer1,
+				Peer2:  tt.peer2,
+				Delay:  tt.delay,
+				Jitter: tt.jitter,
+				Loss:   tt.loss,
+			}); err != nil && !tt.expectedError {
+				t.Errorf("LinkUpdate returns an unexpected error: %v", err)
+				return
+			}
+
+			if !tt.expectedError {
+				link, _ := topology.GetLink(tt.peer1, tt.peer2)
+				if link.Delay != tt.delay || link.Jitter != tt.jitter {
+					t.Errorf(
+						"Delay or jitter have wrong value: %d|%d %d|%d",
+						link.Delay, tt.delay, link.Jitter, tt.jitter,
+					)
+				}
+			}
+		})
+	}
 }
 
 func TestTopology_Load(t *testing.T) {

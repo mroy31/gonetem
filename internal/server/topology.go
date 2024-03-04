@@ -81,13 +81,15 @@ type NetemLinkPeer struct {
 }
 
 type NetemLink struct {
-	Peer1  NetemLinkPeer
-	Peer2  NetemLinkPeer
-	Loss   float64
-	Delay  int
-	Jitter int     // ms
-	Rate   int     // kbps
-	Buffer float64 // BDP scale factor
+	Peer1    NetemLinkPeer
+	Peer2    NetemLinkPeer
+	Loss     float64
+	Delay    int
+	Jitter   int     // ms
+	Rate     int     // kbps
+	Buffer   float64 // BDP scale factor
+	HasNetem bool
+	HasTbf   bool
 }
 
 type NetemBridge struct {
@@ -204,11 +206,13 @@ func (t *NetemTopologyManager) Load() error {
 				Node:    t.GetNode(peer2[0]),
 				IfIndex: peer2Idx,
 			},
-			Delay:  lConfig.Delay,
-			Jitter: lConfig.Jitter,
-			Loss:   lConfig.Loss,
-			Rate:   lConfig.Rate,
-			Buffer: lConfig.Buffer,
+			Delay:    lConfig.Delay,
+			Jitter:   lConfig.Jitter,
+			Loss:     lConfig.Loss,
+			Rate:     lConfig.Rate,
+			Buffer:   lConfig.Buffer,
+			HasNetem: false,
+			HasTbf:   false,
 		}
 	}
 
@@ -411,12 +415,13 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 
 	// create netem qdisc if necessary
 	if l.Delay > 0 || l.Loss > 0 {
-		if err := link.CreateNetem(peer1IfName, peer1Netns, l.Delay, l.Jitter, l.Loss); err != nil {
+		if err := link.Netem(peer1IfName, peer1Netns, l.Delay, l.Jitter, l.Loss, false); err != nil {
 			return err
 		}
-		if err := link.CreateNetem(peer2IfName, peer2Netns, l.Delay, l.Jitter, l.Loss); err != nil {
+		if err := link.Netem(peer2IfName, peer2Netns, l.Delay, l.Jitter, l.Loss, false); err != nil {
 			return err
 		}
+		l.HasNetem = true
 	}
 	// create tbf qdisc if necessary
 	if l.Rate > 0 {
@@ -426,6 +431,7 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay+l.Jitter, l.Rate, l.Buffer); err != nil {
 			return err
 		}
+		l.HasTbf = true
 	}
 
 	if err := l.Peer1.Node.AddInterface(peer1IfName, l.Peer1.IfIndex, peer1Netns); err != nil {
@@ -434,6 +440,72 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	if err := l.Peer2.Node.AddInterface(peer2IfName, l.Peer2.IfIndex, peer2Netns); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (t *NetemTopologyManager) GetLink(peer1V string, peer2V string) (*NetemLink, error) {
+	peer1 := strings.Split(peer1V, ".")
+	peer2 := strings.Split(peer2V, ".")
+
+	peer1Idx, _ := strconv.Atoi(peer1[1])
+	peer2Idx, _ := strconv.Atoi(peer2[1])
+
+	for _, l := range t.links {
+		if l.Peer1.IfIndex == peer1Idx &&
+			l.Peer1.Node.GetName() == peer1[0] &&
+			l.Peer2.IfIndex == peer2Idx &&
+			l.Peer2.Node.GetName() == peer2[0] {
+			return l, nil
+		}
+	}
+
+	// check for inverse link
+	for _, l := range t.links {
+		if l.Peer1.IfIndex == peer2Idx &&
+			l.Peer1.Node.GetName() == peer2[0] &&
+			l.Peer2.IfIndex == peer1Idx &&
+			l.Peer2.Node.GetName() == peer1[0] {
+			return l, nil
+		}
+	}
+
+	return nil, fmt.Errorf(
+		"link %s - %s not found in the topology",
+		peer1V, peer2V,
+	)
+}
+
+func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig) error {
+	l, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
+	if err != nil {
+		return err
+	}
+	peer1Netns, err := l.Peer1.Node.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peer1Netns.Close()
+
+	peer2Netns, err := l.Peer2.Node.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peer2Netns.Close()
+
+	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
+	peer2IfName := l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex)
+	if err := link.Netem(peer1IfName, peer1Netns, linkCfg.Delay, linkCfg.Jitter, linkCfg.Loss, l.HasNetem); err != nil {
+		return err
+	}
+	if err := link.Netem(peer2IfName, peer2Netns, linkCfg.Delay, linkCfg.Jitter, linkCfg.Loss, l.HasNetem); err != nil {
+		return err
+	}
+
+	l.Delay = linkCfg.Delay
+	l.Jitter = linkCfg.Jitter
+	l.Loss = linkCfg.Loss
+	l.HasNetem = true
 
 	return nil
 }

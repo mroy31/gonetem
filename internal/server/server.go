@@ -35,13 +35,13 @@ func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*prot
 func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.AckResponse, error) {
 	client, err := docker.NewDockerClient()
 	if err != nil {
-		return nil, fmt.Errorf("Unable to init docker client: %w", err)
+		return nil, fmt.Errorf("unable to init docker client: %w", err)
 	}
 	defer client.Close()
 
 	cList, err := client.List(options.NETEM_ID)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to get container list: %w", err)
+		return nil, fmt.Errorf("unable to get container list: %w", err)
 	}
 
 	re := regexp.MustCompile(`^` + options.NETEM_ID + `(\w+)\.\w+`)
@@ -51,10 +51,10 @@ func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.Ack
 			if !IdProjectExist(groups[1]) {
 				logrus.Infof("Clean: remove container %s\n", cObj.Name)
 				if err := client.Stop(cObj.Container.ID); err != nil {
-					return nil, fmt.Errorf("Unable to stop container %s: %w", cObj.Name, err)
+					return nil, fmt.Errorf("unable to stop container %s: %w", cObj.Name, err)
 				}
 				if err := client.Rm(cObj.Container.ID); err != nil {
-					return nil, fmt.Errorf("Unable to rm container %s: %w", cObj.Name, err)
+					return nil, fmt.Errorf("unable to rm container %s: %w", cObj.Name, err)
 				}
 			}
 		}
@@ -243,6 +243,30 @@ func (s *netemServer) WriteNetworkFile(ctx context.Context, request *proto.WNetw
 	}
 
 	if err := project.Topology.WriteNetworkFile(request.GetData()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	rLink := request.GetLink()
+	linkConfig := LinkConfig{
+		Peer1:  rLink.GetPeer1(),
+		Peer2:  rLink.GetPeer2(),
+		Loss:   float64(rLink.GetLoss()),
+		Delay:  int(rLink.GetDelay()),
+		Jitter: int(rLink.GetJitter()),
+	}
+
+	if err := project.Topology.LinkUpdate(linkConfig); err != nil {
 		return nil, err
 	}
 
