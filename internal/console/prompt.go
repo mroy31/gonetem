@@ -224,7 +224,11 @@ func (p *NetemPrompt) RegisterCommands() {
 		Usage: "start <node_name>",
 		Args:  []string{`^\w+$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Start)
+			if cmdArgs[0] == "all" {
+				p.execWithClient(cmdArgs, p.StartAll)
+			} else {
+				p.execWithClient(cmdArgs, p.Start)
+			}
 		},
 	}
 	p.commands["stop"] = &NetemCommand{
@@ -232,7 +236,11 @@ func (p *NetemPrompt) RegisterCommands() {
 		Usage: "stop <node_name>",
 		Args:  []string{`^\w+$`},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Stop)
+			if cmdArgs[0] == "all" {
+				p.execWithClient(cmdArgs, p.StopAll)
+			} else {
+				p.execWithClient(cmdArgs, p.Stop)
+			}
 		},
 	}
 	p.commands["status"] = &NetemCommand{
@@ -701,10 +709,32 @@ func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
 	}
 }
 
+func (p *NetemPrompt) StartAll(client proto.NetemClient, cmdArgs []string) {
+	ack, err := client.TopologyStartAll(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		RedPrintf("Unable to start all nodes: %v\n", err)
+	} else {
+		if ack.Status.Code == proto.StatusCode_ERROR {
+			MagentaPrintf(ack.Status.Error + "\n")
+		}
+	}
+}
+
 func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
 	ack, err := client.Stop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to stop node: %v\n", err)
+	} else {
+		if ack.Status.Code == proto.StatusCode_ERROR {
+			MagentaPrintf(ack.Status.Error + "\n")
+		}
+	}
+}
+
+func (p *NetemPrompt) StopAll(client proto.NetemClient, cmdArgs []string) {
+	ack, err := client.TopologyStopAll(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		RedPrintf("Unable to stop all nodes: %v\n", err)
 	} else {
 		if ack.Status.Code == proto.StatusCode_ERROR {
 			MagentaPrintf(ack.Status.Error + "\n")

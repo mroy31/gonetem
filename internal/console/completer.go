@@ -47,9 +47,8 @@ func (c *PromptCompleter) Complete(d prompt.Document) ([]prompt.Suggest, istring
 				suggestions = append(suggestions, prompt.Suggest{Text: n.Name})
 			}
 
-			if args[0] == "console" || args[0] == "shell" {
+			if args[0] != "restart" {
 				suggestions = append(suggestions, prompt.Suggest{Text: "all"})
-
 			}
 
 			startIndex := endIndex - istrings.RuneCountInString(args[1])

@@ -34,6 +34,8 @@ const (
 	Netem_Check_FullMethodName             = "/netem.Netem/Check"
 	Netem_Reload_FullMethodName            = "/netem.Netem/Reload"
 	Netem_Run_FullMethodName               = "/netem.Netem/Run"
+	Netem_TopologyStartAll_FullMethodName  = "/netem.Netem/TopologyStartAll"
+	Netem_TopologyStopAll_FullMethodName   = "/netem.Netem/TopologyStopAll"
 	Netem_ReadConfigFiles_FullMethodName   = "/netem.Netem/ReadConfigFiles"
 	Netem_CanRunConsole_FullMethodName     = "/netem.Netem/CanRunConsole"
 	Netem_Console_FullMethodName           = "/netem.Netem/Console"
@@ -69,6 +71,8 @@ type NetemClient interface {
 	Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
 	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
+	TopologyStartAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	TopologyStopAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
 	ReadConfigFiles(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*ConfigFilesResponse, error)
 	CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
@@ -235,6 +239,24 @@ func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...gr
 func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error) {
 	out := new(RunResponse)
 	err := c.cc.Invoke(ctx, Netem_Run_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) TopologyStartAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, Netem_TopologyStartAll_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *netemClient) TopologyStopAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, Netem_TopologyStopAll_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -455,6 +477,8 @@ type NetemServer interface {
 	Check(context.Context, *ProjectRequest) (*AckResponse, error)
 	Reload(context.Context, *ProjectRequest) (*RunResponse, error)
 	Run(context.Context, *ProjectRequest) (*RunResponse, error)
+	TopologyStartAll(context.Context, *ProjectRequest) (*AckResponse, error)
+	TopologyStopAll(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
 	ReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error)
 	CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error)
@@ -516,6 +540,12 @@ func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*RunRe
 }
 func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*RunResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
+}
+func (UnimplementedNetemServer) TopologyStartAll(context.Context, *ProjectRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TopologyStartAll not implemented")
+}
+func (UnimplementedNetemServer) TopologyStopAll(context.Context, *ProjectRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TopologyStopAll not implemented")
 }
 func (UnimplementedNetemServer) ReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReadConfigFiles not implemented")
@@ -818,6 +848,42 @@ func _Netem_Run_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_TopologyStartAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).TopologyStartAll(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Netem_TopologyStartAll_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).TopologyStartAll(ctx, req.(*ProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Netem_TopologyStopAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProjectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).TopologyStopAll(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Netem_TopologyStopAll_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).TopologyStopAll(ctx, req.(*ProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Netem_ReadConfigFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
@@ -1096,6 +1162,14 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Run",
 			Handler:    _Netem_Run_Handler,
+		},
+		{
+			MethodName: "TopologyStartAll",
+			Handler:    _Netem_TopologyStartAll_Handler,
+		},
+		{
+			MethodName: "TopologyStopAll",
+			Handler:    _Netem_TopologyStopAll_Handler,
 		},
 		{
 			MethodName: "ReadConfigFiles",

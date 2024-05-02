@@ -27,6 +27,8 @@ service Netem {
     rpc Check(ProjectRequest) returns (AckResponse) {}
     rpc Reload(ProjectRequest) returns (RunResponse) {}
     rpc Run(ProjectRequest) returns (RunResponse) {}
+    rpc TopologyStartAll(ProjectRequest) returns (AckResponse) {}
+    rpc TopologyStopAll(ProjectRequest) returns (AckResponse) {}
 
     // Node actions
     rpc ReadConfigFiles(NodeRequest) returns (ConfigFilesResponse) {}

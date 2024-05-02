@@ -309,6 +309,65 @@ func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest)
 	}, nil
 }
 
+func (s *netemServer) TopologyStartAll(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetId()}
+	}
+
+	nodes := project.Topology.GetAllNodes()
+	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
+	for _, node := range nodes {
+		node := node
+		if node.IsRunning() {
+			continue
+		}
+
+		g.Go(func() error {
+			_, err := project.Topology.startNode(node)
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) TopologyStopAll(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+	project := GetProject(request.GetId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetId()}
+	}
+
+	nodes := project.Topology.GetAllNodes()
+	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
+	for _, node := range nodes {
+		node := node
+		if !node.IsRunning() {
+			continue
+		}
+
+		g.Go(func() error { return node.Stop() })
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
 func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
 	project := GetProject(request.GetPrjId())
 	if project == nil {
