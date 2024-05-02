@@ -38,7 +38,8 @@ def is_sw_exist(name: str) -> bool:
 
 
 def list_sw_ports(name: str) -> str:
-    return run_command(f"ovs-vsctl list-ports {name}", check_output=True)
+    ports = run_command(f"ovs-vsctl list-ports {name}", check_output=True)
+    return [p for p in ports.split("\n") if p != '']
 
 
 def load_ovs_config(_: str, conf: str):
@@ -69,7 +70,7 @@ def load_ovs_config(_: str, conf: str):
 def save_ovs_config(sw_name: str, conf: str):
     config = []
     try:
-        ports = list_sw_ports(sw_name).split("\n")
+        ports = list_sw_ports(sw_name)
         for port in ports:
             p_config = {"name": port}
             tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
