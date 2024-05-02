@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	networkFilename = "network.yml"
-	configDir       = "configs"
+	networkFilename       = "network.yml"
+	configDir             = "configs"
+	maxConcurrentNodeTask = 20
 )
 
 var (
@@ -151,6 +152,7 @@ func (t *NetemTopologyManager) Load() error {
 	// Create nodes
 	t.nodes = make([]NetemNode, 0)
 	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
 
 	for name, nConfig := range topology.Nodes {
 		name := name
@@ -278,6 +280,8 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	}
 
 	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
 	// 1 - start ovswitch container and init p2pSwitch
 	t.logger.Debug("Topo/Run: start ovswitch instance")
 	err = t.ovsInstance.Start()
@@ -621,6 +625,8 @@ func (t *NetemTopologyManager) Save() error {
 	}
 
 	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
 	for _, node := range t.nodes {
 		node := node
 		g.Go(func() error { return node.Instance.Save(destPath) })
@@ -630,6 +636,8 @@ func (t *NetemTopologyManager) Save() error {
 
 func (t *NetemTopologyManager) Close() error {
 	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
 	// close all nodes
 	for _, node := range t.nodes {
 		node := node
