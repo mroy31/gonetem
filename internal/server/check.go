@@ -21,38 +21,38 @@ var (
 
 func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 	if isEntryExist(nodes, name) {
-		return fmt.Errorf("Node '%s' already exist", name)
+		return fmt.Errorf("node '%s' already exist", name)
 	}
 
 	if !nameRE.MatchString(name) {
-		return fmt.Errorf("Node: '%s' name field is not valid", name)
+		return fmt.Errorf("node: '%s' name field is not valid", name)
 	}
 
 	if !nodeTypeRE.MatchString(nConfig.Type) {
-		return fmt.Errorf("Node: '%s' type field is not valid", nConfig.Type)
+		return fmt.Errorf("node: '%s' type field is not valid", nConfig.Type)
 	}
 
 	// more check on ovs node
 	if nConfig.Type == "ovs" {
 		if !switchRE.MatchString(name) {
-			return fmt.Errorf("Switch Node: '%s' name field must have less than 10 caracters", name)
+			return fmt.Errorf("switch Node: '%s' name field must have less than 10 caracters", name)
 		}
 
 		if nConfig.Mpls || len(nConfig.Vrfs) > 0 {
-			return fmt.Errorf("Mpls can not be enable on ovswitch")
+			return fmt.Errorf("mpls can not be enable on ovswitch")
 		}
 	}
 
 	// check vrrp configuration
 	if len(nConfig.Vrrps) > 0 {
 		if nConfig.Type != "docker.router" {
-			return fmt.Errorf("Vrrp can only be enable on docker.router node")
+			return fmt.Errorf("vrrp can only be enable on docker.router node")
 		}
 
 		for _, vrrpCnf := range nConfig.Vrrps {
 			_, _, err := net.ParseCIDR(vrrpCnf.Address)
 			if err != nil {
-				return fmt.Errorf("Vrrp address '%s' is not valid: %s", vrrpCnf.Address, err)
+				return fmt.Errorf("vrrp address '%s' is not valid: %s", vrrpCnf.Address, err)
 			}
 		}
 	}
@@ -76,18 +76,18 @@ func checkNodeConfig(name string, nConfig NodeConfig, nodes []string) error {
 
 func checkBridgeConfig(name string, bConfig BridgeConfig, bridges []string) error {
 	if isEntryExist(bridges, name) {
-		return fmt.Errorf("Bridge '%s' already exist", name)
+		return fmt.Errorf("bridge '%s' already exist", name)
 	}
 
 	if !nameRE.MatchString(name) {
-		return fmt.Errorf("Bridge: '%s' name field is not valid", name)
+		return fmt.Errorf("bridge: '%s' name field is not valid", name)
 	}
 
 	ns := link.GetRootNetns()
 	defer ns.Close()
 
 	if !link.IsLinkExist(bConfig.Host, ns) {
-		return fmt.Errorf("Bridge %s: host interface %s not found", name, bConfig.Host)
+		return fmt.Errorf("bridge %s: host interface %s not found", name, bConfig.Host)
 	}
 
 	return nil
@@ -104,18 +104,18 @@ func isEntryExist(nodes []string, node string) bool {
 
 func isPeerValid(nodes, peers []string, peer string) error {
 	if !peerRE.MatchString(peer) {
-		return fmt.Errorf("Link: invalid format for peer '%s' (<node>.<ifIndex> required)", peer)
+		return fmt.Errorf("link: invalid format for peer '%s' (<node>.<ifIndex> required)", peer)
 	}
 
 	for _, p := range peers {
 		if peer == p {
-			return fmt.Errorf("Link: peer '%s' is already used", peer)
+			return fmt.Errorf("link: peer '%s' is already used", peer)
 		}
 	}
 
 	node := strings.Split(peer, ".")[0]
 	if !isEntryExist(nodes, node) {
-		return fmt.Errorf("Link: node '%s' not exist", node)
+		return fmt.Errorf("link: node '%s' not exist", node)
 	}
 
 	return nil
@@ -130,13 +130,13 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 
 	data, err := os.ReadFile(filepath)
 	if err != nil {
-		errors = append(errors, fmt.Errorf("Unable to read topology file '%s':\n\t%w", filepath, err))
+		errors = append(errors, fmt.Errorf("unable to read topology file '%s':\n\t%w", filepath, err))
 		return nil, errors
 	}
 
 	err = yaml.Unmarshal(data, &topology)
 	if err != nil {
-		errors = append(errors, fmt.Errorf("Unable to parse topology file '%s':\n\t%w", filepath, err))
+		errors = append(errors, fmt.Errorf("unable to parse topology file '%s':\n\t%w", filepath, err))
 		return nil, errors
 	}
 
@@ -160,40 +160,40 @@ func CheckTopology(filepath string) (*NetemTopology, []error) {
 		}
 
 		if link.Peer1 == link.Peer2 {
-			errors = append(errors, fmt.Errorf("A link can not have the same peer"))
+			errors = append(errors, fmt.Errorf("a link can not have the same peer"))
 		}
 
 		peers = append(peers, link.Peer1, link.Peer2)
 
 		// check netem parameters
 		if link.Delay < 0 {
-			errors = append(errors, fmt.Errorf("Link delay must be >= 0 and specified in ms"))
+			errors = append(errors, fmt.Errorf("link delay must be >= 0 and specified in ms"))
 		}
 		if link.Jitter < 0 {
-			errors = append(errors, fmt.Errorf("Link jitter must be >= 0 and specified in ms"))
+			errors = append(errors, fmt.Errorf("link jitter must be >= 0 and specified in ms"))
 		}
 		if link.Loss < 0 {
-			errors = append(errors, fmt.Errorf("Link loss must be >= 0 and specified in percent"))
+			errors = append(errors, fmt.Errorf("link loss must be >= 0 and specified in percent"))
 		}
 		if link.Jitter > 0 && link.Delay == 0 {
-			errors = append(errors, fmt.Errorf("You must set delay with jitter"))
+			errors = append(errors, fmt.Errorf("you must set delay with jitter"))
 		}
 		if link.Loss > 100 {
-			errors = append(errors, fmt.Errorf("Link loss must be =< 100 and specified in percent"))
+			errors = append(errors, fmt.Errorf("link loss must be =< 100 and specified in percent"))
 		}
 
 		// check tbf parameters
 		if link.Rate < 0 {
-			errors = append(errors, fmt.Errorf("Link rate must be >= 0 and specified in kbps"))
+			errors = append(errors, fmt.Errorf("link rate must be >= 0 and specified in kbps"))
 		}
 		if link.Rate > 0 && link.Delay == 0 {
-			errors = append(errors, fmt.Errorf("Delay must be > 0 when Link rate is configured"))
+			errors = append(errors, fmt.Errorf("delay must be > 0 when Link rate is configured"))
 		}
 		if link.Buffer < 0.0 {
-			errors = append(errors, fmt.Errorf("Link buffer must be >= 0 and specified in BDP scale factor"))
+			errors = append(errors, fmt.Errorf("link buffer must be >= 0 and specified in BDP scale factor"))
 		}
 		if link.Buffer > 0.0 && link.Rate == 0 {
-			errors = append(errors, fmt.Errorf("Link rate must be > 0 when Link buffer is configured"))
+			errors = append(errors, fmt.Errorf("link rate must be > 0 when Link buffer is configured"))
 		}
 	}
 

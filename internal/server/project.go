@@ -65,11 +65,11 @@ func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
 	// create temp directory for the project
 	dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-"+prjId+"-")
 	if err != nil {
-		return nil, fmt.Errorf("Unable to create temp folder for project: %w", err)
+		return nil, fmt.Errorf("unable to create temp folder for project: %w", err)
 	}
 
 	if err := utils.OpenArchive(dir, bytes.NewReader(data)); err != nil {
-		return nil, fmt.Errorf("Unable to open project: %w", err)
+		return nil, fmt.Errorf("unable to open project: %w", err)
 	}
 
 	// load the topology
