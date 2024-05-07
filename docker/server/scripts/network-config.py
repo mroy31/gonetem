@@ -43,7 +43,7 @@ def is_ipv6_autoconf(if_name):
 def load_net_config(f_path):
     with open(f_path) as f_hd:
         net_config = json.load(f_hd)
-        with NDB() as ndb:
+        with NDB(sources=[{'target': 'localhost'}]) as ndb:
             # configure ip addresses
             for ifname in net_config["interfaces"]:
                 try:
@@ -79,7 +79,7 @@ def save_net_config(f_path, all_if):
         return f"{addr_conf['address']}/{addr_conf['prefixlen']}"
 
     net_config = {"interfaces": {}, "routes": []}
-    with NDB() as ndb:
+    with NDB(sources=[{'target': 'localhost'}]) as ndb:
         # record ip addresses
         for k in ndb.interfaces:
             if_obj = ndb.interfaces[k]
