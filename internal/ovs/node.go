@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -68,7 +69,8 @@ func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh 
 		cmd = []string{"/usr/bin/ovs-console.py", o.GetBridgeName()}
 	}
 
-	return client.ExecTty(o.OvsInstance.containerId, cmd, in, out, resizeCh)
+	ctx := context.Background()
+	return client.ExecTty(ctx, o.OvsInstance.containerId, cmd, in, out, resizeCh)
 }
 
 func (o *OvsNode) CopyFrom(srcPath, destPath string) error {
@@ -183,7 +185,7 @@ func (n *OvsNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 	return fmt.Errorf("interface %s.%d not found", n.GetName(), ifIndex)
 }
 
-func (o *OvsNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
+func (o *OvsNode) ReadConfigFiles(confDir string, timeout int) (map[string][]byte, error) {
 	configFilesData := make(map[string][]byte)
 
 	filesDir := confDir
@@ -194,7 +196,7 @@ func (o *OvsNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
 			return nil, fmt.Errorf("unable to create temp folder to save ovs config: %w", err)
 		}
 
-		err = o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dir)
+		err = o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dir, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("unable to save ovs config in temp folder %s: %w", dir, err)
 		}
@@ -218,22 +220,22 @@ func (o *OvsNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
 	return configFilesData, nil
 }
 
-func (o *OvsNode) LoadConfig(confPath string) ([]string, error) {
+func (o *OvsNode) LoadConfig(confPath string, timeout int) ([]string, error) {
 	if !o.Running {
 		o.Logger.Warn("LoadConfig: node not running")
 		return []string{}, nil
 	}
 
-	return o.OvsInstance.LoadConfig(o.Name, o.GetBridgeName(), confPath)
+	return o.OvsInstance.LoadConfig(o.Name, o.GetBridgeName(), confPath, timeout)
 }
 
-func (o *OvsNode) Save(dstPath string) error {
+func (o *OvsNode) Save(dstPath string, timeout int) error {
 	if !o.Running {
 		o.Logger.Warn("Save: node not running")
 		return nil
 	}
 
-	return o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dstPath)
+	return o.OvsInstance.SaveConfig(o.Name, o.GetBridgeName(), dstPath, timeout)
 }
 
 func (o *OvsNode) Close() error {

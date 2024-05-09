@@ -20,7 +20,7 @@ import (
 const (
 	networkFilename       = "network.yml"
 	configDir             = "configs"
-	maxConcurrentNodeTask = 20
+	maxConcurrentNodeTask = 30
 )
 
 var (
@@ -323,12 +323,13 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 
 	// 5 - load configs
 	t.logger.Debug("Topo/Run: load configuration")
+	timeout := options.ServerConfig.Docker.Timeoutop
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
 		if node.LaunchAtStartup {
 			g.Go(func() error {
-				messages, err := node.Instance.LoadConfig(configPath)
+				messages, err := node.Instance.LoadConfig(configPath, timeout)
 				nodeMessages = append(nodeMessages, &proto.RunResponse_NodeMessages{
 					Name:     node.Instance.GetName(),
 					Messages: messages,
@@ -562,7 +563,8 @@ func (t *NetemTopologyManager) startNode(node INetemNode) ([]string, error) {
 	}
 
 	configPath := path.Join(t.path, configDir)
-	messages, err := node.LoadConfig(configPath)
+	timeout := options.ServerConfig.Docker.Timeoutop
+	messages, err := node.LoadConfig(configPath, timeout)
 	if err != nil {
 		return messages, fmt.Errorf("unable to load config of node %s: %w", node.GetName(), err)
 	}
@@ -612,7 +614,9 @@ func (t *NetemTopologyManager) ReadConfigFiles(nodeName string) (map[string][]by
 	}
 
 	confPath := path.Join(t.path, configDir)
-	return node.ReadConfigFiles(confPath)
+	timeout := options.ServerConfig.Docker.Timeoutop
+
+	return node.ReadConfigFiles(confPath, timeout)
 }
 
 func (t *NetemTopologyManager) Save() error {
@@ -624,14 +628,19 @@ func (t *NetemTopologyManager) Save() error {
 		}
 	}
 
+	timeout := options.ServerConfig.Docker.Timeoutop
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
 
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.Instance.Save(destPath) })
+		g.Go(func() error {
+			err := node.Instance.Save(destPath, timeout)
+			return err
+		})
 	}
-	return g.Wait()
+	err := g.Wait()
+	return err
 }
 
 func (t *NetemTopologyManager) Close() error {

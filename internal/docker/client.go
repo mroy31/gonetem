@@ -20,6 +20,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type NetemContainerList struct {
+	Container types.Container
+	Name      string
+}
+
 type DockerClient struct {
 	cli *client.Client
 }
@@ -28,10 +33,8 @@ func (c *DockerClient) Close() error {
 	return c.cli.Close()
 }
 
-func (c *DockerClient) IsImagePresent(imgName string) (bool, error) {
-	list, err := c.cli.ImageList(
-		context.Background(),
-		types.ImageListOptions{All: true})
+func (c *DockerClient) IsImagePresent(ctx context.Context, imgName string) (bool, error) {
+	list, err := c.cli.ImageList(ctx, types.ImageListOptions{All: true})
 	if err != nil {
 		return false, err
 	}
@@ -46,10 +49,8 @@ func (c *DockerClient) IsImagePresent(imgName string) (bool, error) {
 	return false, nil
 }
 
-func (c *DockerClient) ImagePull(imgName string) error {
-	out, err := c.cli.ImagePull(
-		context.Background(),
-		imgName, types.ImagePullOptions{})
+func (c *DockerClient) ImagePull(ctx context.Context, imgName string) error {
+	out, err := c.cli.ImagePull(ctx, imgName, types.ImagePullOptions{})
 	if err != nil {
 		return err
 	}
@@ -59,15 +60,10 @@ func (c *DockerClient) ImagePull(imgName string) error {
 	return nil
 }
 
-type NetemContainerList struct {
-	Container types.Container
-	Name      string
-}
-
-func (c *DockerClient) List(prefix string) ([]NetemContainerList, error) {
+func (c *DockerClient) List(ctx context.Context, prefix string) ([]NetemContainerList, error) {
 	result := make([]NetemContainerList, 0)
 
-	list, err := c.cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	list, err := c.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
 	if err != nil {
 		return result, err
 	}
@@ -87,8 +83,8 @@ func (c *DockerClient) List(prefix string) ([]NetemContainerList, error) {
 	return result, nil
 }
 
-func (c *DockerClient) Get(containerId string) (*types.Container, error) {
-	list, err := c.cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+func (c *DockerClient) Get(ctx context.Context, containerId string) (*types.Container, error) {
+	list, err := c.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
@@ -99,11 +95,11 @@ func (c *DockerClient) Get(containerId string) (*types.Container, error) {
 		}
 	}
 
-	return nil, errors.New(fmt.Sprintf("Container with id %s does not exist", containerId))
+	return nil, fmt.Errorf("container with id %s does not exist", containerId)
 }
 
-func (c *DockerClient) GetState(containerId string) (string, error) {
-	container, err := c.Get(containerId)
+func (c *DockerClient) GetState(ctx context.Context, containerId string) (string, error) {
+	container, err := c.Get(ctx, containerId)
 	if err != nil {
 		return "", err
 	}
@@ -111,7 +107,14 @@ func (c *DockerClient) GetState(containerId string) (string, error) {
 	return container.State, nil
 }
 
-func (c *DockerClient) Create(imgName, containerName, hostName string, volumes []string, ipv6, mpls bool) (string, error) {
+func (c *DockerClient) Create(
+	ctx context.Context,
+	imgName,
+	containerName,
+	hostName string,
+	volumes []string,
+	ipv6, mpls bool,
+) (string, error) {
 	hostConfig := container.HostConfig{
 		NetworkMode: "none",
 		Privileged:  true,
@@ -127,7 +130,7 @@ func (c *DockerClient) Create(imgName, containerName, hostName string, volumes [
 		hostConfig.Sysctls["net.mpls.conf.lo.input"] = "1"
 	}
 
-	resp, err := c.cli.ContainerCreate(context.Background(), &container.Config{
+	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
 		Image:    imgName,
 		Hostname: hostName,
 		Tty:      false,
@@ -139,13 +142,12 @@ func (c *DockerClient) Create(imgName, containerName, hostName string, volumes [
 	return resp.ID, nil
 }
 
-func (c *DockerClient) Start(containerId string) error {
-	return c.cli.ContainerStart(
-		context.Background(), containerId, types.ContainerStartOptions{})
+func (c *DockerClient) Start(ctx context.Context, containerId string) error {
+	return c.cli.ContainerStart(ctx, containerId, types.ContainerStartOptions{})
 }
 
-func (c *DockerClient) Stop(containerId string) error {
-	state, err := c.GetState(containerId)
+func (c *DockerClient) Stop(ctx context.Context, containerId string) error {
+	state, err := c.GetState(ctx, containerId)
 	if err != nil {
 		return err
 	}
@@ -153,7 +155,7 @@ func (c *DockerClient) Stop(containerId string) error {
 	if state == "running" {
 		timeout := 2
 		return c.cli.ContainerStop(
-			context.Background(),
+			ctx,
 			containerId,
 			container.StopOptions{Timeout: &timeout})
 	}
@@ -161,24 +163,22 @@ func (c *DockerClient) Stop(containerId string) error {
 	return nil
 }
 
-func (c *DockerClient) Rm(containerId string) error {
-	state, err := c.GetState(containerId)
+func (c *DockerClient) Rm(ctx context.Context, containerId string) error {
+	state, err := c.GetState(ctx, containerId)
 	if err != nil {
 		return err
 	}
 
 	if state == "running" {
-		if err := c.Stop(containerId); err != nil {
+		if err := c.Stop(ctx, containerId); err != nil {
 			return err
 		}
 	}
-	return c.cli.ContainerRemove(
-		context.Background(), containerId, types.ContainerRemoveOptions{})
+	return c.cli.ContainerRemove(ctx, containerId, types.ContainerRemoveOptions{})
 }
 
-func (c *DockerClient) Pid(containerId string) (int, error) {
-	containerInfo, err := c.cli.ContainerInspect(
-		context.Background(), containerId)
+func (c *DockerClient) Pid(ctx context.Context, containerId string) (int, error) {
+	containerInfo, err := c.cli.ContainerInspect(ctx, containerId)
 	if err != nil {
 		return -1, err
 	}
@@ -189,8 +189,7 @@ func (c *DockerClient) Pid(containerId string) (int, error) {
 	return containerInfo.State.Pid, nil
 }
 
-func (c *DockerClient) IsFileExist(containerId, filepath string) bool {
-	ctx := context.Background()
+func (c *DockerClient) IsFileExist(ctx context.Context, containerId, filepath string) bool {
 	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, filepath)
 	if err != nil {
 		return false
@@ -199,8 +198,7 @@ func (c *DockerClient) IsFileExist(containerId, filepath string) bool {
 	return sourceStat.Mode.IsRegular()
 }
 
-func (c *DockerClient) IsFolderExist(containerId, filepath string) bool {
-	ctx := context.Background()
+func (c *DockerClient) IsFolderExist(ctx context.Context, containerId, filepath string) bool {
 	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, filepath)
 	if err != nil {
 		return false
@@ -209,8 +207,7 @@ func (c *DockerClient) IsFolderExist(containerId, filepath string) bool {
 	return sourceStat.Mode.IsDir()
 }
 
-func (c *DockerClient) CopyFrom(containerId, source, dest string) error {
-	ctx := context.Background()
+func (c *DockerClient) CopyFrom(ctx context.Context, containerId, source, dest string) error {
 	sourceStat, err := c.cli.ContainerStatPath(ctx, containerId, source)
 	// we do not support the case where source is not a regular file
 	if err == nil && !sourceStat.Mode.IsRegular() {
@@ -248,8 +245,7 @@ func (c *DockerClient) CopyFrom(containerId, source, dest string) error {
 	return nil
 }
 
-func (c *DockerClient) CopyTo(containerId, source, dest string) error {
-	ctx := context.Background()
+func (c *DockerClient) CopyTo(ctx context.Context, containerId, source, dest string) error {
 	stat, err := os.Stat(source)
 	if err != nil {
 		return err
@@ -288,7 +284,7 @@ func (c *DockerClient) CopyTo(containerId, source, dest string) error {
 		pReader, types.CopyToContainerOptions{})
 }
 
-func (c *DockerClient) ExecWithWorkingDir(containerId string, cmd []string, workingDir string) (string, error) {
+func (c *DockerClient) ExecWithWorkingDir(ctx context.Context, containerId string, cmd []string, workingDir string) (string, error) {
 	config := types.ExecConfig{
 		AttachStderr: true,
 		AttachStdout: true,
@@ -296,7 +292,6 @@ func (c *DockerClient) ExecWithWorkingDir(containerId string, cmd []string, work
 		WorkingDir:   workingDir,
 	}
 
-	ctx := context.Background()
 	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
 	if err != nil {
 		return "", err
@@ -351,18 +346,17 @@ func (c *DockerClient) ExecWithWorkingDir(containerId string, cmd []string, work
 	return string(stdout), nil
 }
 
-func (c *DockerClient) Exec(containerId string, cmd []string) (string, error) {
-	return c.ExecWithWorkingDir(containerId, cmd, "")
+func (c *DockerClient) Exec(ctx context.Context, containerId string, cmd []string) (string, error) {
+	return c.ExecWithWorkingDir(ctx, containerId, cmd, "")
 }
 
-func (c *DockerClient) ExecOutStream(containerId string, cmd []string, out io.Writer) error {
+func (c *DockerClient) ExecOutStream(ctx context.Context, containerId string, cmd []string, out io.Writer) error {
 	config := types.ExecConfig{
 		AttachStderr: false,
 		AttachStdout: true,
 		Cmd:          cmd,
 	}
 
-	ctx := context.Background()
 	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
 	if err != nil {
 		return err
@@ -405,7 +399,7 @@ func (c *DockerClient) ExecOutStream(containerId string, cmd []string, out io.Wr
 	return nil
 }
 
-func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (c *DockerClient) ExecTty(ctx context.Context, containerId string, cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
 	config := types.ExecConfig{
 		AttachStderr: true,
 		AttachStdout: true,
@@ -414,7 +408,6 @@ func (c *DockerClient) ExecTty(containerId string, cmd []string, in io.ReadClose
 		Cmd:          cmd,
 	}
 
-	ctx := context.Background()
 	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
 	if err != nil {
 		return err

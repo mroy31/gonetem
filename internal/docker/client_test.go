@@ -1,10 +1,12 @@
 package docker
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/utils"
@@ -24,15 +26,17 @@ func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, st
 	options.InitServerConfig()
 	client, _ := NewDockerClient()
 
+	ctx := context.Background()
 	image := options.GetDockerImageId(imgId)
 	name := utils.RandString(10)
-	cID, err := client.Create(image, name, name, []string{}, true, true)
+
+	cID, err := client.Create(ctx, image, name, name, []string{}, true, true)
 	if err != nil {
 		t.Fatalf("Unable to create the container: %v", err)
 	}
 
 	return client, cID, name, func() {
-		if err := client.Rm(cID); err != nil {
+		if err := client.Rm(ctx, cID); err != nil {
 			t.Errorf("Unable to rm container %s: %v", cID, err)
 		}
 		client.Close()
@@ -42,13 +46,16 @@ func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, st
 func setupStartedContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, string, string, func()) {
 	client, cID, name, teardown := setupContainer(t, imgId)
 
-	if err := client.Start(cID); err != nil {
-		client.Rm(cID)
+	if err := client.Start(context.Background(), cID); err != nil {
+		client.Rm(context.Background(), cID)
 		t.Fatalf("Unable to start the container: %v", err)
 	}
 
 	return client, cID, name, func() {
-		if err := client.Stop(cID); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := client.Stop(ctx, cID); err != nil {
 			t.Errorf("Unable to stop the container: %v", err)
 		}
 		teardown()
@@ -78,7 +85,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			present, err := client.IsImagePresent(tt.imgName)
+			present, err := client.IsImagePresent(context.Background(), tt.imgName)
 			if err != nil {
 				t.Errorf("IsImagePresent returns an error: %v", err)
 			} else if present != tt.result {
@@ -92,8 +99,11 @@ func TestDockerClient_CreateRm(t *testing.T) {
 	client, cID, _, teardown := setupContainer(t, options.IMG_HOST)
 	defer teardown()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
 	// check the existence of the container
-	container, err := client.Get(cID)
+	container, err := client.Get(ctx, cID)
 	if err != nil {
 		t.Errorf("Unable to get info about the created container: %v", err)
 	} else if container == nil {
@@ -101,12 +111,12 @@ func TestDockerClient_CreateRm(t *testing.T) {
 	}
 
 	// start the container
-	if err = client.Start(cID); err != nil {
+	if err = client.Start(ctx, cID); err != nil {
 		t.Errorf("Unable to start the container: %v", err)
 	}
 
 	// check the status of the container
-	container, err = client.Get(cID)
+	container, err = client.Get(ctx, cID)
 	if err != nil {
 		t.Errorf("Unable to get info about the created container: %v", err)
 	}
@@ -115,7 +125,7 @@ func TestDockerClient_CreateRm(t *testing.T) {
 	}
 
 	// stop the container
-	if err = client.Stop(cID); err != nil {
+	if err = client.Stop(ctx, cID); err != nil {
 		t.Errorf("Unable to stop the container: %v", err)
 	}
 }
@@ -125,7 +135,7 @@ func TestDockerClient_Exec(t *testing.T) {
 	defer teardown()
 
 	// get the hostname
-	hostname, err := client.Exec(cID, []string{"hostname"})
+	hostname, err := client.Exec(context.Background(), cID, []string{"hostname"})
 	if err != nil {
 		t.Fatalf("Unable to get the hostname with exec call: %v", err)
 	}
@@ -147,14 +157,14 @@ func TestDockerClient_Copy(t *testing.T) {
 	}
 	defer os.Remove(tmpFilename)
 
-	err = client.CopyTo(cID, tmpFilename, "/tmp/test.temp")
+	err = client.CopyTo(context.Background(), cID, tmpFilename, "/tmp/test.temp")
 	if err != nil {
 		t.Fatalf("Unable to copy file to container: %v", err)
 	}
 
 	// copy the same file from the container
 	newTmpFilename := fmt.Sprintf("/tmp/%s.temp", utils.RandString(12))
-	err = client.CopyFrom(cID, "/tmp/test.temp", newTmpFilename)
+	err = client.CopyFrom(context.Background(), cID, "/tmp/test.temp", newTmpFilename)
 	if err != nil {
 		t.Fatalf("Unable to copy file from the container: %v", err)
 	}
@@ -174,25 +184,28 @@ func TestDockerClient_Pid(t *testing.T) {
 	client, cID, _, teardown := setupContainer(t, options.IMG_ROUTER)
 	defer teardown()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
 	// pid must be equal to -1
-	pid, _ := client.Pid(cID)
+	pid, _ := client.Pid(ctx, cID)
 	if pid != -1 {
 		t.Errorf("Container is not running but Pid != -1, Pid == %d", pid)
 	}
 
 	// start container
-	if err := client.Start(cID); err != nil {
+	if err := client.Start(ctx, cID); err != nil {
 		t.Errorf("Unable to start the container: %v", err)
 	}
 
 	// pid must be different to -1
-	pid, _ = client.Pid(cID)
+	pid, _ = client.Pid(ctx, cID)
 	if pid == -1 {
 		t.Error("Container is running but Pid == -1", pid)
 	}
 
 	// stop
-	if err := client.Stop(cID); err != nil {
+	if err := client.Stop(ctx, cID); err != nil {
 		t.Errorf("Unable to stop the container: %v", err)
 	}
 }
@@ -201,7 +214,7 @@ func TestDockerClient_List(t *testing.T) {
 	client, _, name, teardown := setupContainer(t, options.IMG_ROUTER)
 	defer teardown()
 
-	cList, err := client.List(name)
+	cList, err := client.List(context.Background(), name)
 	if err != nil {
 		t.Fatalf("Unable to get container list: %v", err)
 	}

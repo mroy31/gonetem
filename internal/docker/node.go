@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/link"
@@ -81,7 +83,7 @@ func (n *DockerNode) GetStatus() (DockerNodeStatus, error) {
 	}
 	defer client.Close()
 
-	state, err := client.GetState(n.ID)
+	state, err := client.GetState(context.Background(), n.ID)
 	if err != nil {
 		return DockerNodeStatus{}, err
 	}
@@ -102,7 +104,9 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 	defer client.Close()
 
-	present, err := client.IsImagePresent(imgName)
+	ctx := context.Background()
+
+	present, err := client.IsImagePresent(ctx, imgName)
 	if err != nil {
 		return err
 	} else if !present {
@@ -110,7 +114,7 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 
 	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
-	if n.ID, err = client.Create(imgName, containerName, n.Name, n.Volumes, ipv6, n.Mpls); err != nil {
+	if n.ID, err = client.Create(ctx, imgName, containerName, n.Name, n.Volumes, ipv6, n.Mpls); err != nil {
 		return err
 	}
 
@@ -136,7 +140,7 @@ func (n *DockerNode) GetRunningNetns() (netns.NsHandle, error) {
 	}
 	defer client.Close()
 
-	pid, err := client.Pid(n.ID)
+	pid, err := client.Pid(context.Background(), n.ID)
 	if err != nil {
 		return netns.NsHandle(0), err
 	}
@@ -192,14 +196,14 @@ func (n *DockerNode) PrepareInterface(ifName string) {
 
 	// disable tcp offloading
 	cmd := []string{"ethtool", "-K", ifName, "tx", "off"}
-	if _, err := client.Exec(n.ID, cmd); err != nil {
+	if _, err := client.Exec(context.Background(), n.ID, cmd); err != nil {
 		n.Logger.Warnf("Unable to disable tcp offloading on %s", ifName)
 	}
 
 	// enable MPLS forwarding
 	if n.Mpls {
 		cmd = []string{"sysctl", "-w", "net.mpls.conf." + ifName + ".input=1"}
-		if _, err := client.Exec(n.ID, cmd); err != nil {
+		if _, err := client.Exec(context.Background(), n.ID, cmd); err != nil {
 			n.Logger.Warnf("Unable to enable MPLS on %s", ifName)
 		}
 	}
@@ -225,7 +229,7 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 
 	ifName := n.GetInterfaceName(ifIndex)
 	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", ifName}
-	return client.ExecOutStream(n.ID, cmd, out)
+	return client.ExecOutStream(context.Background(), n.ID, cmd, out)
 }
 
 func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
@@ -247,7 +251,7 @@ func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resize
 		}
 	}
 
-	return client.ExecTty(n.ID, cmd, in, out, resizeCh)
+	return client.ExecTty(context.Background(), n.ID, cmd, in, out, resizeCh)
 }
 
 func (n *DockerNode) Start() error {
@@ -260,7 +264,8 @@ func (n *DockerNode) Start() error {
 		}
 		defer client.Close()
 
-		if err := client.Start(n.ID); err != nil {
+		ctx := context.Background()
+		if err := client.Start(ctx, n.ID); err != nil {
 			return err
 		}
 		n.Running = true
@@ -318,7 +323,8 @@ func (n *DockerNode) Stop() error {
 			return fmt.Errorf("unable to attach interfaces: %v", err)
 		}
 
-		if err := client.Stop(n.ID); err != nil {
+		ctx := context.Background()
+		if err := client.Stop(ctx, n.ID); err != nil {
 			return err
 		}
 		n.Running = false
@@ -328,7 +334,7 @@ func (n *DockerNode) Stop() error {
 	return nil
 }
 
-func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
+func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) {
 	var messages []string
 
 	if !n.Running {
@@ -353,6 +359,17 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 		}
 		defer client.Close()
 
+		ctx := context.Background()
+		if timeout > 0 {
+			var cancel context.CancelFunc
+
+			ctx, cancel = context.WithTimeoutCause(
+				ctx,
+				time.Duration(timeout)*time.Second,
+				fmt.Errorf("node %s: loadconfig op timeout", n.Name))
+			defer cancel()
+		}
+
 		// create vrrps interfaces
 		for _, vrrpGroup := range n.Vrrps {
 			name := fmt.Sprintf("vrrp-%d", vrrpGroup.Interface)
@@ -364,13 +381,13 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 			link.SetInterfaceState(name, ns, link.IFSTATE_UP)
 
 			// set ip address
-			if _, err := client.Exec(n.ID, []string{"ip", "addr", "add", vrrpGroup.Address, "dev", name}); err != nil {
+			if _, err := client.Exec(ctx, n.ID, []string{"ip", "addr", "add", vrrpGroup.Address, "dev", name}); err != nil {
 				return messages, err
 			}
 
 			// modify kernel settings to disable routes when interface
 			// is in linkdown state
-			_, err := client.Exec(n.ID, []string{"sysctl", "-w", fmt.Sprintf("net.ipv4.conf.%s.ignore_routes_with_linkdown=1", name)})
+			_, err := client.Exec(ctx, n.ID, []string{"sysctl", "-w", fmt.Sprintf("net.ipv4.conf.%s.ignore_routes_with_linkdown=1", name)})
 			if err != nil {
 				return messages, err
 			}
@@ -405,7 +422,7 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 					continue
 				}
 
-				if err := client.CopyTo(n.ID, source, dest); err != nil {
+				if err := client.CopyTo(ctx, n.ID, source, dest); err != nil {
 					return messages, fmt.Errorf("unable to load config file %s:\n\t%w", source, err)
 				}
 			}
@@ -416,11 +433,11 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 					continue
 				}
 
-				if err := client.CopyTo(n.ID, sourcePath, filepath.Join("/tmp", source)); err != nil {
+				if err := client.CopyTo(ctx, n.ID, sourcePath, filepath.Join("/tmp", source)); err != nil {
 					return messages, fmt.Errorf("unable to copy archile file %s:\n\t%w", source, err)
 				}
 
-				if _, err := client.ExecWithWorkingDir(n.ID, []string{"tar", "xzf", filepath.Join("/tmp", source)}, "/"); err != nil {
+				if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "xzf", filepath.Join("/tmp", source)}, "/"); err != nil {
 					return messages, fmt.Errorf("unable to extract archile file %s in the node:\n\t%w", source, err)
 				}
 			}
@@ -429,15 +446,15 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 		// Start process when necessary
 		if n.Type == "router" {
 			// start FRR daemon
-			if _, err := client.Exec(n.ID, []string{"/usr/lib/frr/frrinit.sh", "start"}); err != nil {
-				return messages, err
+			if _, err := client.Exec(ctx, n.ID, []string{"/usr/lib/frr/frrinit.sh", "start"}); err != nil {
+				return messages, fmt.Errorf("node %s - unable to start router process - %v", n.Name, err)
 			}
 		} else {
 			netconf := path.Join(confPath, n.Name+".net.conf")
 			if _, err := os.Stat(netconf); err == nil {
-				output, err := client.Exec(n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"})
+				output, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"})
 				if err != nil {
-					return messages, err
+					return messages, fmt.Errorf("node %s - unable to load network config - %v", n.Name, err)
 				} else if output != "" {
 					messages = strings.Split(output, "\n")
 				}
@@ -445,8 +462,8 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 		}
 
 		// execute init script if it exists
-		if client.IsFileExist(n.ID, initScript) {
-			output, err := client.Exec(n.ID, []string{"sh", initScript})
+		if client.IsFileExist(ctx, n.ID, initScript) {
+			output, err := client.Exec(ctx, n.ID, []string{"sh", initScript})
 			if err != nil {
 				return messages, err
 			} else if output != "" {
@@ -460,7 +477,7 @@ func (n *DockerNode) LoadConfig(confPath string) ([]string, error) {
 	return messages, nil
 }
 
-func (n *DockerNode) ReadConfigFiles(confDir string) (map[string][]byte, error) {
+func (n *DockerNode) ReadConfigFiles(confDir string, timeout int) (map[string][]byte, error) {
 	configFilesData := make(map[string][]byte)
 
 	client, err := NewDockerClient()
@@ -478,7 +495,7 @@ func (n *DockerNode) ReadConfigFiles(confDir string) (map[string][]byte, error) 
 			return nil, fmt.Errorf("unable to create temp folder to save node config: %w", err)
 		}
 
-		if err := n.Save(dir); err != nil {
+		if err := n.Save(dir, timeout); err != nil {
 			return nil, fmt.Errorf("unable to save node configs in temp folder %s: %w", dir, err)
 		}
 		filesDir = dir
@@ -520,7 +537,7 @@ func (n *DockerNode) ReadConfigFiles(confDir string) (map[string][]byte, error) 
 	return configFilesData, nil
 }
 
-func (n *DockerNode) Save(dstPath string) error {
+func (n *DockerNode) Save(dstPath string, timeout int) error {
 	if !n.Running || !n.ConfigLoaded {
 		n.Logger.Info("Save: node not running")
 		return nil
@@ -532,21 +549,31 @@ func (n *DockerNode) Save(dstPath string) error {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(
+			ctx,
+			time.Duration(timeout)*time.Second)
+		defer cancel()
+	}
+
 	configFiles := make(map[string]string)
 	configFolders := make(map[string]string)
 	switch n.Type {
 	case "host":
 		confFile := "/tmp/custom.net.conf"
-		if _, err := client.Exec(n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
-			return err
+		if _, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
+			return fmt.Errorf("node %s - unable to save network config - %v", n.Name, err)
 		}
 		configFiles[confFile] = fmt.Sprintf("%s.net.conf", n.Name)
 		configFiles["/etc/ntp.conf"] = fmt.Sprintf("%s.ntp.conf", n.Name)
 
 	case "server":
 		confFile := "/tmp/custom.net.conf"
-		if _, err := client.Exec(n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
-			return err
+		if _, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
+			return fmt.Errorf("node %s - unable to save network config - %v", n.Name, err)
 		}
 		configFiles[confFile] = fmt.Sprintf("%s.net.conf", n.Name)
 		configFiles["/etc/ntp.conf"] = fmt.Sprintf("%s.ntp.conf", n.Name)
@@ -560,10 +587,10 @@ func (n *DockerNode) Save(dstPath string) error {
 
 	case "router":
 		confFile := "/etc/frr/frr.conf"
-		if _, err := client.Exec(n.ID, []string{"vtysh", "-w"}); err != nil {
-			return err
+		if _, err := client.Exec(ctx, n.ID, []string{"vtysh", "-w"}); err != nil {
+			return fmt.Errorf("node %s - unable to save router config - %v", n.Name, err)
 		}
-		if _, err := client.Exec(n.ID, []string{"chmod", "+r", confFile}); err != nil {
+		if _, err := client.Exec(ctx, n.ID, []string{"chmod", "+r", confFile}); err != nil {
 			return err
 		}
 		configFiles[confFile] = fmt.Sprintf("%s.frr.conf", n.Name)
@@ -573,29 +600,27 @@ func (n *DockerNode) Save(dstPath string) error {
 	configFiles[initScript] = fmt.Sprintf("%s.init.conf", n.Name)
 	for source, dest := range configFiles {
 		dest = path.Join(dstPath, dest)
-		if !client.IsFileExist(n.ID, source) {
+		if !client.IsFileExist(ctx, n.ID, source) {
 			continue
 		}
 
-		if err := client.CopyFrom(n.ID, source, dest); err != nil {
-			msg := fmt.Sprintf("Unable to save file %s:\n\t%v", source, err)
-			return errors.New(msg)
+		if err := client.CopyFrom(ctx, n.ID, source, dest); err != nil {
+			return fmt.Errorf("node %s - unable to save file %s:\n\t%v", n.Name, source, err)
 		}
 	}
 
 	for source, dest := range configFolders {
 		destPath := path.Join(dstPath, dest)
-		if !client.IsFolderExist(n.ID, source) {
+		if !client.IsFolderExist(ctx, n.ID, source) {
 			continue
 		}
 
-		if _, err := client.ExecWithWorkingDir(n.ID, []string{"tar", "czf", "/tmp/" + dest, source}, "/"); err != nil {
+		if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "czf", "/tmp/" + dest, source}, "/"); err != nil {
 			return err
 		}
 
-		if err := client.CopyFrom(n.ID, "/tmp/"+dest, destPath); err != nil {
-			msg := fmt.Sprintf("Unable to save archive file %s:\n\t%v", source, err)
-			return errors.New(msg)
+		if err := client.CopyFrom(ctx, n.ID, "/tmp/"+dest, destPath); err != nil {
+			return fmt.Errorf("node %s - unable to save archive file %s:\n\t%v", n.Name, source, err)
 		}
 	}
 
@@ -609,7 +634,7 @@ func (n *DockerNode) CopyFrom(source, dest string) error {
 	}
 	defer client.Close()
 
-	return client.CopyFrom(n.ID, source, dest)
+	return client.CopyFrom(context.Background(), n.ID, source, dest)
 }
 
 func (n *DockerNode) CopyTo(source, dest string) error {
@@ -619,7 +644,7 @@ func (n *DockerNode) CopyTo(source, dest string) error {
 	}
 	defer client.Close()
 
-	return client.CopyTo(n.ID, source, dest)
+	return client.CopyTo(context.Background(), n.ID, source, dest)
 }
 
 func (n *DockerNode) GetInterfacesState() map[string]link.IfState {
@@ -659,12 +684,13 @@ func (n *DockerNode) Close() error {
 		}
 		defer client.Close()
 
+		ctx := context.Background()
 		if n.Running {
-			client.Stop(n.ID)
+			client.Stop(ctx, n.ID)
 			n.Running = false
 		}
 
-		if err := client.Rm(n.ID); err != nil {
+		if err := client.Rm(ctx, n.ID); err != nil {
 			return err
 		}
 

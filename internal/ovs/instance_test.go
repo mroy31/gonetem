@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mroy31/gonetem/internal/docker"
@@ -33,7 +34,7 @@ func TestOVS_Instance(t *testing.T) {
 	}
 	defer client.Close()
 
-	c, err := client.GetState(instance.containerId)
+	c, err := client.GetState(context.Background(), instance.containerId)
 	if err != nil {
 		t.Errorf("Unable to get state of ovs instance: %v", err)
 		return
@@ -48,7 +49,7 @@ func TestOVS_Instance(t *testing.T) {
 		t.Errorf("Unable to start ovs instance: %v", err)
 		return
 	}
-	c, err = client.GetState(instance.containerId)
+	c, err = client.GetState(context.Background(), instance.containerId)
 	if err != nil {
 		t.Errorf("Unable to get state of ovs instance: %v", err)
 		return

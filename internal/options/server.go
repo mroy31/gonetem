@@ -25,6 +25,7 @@ tls:
   key: ""
 workdir: /tmp
 docker:
+  timeoutop: 60
   images:
     server: mroy31/gonetem-server
     host: mroy31/gonetem-host
@@ -47,7 +48,8 @@ type NetemServerConfig struct {
 	Tls     TLSOptions
 	Workdir string
 	Docker  struct {
-		Images struct {
+		Timeoutop int
+		Images    struct {
 			Server string
 			Host   string
 			Router string

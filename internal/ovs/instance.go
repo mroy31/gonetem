@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +49,8 @@ func (o *OvsProjectInstance) Start() error {
 		}
 		defer client.Close()
 
-		if err := client.Start(o.containerId); err != nil {
+		ctx := context.Background()
+		if err := client.Start(ctx, o.containerId); err != nil {
 			return err
 		}
 
@@ -83,7 +85,7 @@ func (o *OvsProjectInstance) GetNetns() (netns.NsHandle, error) {
 	}
 	defer client.Close()
 
-	pid, err := client.Pid(o.containerId)
+	pid, err := client.Pid(context.Background(), o.containerId)
 	if err != nil {
 		return netns.NsHandle(0), err
 	}
@@ -102,7 +104,7 @@ func (o *OvsProjectInstance) Capture(ifName string, out io.Writer) error {
 	defer client.Close()
 
 	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", ifName}
-	return client.ExecOutStream(o.containerId, cmd, out)
+	return client.ExecOutStream(context.Background(), o.containerId, cmd, out)
 }
 
 func (o *OvsProjectInstance) Exec(cmd []string) error {
@@ -112,7 +114,8 @@ func (o *OvsProjectInstance) Exec(cmd []string) error {
 	}
 	defer client.Close()
 
-	if _, err := client.Exec(o.containerId, cmd); err != nil {
+	ctx := context.Background()
+	if _, err := client.Exec(ctx, o.containerId, cmd); err != nil {
 		return err
 	}
 
@@ -174,7 +177,7 @@ func (o *OvsProjectInstance) DelPort(brName, ifName string) error {
 	return o.Exec(cmd)
 }
 
-func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) ([]string, error) {
+func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string, timeout int) ([]string, error) {
 	var messages []string
 
 	client, err := docker.NewDockerClient()
@@ -183,18 +186,26 @@ func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) ([]string
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+	}
+
 	tmpConfFile := "/tmp/" + name + ".conf"
 	confFile := path.Join(confPath, name+".conf")
 	if _, err := os.Stat(confFile); os.IsNotExist(err) {
 		return messages, nil
 	}
 
-	if err := client.CopyTo(o.containerId, confFile, tmpConfFile); err != nil {
+	if err := client.CopyTo(ctx, o.containerId, confFile, tmpConfFile); err != nil {
 		return messages, fmt.Errorf("unable to copy config file %s:\n\t%w", confFile, err)
 	}
 
 	cmd := []string{"ovs-config.py", "-a", "load", "-c", tmpConfFile, brName}
-	output, err := client.Exec(o.containerId, cmd)
+	output, err := client.Exec(ctx, o.containerId, cmd)
 	if err != nil {
 		return messages, fmt.Errorf("unable to load config file %s:\n\t%w", confFile, err)
 	} else if output != "" {
@@ -204,22 +215,30 @@ func (o *OvsProjectInstance) LoadConfig(name, brName, confPath string) ([]string
 	return messages, nil
 }
 
-func (o *OvsProjectInstance) SaveConfig(name, brName, dstPath string) error {
+func (o *OvsProjectInstance) SaveConfig(name, brName, dstPath string, timeout int) error {
 	client, err := docker.NewDockerClient()
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+	}
+
 	tmpConfFile := "/tmp/" + name + ".conf"
 	confFile := path.Join(dstPath, name+".conf")
 
 	cmd := []string{"ovs-config.py", "-a", "save", "-c", tmpConfFile, brName}
-	if _, err := client.Exec(o.containerId, cmd); err != nil {
+	if _, err := client.Exec(ctx, o.containerId, cmd); err != nil {
 		return fmt.Errorf("unable to save config in file %s:\n\t%w", confFile, err)
 	}
 
-	if err := client.CopyFrom(o.containerId, tmpConfFile, confFile); err != nil {
+	if err := client.CopyFrom(ctx, o.containerId, tmpConfFile, confFile); err != nil {
 		msg := fmt.Sprintf("Unable to save file %s:\n\t%v", confFile, err)
 		return errors.New(msg)
 	}
@@ -234,11 +253,16 @@ func (o *OvsProjectInstance) Close() error {
 	}
 	defer client.Close()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	if o.state == started {
-		client.Stop(o.containerId)
+		if err := client.Stop(ctx, o.containerId); err != nil {
+			return err
+		}
 	}
 
-	if err := client.Rm(o.containerId); err != nil {
+	if err := client.Rm(ctx, o.containerId); err != nil {
 		return err
 	}
 
@@ -258,7 +282,7 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 	defer client.Close()
 
 	imgName := options.GetDockerImageId(options.IMG_OVS)
-	present, err := client.IsImagePresent(imgName)
+	present, err := client.IsImagePresent(context.Background(), imgName)
 	if err != nil {
 		return nil, err
 	} else if !present {
@@ -266,7 +290,14 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 	}
 
 	containerName := fmt.Sprintf("%s%s.ovs", options.NETEM_ID, prjID)
-	containerId, err := client.Create(imgName, containerName, "ovs", []string{}, false, false)
+	containerId, err := client.Create(
+		context.Background(),
+		imgName,
+		containerName,
+		"ovs",
+		[]string{},
+		false,
+		false)
 	if err != nil {
 		return nil, err
 	}

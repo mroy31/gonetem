@@ -39,24 +39,33 @@ func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.Ack
 	}
 	defer client.Close()
 
-	cList, err := client.List(options.NETEM_ID)
+	cList, err := client.List(context.Background(), options.NETEM_ID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get container list: %w", err)
 	}
 
 	re := regexp.MustCompile(`^` + options.NETEM_ID + `(\w+)\.\w+`)
+	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
 	for _, cObj := range cList {
 		groups := re.FindStringSubmatch(cObj.Name)
-		if len(groups) == 2 {
-			if !IdProjectExist(groups[1]) {
-				logrus.Infof("Clean: remove container %s\n", cObj.Name)
-				if err := client.Stop(cObj.Container.ID); err != nil {
-					return nil, fmt.Errorf("unable to stop container %s: %w", cObj.Name, err)
+		if len(groups) == 2 && !IdProjectExist(groups[1]) {
+			cObj := cObj
+
+			g.Go(func() error {
+				logrus.Debugf("Clean: remove container %s\n", cObj.Name)
+
+				ctx := context.Background()
+				if err := client.Stop(ctx, cObj.Container.ID); err != nil {
+					return fmt.Errorf("unable to stop container %s: %w", cObj.Name, err)
 				}
-				if err := client.Rm(cObj.Container.ID); err != nil {
-					return nil, fmt.Errorf("unable to rm container %s: %w", cObj.Name, err)
+				if err := client.Rm(ctx, cObj.Container.ID); err != nil {
+					return fmt.Errorf("unable to rm container %s: %w", cObj.Name, err)
 				}
-			}
+
+				return nil
+			})
 		}
 	}
 
@@ -79,6 +88,7 @@ func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImag
 	}
 	defer client.Close()
 
+	ctx := context.Background()
 	for _, imgT := range imageTypes {
 		imgID := options.GetDockerImageId(imgT)
 
@@ -87,7 +97,7 @@ func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImag
 			Image: imgID,
 		})
 
-		if err := client.ImagePull(imgID); err != nil {
+		if err := client.ImagePull(ctx, imgID); err != nil {
 			stream.Send(&proto.PullSrvMsg{
 				Code:  proto.PullSrvMsg_ERROR,
 				Image: imgID,

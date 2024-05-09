@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -9,6 +10,10 @@ import (
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/utils"
+)
+
+const (
+	NODE_TIMEOUT_OP = 10
 )
 
 func skipUnlessRoot(t *testing.T) {
@@ -181,7 +186,7 @@ func TestDockerNode_ReadConfigFiles(t *testing.T) {
 			defer os.RemoveAll(dir)
 
 			// read config files
-			configFiles, err := node.ReadConfigFiles(dir)
+			configFiles, err := node.ReadConfigFiles(dir, NODE_TIMEOUT_OP)
 			if err != nil {
 				t.Fatalf("Unable to read config files of %s: %v", tt.name, err)
 			}
@@ -256,7 +261,7 @@ func TestDockerNode_Save(t *testing.T) {
 				t.Errorf("Unable to start node %s: %v", tt.name, err)
 				return
 			}
-			if _, err := node.LoadConfig("/tmp/fake"); err != nil {
+			if _, err := node.LoadConfig("/tmp/fake", NODE_TIMEOUT_OP); err != nil {
 				t.Errorf("Unable to load config for node %s: %v", tt.name, err)
 				return
 			}
@@ -270,7 +275,7 @@ func TestDockerNode_Save(t *testing.T) {
 			defer os.RemoveAll(dir)
 
 			// save configuration
-			if err := node.Save(dir); err != nil {
+			if err := node.Save(dir, NODE_TIMEOUT_OP); err != nil {
 				t.Errorf("Unable to save node %s: %v", tt.name, err)
 				return
 			}
@@ -379,7 +384,7 @@ func TestDockerNode_Volumes(t *testing.T) {
 	}
 	defer client.Close()
 
-	if !client.IsFileExist(node.ID, nTarget) {
+	if !client.IsFileExist(context.Background(), node.ID, nTarget) {
 		t.Fatalf("File %s is not present in the binding volume", nTarget)
 	}
 }
