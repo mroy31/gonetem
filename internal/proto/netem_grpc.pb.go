@@ -26,7 +26,7 @@ const (
 	Netem_GetProjects_FullMethodName       = "/netem.Netem/GetProjects"
 	Netem_OpenProject_FullMethodName       = "/netem.Netem/OpenProject"
 	Netem_CloseProject_FullMethodName      = "/netem.Netem/CloseProject"
-	Netem_SaveProject_FullMethodName       = "/netem.Netem/SaveProject"
+	Netem_ProjectSave_FullMethodName       = "/netem.Netem/ProjectSave"
 	Netem_GetProjectConfigs_FullMethodName = "/netem.Netem/GetProjectConfigs"
 	Netem_GetProjectStatus_FullMethodName  = "/netem.Netem/GetProjectStatus"
 	Netem_ReadNetworkFile_FullMethodName   = "/netem.Netem/ReadNetworkFile"
@@ -61,7 +61,7 @@ type NetemClient interface {
 	GetProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PrjListResponse, error)
 	OpenProject(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*PrjOpenResponse, error)
 	CloseProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	SaveProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
+	ProjectSave(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_ProjectSaveClient, error)
 	GetProjectConfigs(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
 	GetProjectStatus(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Read/Write network topology
@@ -173,13 +173,36 @@ func (c *netemClient) CloseProject(ctx context.Context, in *ProjectRequest, opts
 	return out, nil
 }
 
-func (c *netemClient) SaveProject(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error) {
-	out := new(FileResponse)
-	err := c.cc.Invoke(ctx, Netem_SaveProject_FullMethodName, in, out, opts...)
+func (c *netemClient) ProjectSave(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_ProjectSaveClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[1], Netem_ProjectSave_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &netemProjectSaveClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Netem_ProjectSaveClient interface {
+	Recv() (*ProjectSaveMsg, error)
+	grpc.ClientStream
+}
+
+type netemProjectSaveClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemProjectSaveClient) Recv() (*ProjectSaveMsg, error) {
+	m := new(ProjectSaveMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (c *netemClient) GetProjectConfigs(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error) {
@@ -282,7 +305,7 @@ func (c *netemClient) CanRunConsole(ctx context.Context, in *NodeRequest, opts .
 }
 
 func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[1], Netem_Console_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], Netem_Console_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +372,7 @@ func (c *netemClient) SetIfState(ctx context.Context, in *NodeIfStateRequest, op
 }
 
 func (c *netemClient) Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], Netem_Capture_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[3], Netem_Capture_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +404,7 @@ func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
 }
 
 func (c *netemClient) CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[3], Netem_CopyFrom_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[4], Netem_CopyFrom_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +436,7 @@ func (x *netemCopyFromClient) Recv() (*CopyMsg, error) {
 }
 
 func (c *netemClient) CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[4], Netem_CopyTo_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[5], Netem_CopyTo_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +490,7 @@ type NetemServer interface {
 	GetProjects(context.Context, *emptypb.Empty) (*PrjListResponse, error)
 	OpenProject(context.Context, *OpenRequest) (*PrjOpenResponse, error)
 	CloseProject(context.Context, *ProjectRequest) (*AckResponse, error)
-	SaveProject(context.Context, *ProjectRequest) (*FileResponse, error)
+	ProjectSave(*ProjectRequest, Netem_ProjectSaveServer) error
 	GetProjectConfigs(context.Context, *ProjectRequest) (*FileResponse, error)
 	GetProjectStatus(context.Context, *ProjectRequest) (*StatusResponse, error)
 	// Read/Write network topology
@@ -517,8 +540,8 @@ func (UnimplementedNetemServer) OpenProject(context.Context, *OpenRequest) (*Prj
 func (UnimplementedNetemServer) CloseProject(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseProject not implemented")
 }
-func (UnimplementedNetemServer) SaveProject(context.Context, *ProjectRequest) (*FileResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SaveProject not implemented")
+func (UnimplementedNetemServer) ProjectSave(*ProjectRequest, Netem_ProjectSaveServer) error {
+	return status.Errorf(codes.Unimplemented, "method ProjectSave not implemented")
 }
 func (UnimplementedNetemServer) GetProjectConfigs(context.Context, *ProjectRequest) (*FileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProjectConfigs not implemented")
@@ -704,22 +727,25 @@ func _Netem_CloseProject_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_SaveProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProjectRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _Netem_ProjectSave_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ProjectRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(NetemServer).SaveProject(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Netem_SaveProject_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).SaveProject(ctx, req.(*ProjectRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(NetemServer).ProjectSave(m, &netemProjectSaveServer{stream})
+}
+
+type Netem_ProjectSaveServer interface {
+	Send(*ProjectSaveMsg) error
+	grpc.ServerStream
+}
+
+type netemProjectSaveServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemProjectSaveServer) Send(m *ProjectSaveMsg) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _Netem_GetProjectConfigs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1132,10 +1158,6 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Netem_CloseProject_Handler,
 		},
 		{
-			MethodName: "SaveProject",
-			Handler:    _Netem_SaveProject_Handler,
-		},
-		{
 			MethodName: "GetProjectConfigs",
 			Handler:    _Netem_GetProjectConfigs_Handler,
 		},
@@ -1204,6 +1226,11 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "PullImages",
 			Handler:       _Netem_PullImages_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ProjectSave",
+			Handler:       _Netem_ProjectSave_Handler,
 			ServerStreams: true,
 		},
 		{

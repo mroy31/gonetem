@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"io"
 	stdlog "log"
 	"net"
 	"os"
@@ -194,19 +195,35 @@ nodes:
 	}
 
 	// save new project
-	saveResponse, err := client.SaveProject(ctx, &proto.ProjectRequest{Id: prjID})
+	saveStream, err := client.ProjectSave(ctx, &proto.ProjectRequest{Id: prjID})
 	if err != nil {
 		t.Errorf("SaveProject method return an error: %v", err)
 		return
 	}
-	// check new project
+
 	newPrjPath := "/tmp/prjtest-archive-new"
-	os.Mkdir(newPrjPath, 0755)
-	defer os.RemoveAll(newPrjPath)
-	if err := utils.OpenArchive(newPrjPath, bytes.NewReader(saveResponse.GetData())); err != nil {
-		t.Errorf("Unable to extract saved project: %v", err)
-		return
+	for {
+		msg, err := saveStream.Recv()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			t.Errorf("SaveProject stream return an error: %v", err)
+			return
+		}
+
+		switch msg.Code {
+		case proto.ProjectSaveMsg_DATA:
+			// check new project
+			os.Mkdir(newPrjPath, 0755)
+			defer os.RemoveAll(newPrjPath)
+			if err := utils.OpenArchive(newPrjPath, bytes.NewReader(msg.GetData())); err != nil {
+				saveStream.CloseSend()
+				t.Errorf("Unable to extract saved project: %v", err)
+				return
+			}
+		}
 	}
+
 	newNetworkData, err := os.ReadFile(path.Join(newPrjPath, networkFilename))
 	if err != nil {
 		t.Errorf("Unable to read new network file: %v", err)

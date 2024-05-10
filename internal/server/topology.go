@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/creasty/defaults"
 	"github.com/mroy31/gonetem/internal/link"
@@ -619,7 +621,12 @@ func (t *NetemTopologyManager) ReadConfigFiles(nodeName string) (map[string][]by
 	return node.ReadConfigFiles(confPath, timeout)
 }
 
-func (t *NetemTopologyManager) Save() error {
+type TopologySaveProgressT struct {
+	IsTotal bool
+	Value   int
+}
+
+func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error {
 	// create config folder if not exist
 	destPath := path.Join(t.path, configDir)
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
@@ -629,17 +636,58 @@ func (t *NetemTopologyManager) Save() error {
 	}
 
 	timeout := options.ServerConfig.Docker.Timeoutop
+	total, finished := len(t.nodes), 0
+	if progressCh != nil {
+		progressCh <- TopologySaveProgressT{
+			IsTotal: true,
+			Value:   total,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					time.Sleep(50 * time.Millisecond)
+					progressCh <- TopologySaveProgressT{
+						IsTotal: false,
+						Value:   finished,
+					}
+				}
+			}
+		}()
+	}
+
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
-
 	for _, node := range t.nodes {
 		node := node
+
 		g.Go(func() error {
-			err := node.Instance.Save(destPath, timeout)
-			return err
+			var err error = nil
+
+			if node.Instance.IsRunning() {
+				err = node.Instance.Save(destPath, timeout)
+			}
+			finished += 1
+
+			if err != nil {
+				return fmt.Errorf("node %s: save cmd error - %v", node.Instance.GetName(), err)
+			}
+			return nil
 		})
 	}
 	err := g.Wait()
+
+	// send last progress
+	progressCh <- TopologySaveProgressT{
+		IsTotal: false,
+		Value:   finished,
+	}
 	return err
 }
 

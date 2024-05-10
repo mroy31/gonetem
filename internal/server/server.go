@@ -169,16 +169,42 @@ func (s *netemServer) CloseProject(ctx context.Context, request *proto.ProjectRe
 	}, nil
 }
 
-func (s *netemServer) SaveProject(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {
-	data, err := SaveProject(request.GetId())
+func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Netem_ProjectSaveServer) error {
+	progressCh := make(chan TopologySaveProgressT)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case p := <-progressCh:
+				if p.IsTotal {
+					stream.Send(&proto.ProjectSaveMsg{
+						Code:  proto.ProjectSaveMsg_TOTAL,
+						Value: int32(p.Value),
+					})
+				} else {
+					stream.Send(&proto.ProjectSaveMsg{
+						Code:  proto.ProjectSaveMsg_PROGRESS,
+						Value: int32(p.Value),
+					})
+				}
+			}
+		}
+	}()
+
+	data, err := SaveProject(request.GetId(), progressCh)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &proto.FileResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-		Data:   data.Bytes(),
-	}, nil
+	stream.Send(&proto.ProjectSaveMsg{
+		Code: proto.ProjectSaveMsg_DATA,
+		Data: data.Bytes(),
+	})
+	return nil
 }
 
 func (s *netemServer) GetProjectConfigs(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {

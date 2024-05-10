@@ -93,13 +93,13 @@ func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
 	return prj, nil
 }
 
-func SaveProject(prjId string) (*bytes.Buffer, error) {
+func SaveProject(prjId string, progressCh chan TopologySaveProgressT) (*bytes.Buffer, error) {
 	project := GetProject(prjId)
 	if project == nil {
 		return nil, &ProjectNotFoundError{prjId}
 	}
 
-	if err := project.Topology.Save(); err != nil {
+	if err := project.Topology.Save(progressCh); err != nil {
 		return nil, err
 	}
 
@@ -117,7 +117,7 @@ func GetProjectConfigs(prjId string) (*bytes.Buffer, error) {
 	}
 
 	// save project before return config archive
-	if err := project.Topology.Save(); err != nil {
+	if err := project.Topology.Save(nil); err != nil {
 		return nil, err
 	}
 

@@ -74,7 +74,7 @@ func TestProject_Save(t *testing.T) {
 		return
 	}
 
-	if err := project.Topology.Save(); err != nil {
+	if err := project.Topology.Save(nil); err != nil {
 		t.Errorf("Unable to save project: %v", err)
 		return
 	}

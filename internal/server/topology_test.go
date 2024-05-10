@@ -272,7 +272,7 @@ func TestTopology_Save(t *testing.T) {
 	if _, err := topology.Run(); err != nil {
 		t.Errorf("Run returns an error: %v", err)
 	}
-	if err := topology.Save(); err != nil {
+	if err := topology.Save(nil); err != nil {
 		t.Errorf("Save returns an error: %v", err)
 	}
 

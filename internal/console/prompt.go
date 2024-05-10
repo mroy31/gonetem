@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"regexp"
 	"strconv"
@@ -21,6 +22,8 @@ import (
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 type copyDirection int
@@ -349,6 +352,24 @@ func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client prot
 	execFunc(client.Client, cmdArgs)
 }
 
+func (p *NetemPrompt) getCancelContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := make(chan os.Signal, 1)
+
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		select {
+		case <-c:
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	return ctx
+}
+
 func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
 	file, err := os.Create(destPath)
 	if err != nil {
@@ -674,15 +695,49 @@ func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
 }
 
 func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
-	response, err := client.SaveProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	stream, err := client.ProjectSave(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to save project: %v\n", err)
 		return
 	}
 
-	if err := os.WriteFile(dstPath, response.GetData(), 0644); err != nil {
-		RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
+	mpBar := mpb.New(mpb.WithWidth(48))
+	saveBar := mpBar.AddBar(0,
+		mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
+		mpb.AppendDecorators(decor.Percentage()),
+	)
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			if !saveBar.Completed() {
+				saveBar.SetTotal(saveBar.Current(), true)
+			}
+			break
+		} else if err != nil {
+			saveBar.Abort(true)
+			saveBar.Wait()
+
+			RedPrintf("Unable to save project: %v\n", err)
+			return
+		}
+
+		switch msg.Code {
+		case proto.ProjectSaveMsg_TOTAL:
+			saveBar.SetTotal(int64(msg.GetValue()), false)
+
+		case proto.ProjectSaveMsg_PROGRESS:
+			saveBar.SetCurrent(int64(msg.GetValue()))
+
+		case proto.ProjectSaveMsg_DATA:
+			if err := os.WriteFile(dstPath, msg.GetData(), 0644); err != nil {
+				RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
+			}
+			saveBar.SetTotal(saveBar.Current(), true)
+		}
 	}
+
+	mpBar.Wait()
 }
 
 func (p *NetemPrompt) Save(client proto.NetemClient, cmdArgs []string) {
@@ -699,7 +754,7 @@ func (p *NetemPrompt) SaveAs(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
-	ack, err := client.Start(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	ack, err := client.Start(p.getCancelContext(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to start node: %v\n", err)
 	} else {

@@ -15,7 +15,7 @@ service Netem {
     rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
     rpc OpenProject(OpenRequest) returns (PrjOpenResponse) {}
     rpc CloseProject(ProjectRequest) returns (AckResponse) {}
-    rpc SaveProject(ProjectRequest) returns (FileResponse) {}
+    rpc ProjectSave(ProjectRequest) returns (stream ProjectSaveMsg) {}
     rpc GetProjectConfigs(ProjectRequest) returns (FileResponse) {}
     rpc GetProjectStatus(ProjectRequest) returns (StatusResponse) {}
 
@@ -128,6 +128,20 @@ message CaptureSrvMsg {
 
     Code code = 1;
     bytes data = 2;
+}
+
+message ProjectSaveMsg {
+    enum Code {
+        TOTAL = 0;
+        PROGRESS = 1;
+        DATA = 2;
+        ERROR = 3;
+    }
+
+    Code code = 1;
+    bytes data = 2;
+    int32 value = 3;
+    string error = 4;
 }
 
 // Request messages
