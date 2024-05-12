@@ -155,16 +155,14 @@ message TopologyRunMsg {
 
 message ProjectSaveMsg {
     enum Code {
-        TOTAL = 0;
-        PROGRESS = 1;
+        NODE_COUNT = 0;
+        NODE_SAVE = 1;
         DATA = 2;
-        ERROR = 3;
     }
 
     Code code = 1;
     bytes data = 2;
-    int32 value = 3;
-    string error = 4;
+    int32 total = 3;
 }
 
 // Request messages

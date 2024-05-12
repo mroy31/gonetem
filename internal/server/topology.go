@@ -1,14 +1,12 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/creasty/defaults"
 	"github.com/mroy31/gonetem/internal/link"
@@ -47,6 +45,7 @@ type NodeConfig struct {
 }
 
 type RunCloseProgressCode int
+type SaveProgressCode int
 
 const (
 	NODE_COUNT      RunCloseProgressCode = 1
@@ -66,9 +65,14 @@ type TopologyRunCloseProgressT struct {
 	Value int
 }
 
+const (
+	NODE_SAVE_COUNT SaveProgressCode = 1
+	NODE_SAVE       SaveProgressCode = 2
+)
+
 type TopologySaveProgressT struct {
-	IsTotal bool
-	Value   int
+	Code  SaveProgressCode
+	Value int
 }
 
 func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -682,35 +686,16 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 		}
 	}
 
-	timeout := options.ServerConfig.Docker.Timeoutop
-	total, finished := len(t.nodes), 0
-	if progressCh != nil {
-		progressCh <- TopologySaveProgressT{
-			IsTotal: true,
-			Value:   total,
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					time.Sleep(100 * time.Millisecond)
-					progressCh <- TopologySaveProgressT{
-						IsTotal: false,
-						Value:   finished,
-					}
-				}
-			}
-		}()
+	if progressCh == nil {
+		progressCh = make(chan TopologySaveProgressT)
+		defer close(progressCh)
 	}
+	progressCh <- TopologySaveProgressT{Code: NODE_SAVE_COUNT, Value: len(t.nodes)}
 
+	timeout := options.ServerConfig.Docker.Timeoutop
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
+
 	for _, node := range t.nodes {
 		node := node
 
@@ -720,7 +705,7 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 			if node.Instance.IsRunning() {
 				err = node.Instance.Save(destPath, timeout)
 			}
-			finished += 1
+			progressCh <- TopologySaveProgressT{Code: NODE_SAVE}
 
 			if err != nil {
 				return fmt.Errorf("node %s: save cmd error - %v", node.Instance.GetName(), err)
@@ -730,11 +715,6 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 	}
 	err := g.Wait()
 
-	// send last progress
-	progressCh <- TopologySaveProgressT{
-		IsTotal: false,
-		Value:   finished,
-	}
 	return err
 }
 

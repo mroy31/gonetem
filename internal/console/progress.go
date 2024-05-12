@@ -40,7 +40,7 @@ func ProgressHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.Topo
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Node start: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Start nodes: %d/%d")),
 				),
 			}
 			bars[1] = ProgressBarT{
@@ -48,7 +48,7 @@ func ProgressHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.Topo
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarQueueAfter(bars[0].Bar),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Node load config: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Load node configs: %d/%d")),
 				),
 			}
 		}

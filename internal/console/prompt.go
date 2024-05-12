@@ -702,38 +702,37 @@ func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
 	}
 
 	mpBar := mpb.New(mpb.WithWidth(48))
-	saveBar := mpBar.AddBar(0,
-		mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
-		mpb.AppendDecorators(decor.Percentage()),
-	)
+	bars := make([]ProgressBarT, 1)
 
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
-			if !saveBar.Completed() {
-				saveBar.SetTotal(saveBar.Current(), true)
-			}
+			ProgressForceComplete(bars)
 			break
 		} else if err != nil {
-			saveBar.Abort(true)
-			saveBar.Wait()
-
+			ProgressAbort(bars, true)
 			RedPrintf("Unable to save project: %v\n", err)
 			return
 		}
 
 		switch msg.Code {
-		case proto.ProjectSaveMsg_TOTAL:
-			saveBar.SetTotal(int64(msg.GetValue()), false)
+		case proto.ProjectSaveMsg_NODE_COUNT:
+			bars[0] = ProgressBarT{
+				Total: int(msg.Total),
+				Bar: mpBar.AddBar(int64(msg.Total),
+					mpb.BarRemoveOnComplete(),
+					mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
+				),
+			}
 
-		case proto.ProjectSaveMsg_PROGRESS:
-			saveBar.SetCurrent(int64(msg.GetValue()))
+		case proto.ProjectSaveMsg_NODE_SAVE:
+			bars[0].Bar.Increment()
 
 		case proto.ProjectSaveMsg_DATA:
+			ProgressForceComplete(bars)
 			if err := os.WriteFile(dstPath, msg.GetData(), 0644); err != nil {
 				RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
 			}
-			saveBar.SetTotal(saveBar.Current(), true)
 		}
 	}
 

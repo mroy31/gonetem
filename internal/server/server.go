@@ -180,15 +180,16 @@ func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Ne
 			case <-ctx.Done():
 				return
 			case p := <-progressCh:
-				if p.IsTotal {
+				switch p.Code {
+				case NODE_SAVE_COUNT:
 					stream.Send(&proto.ProjectSaveMsg{
-						Code:  proto.ProjectSaveMsg_TOTAL,
-						Value: int32(p.Value),
+						Code:  proto.ProjectSaveMsg_NODE_COUNT,
+						Total: int32(p.Value),
 					})
-				} else {
+
+				case NODE_SAVE:
 					stream.Send(&proto.ProjectSaveMsg{
-						Code:  proto.ProjectSaveMsg_PROGRESS,
-						Value: int32(p.Value),
+						Code: proto.ProjectSaveMsg_NODE_SAVE,
 					})
 				}
 			}
