@@ -184,7 +184,7 @@ func (c *DockerClient) Pid(ctx context.Context, containerId string) (int, error)
 	}
 
 	if !containerInfo.State.Running {
-		return -1, errors.New(fmt.Sprintf("Container %s is not running", containerId))
+		return -1, fmt.Errorf("Container %s is not running", containerId)
 	}
 	return containerInfo.State.Pid, nil
 }
@@ -217,7 +217,7 @@ func (c *DockerClient) CopyFrom(ctx context.Context, containerId, source, dest s
 	// check that Dir(dest) exists
 	parentStat, err := os.Stat(path.Dir(dest))
 	if err != nil || !parentStat.Mode().IsDir() {
-		return errors.New(fmt.Sprintf("CopyFrom: %s is not a directory", path.Dir(dest)))
+		return fmt.Errorf("CopyFrom: %s is not a directory", path.Dir(dest))
 	}
 
 	reader, _, err := c.cli.CopyFromContainer(ctx, containerId, source)

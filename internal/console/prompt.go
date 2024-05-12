@@ -887,17 +887,30 @@ func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Run(client proto.NetemClient, cmdArgs []string) {
-	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-	s.Prefix = "Run project " + p.prjPath + " : "
-	s.Start()
-
-	_, err := client.Run(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-	s.Stop()
-
+	stream, err := client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to run the project: %v\n", err)
 		return
 	}
+
+	mpBar := mpb.New(mpb.WithWidth(48))
+	bars := make([]ProgressBarT, 4)
+
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			ProgressForceComplete(bars)
+			break
+		} else if err != nil {
+			ProgressAbort(bars, true)
+			RedPrintf("Unable to run topology: %v\n", err)
+			return
+		}
+
+		ProgressHandleMsg(mpBar, bars, msg)
+	}
+
+	mpBar.Wait()
 }
 
 func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
@@ -905,21 +918,33 @@ func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
 	s.Prefix = "Reload project " + p.prjPath + " : "
 	s.Start()
 
-	answer, err := client.Reload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-	s.Stop()
-
+	stream, err := client.TopologyReload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to reload the project: %v\n", err)
+		s.Stop()
 		return
 	}
 
-	// Display warning messages from run command
-	for _, nMessages := range answer.NodeMessages {
-		if len(nMessages.Messages) > 0 {
-			fmt.Println(color.YellowString(nMessages.Name + ":"))
-			for _, msg := range nMessages.Messages {
-				if msg != "" {
-					fmt.Println(color.YellowString("  - " + msg))
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			RedPrintf("Unable to run topology: %v\n", err)
+			break
+		}
+
+		switch msg.Code {
+		case proto.TopologyRunMsg_NODE_MESSAGES:
+			s.Stop()
+			for _, nMessages := range msg.NodeMessages {
+				if len(nMessages.Messages) > 0 {
+					fmt.Println(color.YellowString(nMessages.Name + ":"))
+					for _, msg := range nMessages.Messages {
+						if msg != "" {
+							fmt.Println(color.YellowString("  - " + msg))
+						}
+					}
 				}
 			}
 		}

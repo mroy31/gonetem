@@ -216,6 +216,7 @@ nodes:
 			// check new project
 			os.Mkdir(newPrjPath, 0755)
 			defer os.RemoveAll(newPrjPath)
+
 			if err := utils.OpenArchive(newPrjPath, bytes.NewReader(msg.GetData())); err != nil {
 				saveStream.CloseSend()
 				t.Errorf("Unable to extract saved project: %v", err)

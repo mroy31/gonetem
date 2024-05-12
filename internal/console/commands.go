@@ -17,6 +17,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v8"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -103,27 +104,29 @@ func OpenProject(prjPath string) (string, string, error) {
 
 	prjID := response.GetId()
 	if !disableRun {
-		s.Prefix = "Start project " + name + " : "
-		s.Start()
-
-		answer, err := client.Client.Run(context.Background(), &proto.ProjectRequest{Id: prjID})
-		s.Stop()
-
+		stream, err := client.Client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: prjID})
 		if err != nil {
 			return name, prjID, err
 		}
 
-		for _, nMessages := range answer.NodeMessages {
-			if len(nMessages.Messages) > 0 {
-				fmt.Println(color.YellowString(nMessages.Name + ":"))
-				for _, msg := range nMessages.Messages {
-					if msg != "" {
-						fmt.Println(color.YellowString("  - " + msg))
-					}
-				}
+		mpBar := mpb.New(mpb.WithWidth(48))
+		bars := make([]ProgressBarT, 4)
+
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				ProgressForceComplete(bars)
+				break
+			} else if err != nil {
+				ProgressAbort(bars, true)
+				RedPrintf("Unable to run topology: %v\n", err)
+				return name, prjID, err
 			}
+
+			ProgressHandleMsg(mpBar, bars, msg)
 		}
 
+		mpBar.Wait()
 	}
 
 	return name, prjID, nil
@@ -133,7 +136,8 @@ func NewPrompt(prjName, prjID, prjPath string) {
 	e := NewNetemPrompt(getServerUri(), prjID, prjPath)
 	c := NewPromptCompleter(e)
 
-	fmt.Println("Welcome to gonetem " + options.VERSION)
+	fmt.Println("")
+	fmt.Println("Welcome to gonetem console " + options.VERSION)
 	fmt.Println("Please use `exit` to close the project")
 
 	p := prompt.New(

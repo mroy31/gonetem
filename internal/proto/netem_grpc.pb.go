@@ -32,8 +32,8 @@ const (
 	Netem_ReadNetworkFile_FullMethodName   = "/netem.Netem/ReadNetworkFile"
 	Netem_WriteNetworkFile_FullMethodName  = "/netem.Netem/WriteNetworkFile"
 	Netem_Check_FullMethodName             = "/netem.Netem/Check"
-	Netem_Reload_FullMethodName            = "/netem.Netem/Reload"
-	Netem_Run_FullMethodName               = "/netem.Netem/Run"
+	Netem_TopologyReload_FullMethodName    = "/netem.Netem/TopologyReload"
+	Netem_TopologyRun_FullMethodName       = "/netem.Netem/TopologyRun"
 	Netem_TopologyStartAll_FullMethodName  = "/netem.Netem/TopologyStartAll"
 	Netem_TopologyStopAll_FullMethodName   = "/netem.Netem/TopologyStopAll"
 	Netem_ReadConfigFiles_FullMethodName   = "/netem.Netem/ReadConfigFiles"
@@ -69,8 +69,8 @@ type NetemClient interface {
 	WriteNetworkFile(ctx context.Context, in *WNetworkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// topology actions
 	Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
-	Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error)
+	TopologyReload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyReloadClient, error)
+	TopologyRun(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyRunClient, error)
 	TopologyStartAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	TopologyStopAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
@@ -250,22 +250,68 @@ func (c *netemClient) Check(ctx context.Context, in *ProjectRequest, opts ...grp
 	return out, nil
 }
 
-func (c *netemClient) Reload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error) {
-	out := new(RunResponse)
-	err := c.cc.Invoke(ctx, Netem_Reload_FullMethodName, in, out, opts...)
+func (c *netemClient) TopologyReload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyReloadClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], Netem_TopologyReload_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &netemTopologyReloadClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
 
-func (c *netemClient) Run(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*RunResponse, error) {
-	out := new(RunResponse)
-	err := c.cc.Invoke(ctx, Netem_Run_FullMethodName, in, out, opts...)
+type Netem_TopologyReloadClient interface {
+	Recv() (*TopologyRunMsg, error)
+	grpc.ClientStream
+}
+
+type netemTopologyReloadClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemTopologyReloadClient) Recv() (*TopologyRunMsg, error) {
+	m := new(TopologyRunMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *netemClient) TopologyRun(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyRunClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[3], Netem_TopologyRun_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &netemTopologyRunClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Netem_TopologyRunClient interface {
+	Recv() (*TopologyRunMsg, error)
+	grpc.ClientStream
+}
+
+type netemTopologyRunClient struct {
+	grpc.ClientStream
+}
+
+func (x *netemTopologyRunClient) Recv() (*TopologyRunMsg, error) {
+	m := new(TopologyRunMsg)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (c *netemClient) TopologyStartAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
@@ -305,7 +351,7 @@ func (c *netemClient) CanRunConsole(ctx context.Context, in *NodeRequest, opts .
 }
 
 func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[2], Netem_Console_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[4], Netem_Console_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +418,7 @@ func (c *netemClient) SetIfState(ctx context.Context, in *NodeIfStateRequest, op
 }
 
 func (c *netemClient) Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[3], Netem_Capture_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[5], Netem_Capture_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +450,7 @@ func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
 }
 
 func (c *netemClient) CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[4], Netem_CopyFrom_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[6], Netem_CopyFrom_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +482,7 @@ func (x *netemCopyFromClient) Recv() (*CopyMsg, error) {
 }
 
 func (c *netemClient) CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[5], Netem_CopyTo_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[7], Netem_CopyTo_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -498,8 +544,8 @@ type NetemServer interface {
 	WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error)
 	// topology actions
 	Check(context.Context, *ProjectRequest) (*AckResponse, error)
-	Reload(context.Context, *ProjectRequest) (*RunResponse, error)
-	Run(context.Context, *ProjectRequest) (*RunResponse, error)
+	TopologyReload(*ProjectRequest, Netem_TopologyReloadServer) error
+	TopologyRun(*ProjectRequest, Netem_TopologyRunServer) error
 	TopologyStartAll(context.Context, *ProjectRequest) (*AckResponse, error)
 	TopologyStopAll(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
@@ -558,11 +604,11 @@ func (UnimplementedNetemServer) WriteNetworkFile(context.Context, *WNetworkReque
 func (UnimplementedNetemServer) Check(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Check not implemented")
 }
-func (UnimplementedNetemServer) Reload(context.Context, *ProjectRequest) (*RunResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Reload not implemented")
+func (UnimplementedNetemServer) TopologyReload(*ProjectRequest, Netem_TopologyReloadServer) error {
+	return status.Errorf(codes.Unimplemented, "method TopologyReload not implemented")
 }
-func (UnimplementedNetemServer) Run(context.Context, *ProjectRequest) (*RunResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Run not implemented")
+func (UnimplementedNetemServer) TopologyRun(*ProjectRequest, Netem_TopologyRunServer) error {
+	return status.Errorf(codes.Unimplemented, "method TopologyRun not implemented")
 }
 func (UnimplementedNetemServer) TopologyStartAll(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TopologyStartAll not implemented")
@@ -838,40 +884,46 @@ func _Netem_Check_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Reload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProjectRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _Netem_TopologyReload_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ProjectRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(NetemServer).Reload(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Netem_Reload_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Reload(ctx, req.(*ProjectRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(NetemServer).TopologyReload(m, &netemTopologyReloadServer{stream})
 }
 
-func _Netem_Run_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProjectRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+type Netem_TopologyReloadServer interface {
+	Send(*TopologyRunMsg) error
+	grpc.ServerStream
+}
+
+type netemTopologyReloadServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemTopologyReloadServer) Send(m *TopologyRunMsg) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _Netem_TopologyRun_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ProjectRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(NetemServer).Run(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Netem_Run_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Run(ctx, req.(*ProjectRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(NetemServer).TopologyRun(m, &netemTopologyRunServer{stream})
+}
+
+type Netem_TopologyRunServer interface {
+	Send(*TopologyRunMsg) error
+	grpc.ServerStream
+}
+
+type netemTopologyRunServer struct {
+	grpc.ServerStream
+}
+
+func (x *netemTopologyRunServer) Send(m *TopologyRunMsg) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _Netem_TopologyStartAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1178,14 +1230,6 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Netem_Check_Handler,
 		},
 		{
-			MethodName: "Reload",
-			Handler:    _Netem_Reload_Handler,
-		},
-		{
-			MethodName: "Run",
-			Handler:    _Netem_Run_Handler,
-		},
-		{
 			MethodName: "TopologyStartAll",
 			Handler:    _Netem_TopologyStartAll_Handler,
 		},
@@ -1231,6 +1275,16 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ProjectSave",
 			Handler:       _Netem_ProjectSave_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "TopologyReload",
+			Handler:       _Netem_TopologyReload_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "TopologyRun",
+			Handler:       _Netem_TopologyRun_Handler,
 			ServerStreams: true,
 		},
 		{

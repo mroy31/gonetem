@@ -46,6 +46,31 @@ type NodeConfig struct {
 	Launch  bool `default:"true"`
 }
 
+type RunCloseProgressCode int
+
+const (
+	NODE_COUNT      RunCloseProgressCode = 1
+	BRIDGE_COUNT    RunCloseProgressCode = 2
+	LINK_COUNT      RunCloseProgressCode = 3
+	LOAD_TOPO       RunCloseProgressCode = 4
+	START_NODE      RunCloseProgressCode = 5
+	SETUP_LINK      RunCloseProgressCode = 6
+	START_BRIDGE    RunCloseProgressCode = 7
+	LOADCONFIG_NODE RunCloseProgressCode = 8
+	STOP_NODE       RunCloseProgressCode = 9
+	RM_NODE         RunCloseProgressCode = 10
+)
+
+type TopologyRunCloseProgressT struct {
+	Code  RunCloseProgressCode
+	Value int
+}
+
+type TopologySaveProgressT struct {
+	IsTotal bool
+	Value   int
+}
+
 func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	defaults.Set(n)
 
@@ -251,9 +276,15 @@ func (t *NetemTopologyManager) Load() error {
 	return nil
 }
 
-func (t *NetemTopologyManager) Reload() ([]*proto.RunResponse_NodeMessages, error) {
+func (t *NetemTopologyManager) Reload(progressCh chan TopologyRunCloseProgressT) ([]*proto.TopologyRunMsg_NodeMessages, error) {
+	t.logger.Debug("Topo/Reload")
+	if progressCh == nil {
+		progressCh = make(chan TopologyRunCloseProgressT)
+		defer close(progressCh)
+	}
+
 	var err error
-	var nodeMessages []*proto.RunResponse_NodeMessages
+	var nodeMessages []*proto.TopologyRunMsg_NodeMessages
 
 	if err = t.Close(); err != nil {
 		return nodeMessages, err
@@ -262,27 +293,32 @@ func (t *NetemTopologyManager) Reload() ([]*proto.RunResponse_NodeMessages, erro
 	if err = t.Load(); err != nil {
 		return nodeMessages, err
 	}
+
 	if t.running {
 		t.running = false
-		return t.Run()
+		return t.Run(progressCh)
 	}
 
 	return nodeMessages, nil
 }
 
-func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) {
+func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([]*proto.TopologyRunMsg_NodeMessages, error) {
 	t.logger.Debug("Topo/Run")
+	if progressCh == nil {
+		progressCh = make(chan TopologyRunCloseProgressT)
+		defer close(progressCh)
+	}
+	progressCh <- TopologyRunCloseProgressT{Code: NODE_COUNT, Value: len(t.nodes)}
+	progressCh <- TopologyRunCloseProgressT{Code: BRIDGE_COUNT, Value: len(t.bridges)}
+	progressCh <- TopologyRunCloseProgressT{Code: LINK_COUNT, Value: len(t.links)}
 
 	var err error
-	var nodeMessages []*proto.RunResponse_NodeMessages
+	var nodeMessages []*proto.TopologyRunMsg_NodeMessages
 
 	if t.running {
 		t.logger.Warn("Topology is already running")
 		return nodeMessages, nil
 	}
-
-	g := new(errgroup.Group)
-	g.SetLimit(maxConcurrentNodeTask)
 
 	// 1 - start ovswitch container and init p2pSwitch
 	t.logger.Debug("Topo/Run: start ovswitch instance")
@@ -292,12 +328,21 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	}
 
 	// 2 - start all required nodes
+	g := new(errgroup.Group)
+	g.SetLimit(maxConcurrentNodeTask)
+
 	t.logger.Debug("Topo/Run: start nodes")
 	for _, node := range t.nodes {
 		node := node
-		if node.LaunchAtStartup {
-			g.Go(func() error { return node.Instance.Start() })
-		}
+		g.Go(func() error {
+			var err error = nil
+
+			if node.LaunchAtStartup {
+				err = node.Instance.Start()
+			}
+			progressCh <- TopologyRunCloseProgressT{Code: START_NODE}
+			return err
+		})
 	}
 	if err := g.Wait(); err != nil {
 		return nodeMessages, err
@@ -309,6 +354,7 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 		if err := t.setupLink(l); err != nil {
 			return nodeMessages, err
 		}
+		progressCh <- TopologyRunCloseProgressT{Code: SETUP_LINK}
 	}
 
 	// 4 - create bridges
@@ -316,7 +362,9 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	for _, br := range t.bridges {
 		br := br
 		g.Go(func() error {
-			return t.setupBridge(br)
+			err := t.setupBridge(br)
+			progressCh <- TopologyRunCloseProgressT{Code: START_BRIDGE}
+			return err
 		})
 	}
 	if err := g.Wait(); err != nil {
@@ -329,16 +377,20 @@ func (t *NetemTopologyManager) Run() ([]*proto.RunResponse_NodeMessages, error) 
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
 		node := node
-		if node.LaunchAtStartup {
-			g.Go(func() error {
-				messages, err := node.Instance.LoadConfig(configPath, timeout)
-				nodeMessages = append(nodeMessages, &proto.RunResponse_NodeMessages{
+		g.Go(func() error {
+			var messages []string
+			var err error = nil
+
+			if node.LaunchAtStartup {
+				messages, err = node.Instance.LoadConfig(configPath, timeout)
+				nodeMessages = append(nodeMessages, &proto.TopologyRunMsg_NodeMessages{
 					Name:     node.Instance.GetName(),
 					Messages: messages,
 				})
-				return err
-			})
-		}
+			}
+			progressCh <- TopologyRunCloseProgressT{Code: LOADCONFIG_NODE}
+			return err
+		})
 	}
 	if err := g.Wait(); err != nil {
 		return nodeMessages, err
@@ -621,11 +673,6 @@ func (t *NetemTopologyManager) ReadConfigFiles(nodeName string) (map[string][]by
 	return node.ReadConfigFiles(confPath, timeout)
 }
 
-type TopologySaveProgressT struct {
-	IsTotal bool
-	Value   int
-}
-
 func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error {
 	// create config folder if not exist
 	destPath := path.Join(t.path, configDir)
@@ -652,7 +699,7 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 				case <-ctx.Done():
 					return
 				default:
-					time.Sleep(50 * time.Millisecond)
+					time.Sleep(100 * time.Millisecond)
 					progressCh <- TopologySaveProgressT{
 						IsTotal: false,
 						Value:   finished,

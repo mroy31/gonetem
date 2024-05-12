@@ -311,38 +311,99 @@ func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest
 	}, nil
 }
 
-func (s *netemServer) Run(ctx context.Context, request *proto.ProjectRequest) (*proto.RunResponse, error) {
-	project := GetProject(request.GetId())
-	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetId()}
+func toppologyRunProgressGoroutine(
+	ctx context.Context,
+	progressCh chan TopologyRunCloseProgressT,
+	stream proto.Netem_TopologyRunServer,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case p := <-progressCh:
+			switch p.Code {
+			case NODE_COUNT:
+				stream.Send(&proto.TopologyRunMsg{
+					Code:  proto.TopologyRunMsg_NODE_COUNT,
+					Total: int32(p.Value),
+				})
+			case BRIDGE_COUNT:
+				stream.Send(&proto.TopologyRunMsg{
+					Code:  proto.TopologyRunMsg_BRIDGE_COUNT,
+					Total: int32(p.Value),
+				})
+			case LINK_COUNT:
+				stream.Send(&proto.TopologyRunMsg{
+					Code:  proto.TopologyRunMsg_LINK_COUNT,
+					Total: int32(p.Value),
+				})
+			case SETUP_LINK:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_LINK_SETUP,
+				})
+			case START_NODE:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_NODE_START,
+				})
+			case START_BRIDGE:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_BRIDGE_START,
+				})
+			case LOADCONFIG_NODE:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_NODE_LOADCONFIG,
+				})
+			}
+		}
 	}
-
-	nodeMessages, err := project.Topology.Run()
-	if err != nil {
-		return nil, err
-	}
-
-	return &proto.RunResponse{
-		Status:       &proto.Status{Code: proto.StatusCode_OK},
-		NodeMessages: nodeMessages,
-	}, nil
 }
 
-func (s *netemServer) Reload(ctx context.Context, request *proto.ProjectRequest) (*proto.RunResponse, error) {
+func (s *netemServer) TopologyRun(request *proto.ProjectRequest, stream proto.Netem_TopologyRunServer) error {
 	project := GetProject(request.GetId())
 	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetId()}
+		return &ProjectNotFoundError{request.GetId()}
 	}
 
-	nodeMessages, err := project.Topology.Reload()
+	progressCh := make(chan TopologyRunCloseProgressT, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go toppologyRunProgressGoroutine(ctx, progressCh, stream)
+
+	nodeMessages, err := project.Topology.Run(progressCh)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &proto.RunResponse{
-		Status:       &proto.Status{Code: proto.StatusCode_OK},
+	stream.Send(&proto.TopologyRunMsg{
+		Code:         proto.TopologyRunMsg_NODE_MESSAGES,
 		NodeMessages: nodeMessages,
-	}, nil
+	})
+	return nil
+}
+
+func (s *netemServer) TopologyReload(request *proto.ProjectRequest, stream proto.Netem_TopologyReloadServer) error {
+	project := GetProject(request.GetId())
+	if project == nil {
+		return &ProjectNotFoundError{request.GetId()}
+	}
+
+	progressCh := make(chan TopologyRunCloseProgressT)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go toppologyRunProgressGoroutine(ctx, progressCh, stream)
+
+	nodeMessages, err := project.Topology.Reload(progressCh)
+	if err != nil {
+		return err
+	}
+
+	stream.Send(&proto.TopologyRunMsg{
+		Code:         proto.TopologyRunMsg_NODE_MESSAGES,
+		NodeMessages: nodeMessages,
+	})
+	return nil
 }
 
 func (s *netemServer) TopologyStartAll(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {

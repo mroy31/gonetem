@@ -161,7 +161,7 @@ func TestTopology_UpdateLink(t *testing.T) {
 			}
 			defer topology.Close()
 
-			if _, err := topology.Run(); err != nil {
+			if _, err := topology.Run(nil); err != nil {
 				t.Errorf("Run returns an error: %v", err)
 				return
 			}
@@ -269,7 +269,7 @@ func TestTopology_Save(t *testing.T) {
 	defer topology.Close()
 
 	// start all nodes and save configuration
-	if _, err := topology.Run(); err != nil {
+	if _, err := topology.Run(nil); err != nil {
 		t.Errorf("Run returns an error: %v", err)
 	}
 	if err := topology.Save(nil); err != nil {

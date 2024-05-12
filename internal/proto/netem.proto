@@ -25,8 +25,8 @@ service Netem {
 
     // topology actions
     rpc Check(ProjectRequest) returns (AckResponse) {}
-    rpc Reload(ProjectRequest) returns (RunResponse) {}
-    rpc Run(ProjectRequest) returns (RunResponse) {}
+    rpc TopologyReload(ProjectRequest) returns (stream TopologyRunMsg) {}
+    rpc TopologyRun(ProjectRequest) returns (stream TopologyRunMsg) {}
     rpc TopologyStartAll(ProjectRequest) returns (AckResponse) {}
     rpc TopologyStopAll(ProjectRequest) returns (AckResponse) {}
 
@@ -130,6 +130,29 @@ message CaptureSrvMsg {
     bytes data = 2;
 }
 
+message TopologyRunMsg {
+    enum Code {
+        NODE_COUNT = 0;
+        BRIDGE_COUNT = 1;
+        LINK_COUNT = 2;
+        NODE_START = 3;
+        LINK_SETUP = 4;
+        BRIDGE_START = 5;
+        NODE_LOADCONFIG = 6;
+        NODE_MESSAGES = 7;
+        NODE_STOP = 8;
+        NODE_RM = 9;
+    }
+    message NodeMessages {
+        string name = 1;
+        repeated string messages = 2;
+    }
+
+    Code code = 1;
+    int32 total = 2;
+    repeated NodeMessages nodeMessages = 3;
+}
+
 message ProjectSaveMsg {
     enum Code {
         TOTAL = 0;
@@ -200,16 +223,6 @@ message Status {
 
 message AckResponse {
     Status status = 1;
-}
-
-message RunResponse {
-    message NodeMessages {
-        string name = 1;
-        repeated string messages = 2;
-    }
-
-    Status status = 1;
-    repeated NodeMessages nodeMessages = 2;
 }
 
 message FileResponse {
