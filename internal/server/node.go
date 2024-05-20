@@ -13,6 +13,14 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+var (
+	characterList = []string{
+		"0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+		"k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "x", "y", "z",
+	}
+)
+
 type INetemNode interface {
 	GetName() string
 	GetShortName() string
@@ -60,21 +68,26 @@ func (nIdGen *NodeIdentifierGenerator) isIdExist(id string) bool {
 }
 
 func (nIdGen *NodeIdentifierGenerator) GetId(name string) (string, error) {
-	genId := ""
-	if len(name) <= 5 {
-		genId = name
-	} else {
-		genId = name[:2] + name[len(name)-2:]
-	}
-
 	nIdGen.lock.Lock()
 	defer nIdGen.lock.Unlock()
 
-	for idx := range [10]int{} {
-		genId := fmt.Sprintf("%d%s", idx, genId)
+	genId := ""
+	if len(name) <= 5 {
+		genId = name
 		if !nIdGen.isIdExist(genId) {
 			nIdGen.usedIds = append(nIdGen.usedIds, genId)
 			return genId, nil
+		}
+	}
+
+	for _, idx := range [3]int{2, 3, 1} {
+		genId = name[:idx] + name[len(name)-(4-idx):]
+		for _, char := range characterList {
+			genId := fmt.Sprintf("%s%s", char, genId)
+			if !nIdGen.isIdExist(genId) {
+				nIdGen.usedIds = append(nIdGen.usedIds, genId)
+				return genId, nil
+			}
 		}
 	}
 
