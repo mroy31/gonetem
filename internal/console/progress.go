@@ -32,7 +32,7 @@ func ProgressAbort(bars []ProgressBarT, drop bool) {
 	}
 }
 
-func ProgressHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.TopologyRunMsg) {
+func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.TopologyRunMsg) {
 	switch msg.Code {
 	case proto.TopologyRunMsg_NODE_COUNT:
 		if msg.Total > 0 {
@@ -99,5 +99,37 @@ func ProgressHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.Topo
 				}
 			}
 		}
+	}
+}
+
+func ProgressCloseHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.ProjectCloseMsg) {
+	switch msg.Code {
+	case proto.ProjectCloseMsg_NODE_COUNT:
+		if msg.Total > 0 {
+			bars[0] = ProgressBarT{
+				Total: int(msg.Total),
+				Bar: mpBar.AddBar(int64(msg.Total),
+					mpb.BarRemoveOnComplete(),
+					mpb.PrependDecorators(decor.Counters(0, "Close nodes: %d/%d")),
+				),
+			}
+		}
+
+	case proto.ProjectCloseMsg_BRIDGE_COUNT:
+		if msg.Total > 0 {
+			bars[1] = ProgressBarT{
+				Total: int(msg.Total),
+				Bar: mpBar.AddBar(int64(msg.Total),
+					mpb.BarRemoveOnComplete(),
+					mpb.PrependDecorators(decor.Counters(0, "Bridge start: %d/%d")),
+				),
+			}
+		}
+
+	case proto.ProjectCloseMsg_NODE_CLOSE:
+		bars[0].Bar.Increment()
+
+	case proto.ProjectCloseMsg_BRIDGE_CLOSE:
+		bars[1].Bar.Increment()
 	}
 }

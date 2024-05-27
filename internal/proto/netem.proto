@@ -14,7 +14,7 @@ service Netem {
     // Project actions
     rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
     rpc OpenProject(OpenRequest) returns (PrjOpenResponse) {}
-    rpc CloseProject(ProjectRequest) returns (AckResponse) {}
+    rpc ProjectClose(ProjectRequest) returns (stream ProjectCloseMsg) {}
     rpc ProjectSave(ProjectRequest) returns (stream ProjectSaveMsg) {}
     rpc GetProjectConfigs(ProjectRequest) returns (FileResponse) {}
     rpc GetProjectStatus(ProjectRequest) returns (StatusResponse) {}
@@ -163,6 +163,18 @@ message ProjectSaveMsg {
     Code code = 1;
     bytes data = 2;
     int32 total = 3;
+}
+
+message ProjectCloseMsg {
+    enum Code {
+        NODE_COUNT = 0;
+        BRIDGE_COUNT = 1;
+        NODE_CLOSE = 2;
+        BRIDGE_CLOSE = 3;
+    }
+
+    Code code = 1;
+    int32 total = 2;
 }
 
 // Request messages

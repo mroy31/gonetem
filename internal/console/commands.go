@@ -123,7 +123,7 @@ func OpenProject(prjPath string) (string, string, error) {
 				return name, prjID, err
 			}
 
-			ProgressHandleMsg(mpBar, bars, msg)
+			ProgressRunHandleMsg(mpBar, bars, msg)
 		}
 
 		mpBar.Wait()

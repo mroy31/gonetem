@@ -46,6 +46,7 @@ type NodeConfig struct {
 
 type RunCloseProgressCode int
 type SaveProgressCode int
+type CloseProgressCode int
 
 const (
 	NODE_COUNT      RunCloseProgressCode = 1
@@ -56,8 +57,8 @@ const (
 	SETUP_LINK      RunCloseProgressCode = 6
 	START_BRIDGE    RunCloseProgressCode = 7
 	LOADCONFIG_NODE RunCloseProgressCode = 8
-	STOP_NODE       RunCloseProgressCode = 9
-	RM_NODE         RunCloseProgressCode = 10
+	CLOSE_NODE      RunCloseProgressCode = 9
+	CLOSE_BRIDGE    RunCloseProgressCode = 10
 )
 
 type TopologyRunCloseProgressT struct {
@@ -282,15 +283,11 @@ func (t *NetemTopologyManager) Load() error {
 
 func (t *NetemTopologyManager) Reload(progressCh chan TopologyRunCloseProgressT) ([]*proto.TopologyRunMsg_NodeMessages, error) {
 	t.logger.Debug("Topo/Reload")
-	if progressCh == nil {
-		progressCh = make(chan TopologyRunCloseProgressT)
-		defer close(progressCh)
-	}
 
 	var err error
 	var nodeMessages []*proto.TopologyRunMsg_NodeMessages
 
-	if err = t.Close(); err != nil {
+	if err = t.Close(progressCh); err != nil {
 		return nodeMessages, err
 	}
 
@@ -308,13 +305,11 @@ func (t *NetemTopologyManager) Reload(progressCh chan TopologyRunCloseProgressT)
 
 func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([]*proto.TopologyRunMsg_NodeMessages, error) {
 	t.logger.Debug("Topo/Run")
-	if progressCh == nil {
-		progressCh = make(chan TopologyRunCloseProgressT)
-		defer close(progressCh)
+	if progressCh != nil {
+		progressCh <- TopologyRunCloseProgressT{Code: NODE_COUNT, Value: len(t.nodes)}
+		progressCh <- TopologyRunCloseProgressT{Code: BRIDGE_COUNT, Value: len(t.bridges)}
+		progressCh <- TopologyRunCloseProgressT{Code: LINK_COUNT, Value: len(t.links)}
 	}
-	progressCh <- TopologyRunCloseProgressT{Code: NODE_COUNT, Value: len(t.nodes)}
-	progressCh <- TopologyRunCloseProgressT{Code: BRIDGE_COUNT, Value: len(t.bridges)}
-	progressCh <- TopologyRunCloseProgressT{Code: LINK_COUNT, Value: len(t.links)}
 
 	var err error
 	var nodeMessages []*proto.TopologyRunMsg_NodeMessages
@@ -344,7 +339,10 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 			if node.LaunchAtStartup {
 				err = node.Instance.Start()
 			}
-			progressCh <- TopologyRunCloseProgressT{Code: START_NODE}
+
+			if progressCh != nil {
+				progressCh <- TopologyRunCloseProgressT{Code: START_NODE}
+			}
 			return err
 		})
 	}
@@ -358,7 +356,10 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 		if err := t.setupLink(l); err != nil {
 			return nodeMessages, err
 		}
-		progressCh <- TopologyRunCloseProgressT{Code: SETUP_LINK}
+
+		if progressCh != nil {
+			progressCh <- TopologyRunCloseProgressT{Code: SETUP_LINK}
+		}
 	}
 
 	// 4 - create bridges
@@ -367,7 +368,10 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 		br := br
 		g.Go(func() error {
 			err := t.setupBridge(br)
-			progressCh <- TopologyRunCloseProgressT{Code: START_BRIDGE}
+
+			if progressCh != nil {
+				progressCh <- TopologyRunCloseProgressT{Code: START_BRIDGE}
+			}
 			return err
 		})
 	}
@@ -392,7 +396,10 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 					Messages: messages,
 				})
 			}
-			progressCh <- TopologyRunCloseProgressT{Code: LOADCONFIG_NODE}
+
+			if progressCh != nil {
+				progressCh <- TopologyRunCloseProgressT{Code: LOADCONFIG_NODE}
+			}
 			return err
 		})
 	}
@@ -686,11 +693,9 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 		}
 	}
 
-	if progressCh == nil {
-		progressCh = make(chan TopologySaveProgressT)
-		defer close(progressCh)
+	if progressCh != nil {
+		progressCh <- TopologySaveProgressT{Code: NODE_SAVE_COUNT, Value: len(t.nodes)}
 	}
-	progressCh <- TopologySaveProgressT{Code: NODE_SAVE_COUNT, Value: len(t.nodes)}
 
 	timeout := options.ServerConfig.Docker.Timeoutop
 	g := new(errgroup.Group)
@@ -705,7 +710,10 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 			if node.Instance.IsRunning() {
 				err = node.Instance.Save(destPath, timeout)
 			}
-			progressCh <- TopologySaveProgressT{Code: NODE_SAVE}
+
+			if progressCh != nil {
+				progressCh <- TopologySaveProgressT{Code: NODE_SAVE}
+			}
 
 			if err != nil {
 				return fmt.Errorf("node %s: save cmd error - %v", node.Instance.GetName(), err)
@@ -718,14 +726,29 @@ func (t *NetemTopologyManager) Save(progressCh chan TopologySaveProgressT) error
 	return err
 }
 
-func (t *NetemTopologyManager) Close() error {
+func (t *NetemTopologyManager) Close(progressCh chan TopologyRunCloseProgressT) error {
+	if progressCh != nil {
+		progressCh <- TopologyRunCloseProgressT{Code: NODE_COUNT, Value: len(t.nodes)}
+		progressCh <- TopologyRunCloseProgressT{Code: BRIDGE_COUNT, Value: len(t.bridges)}
+	}
+
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
 
 	// close all nodes
 	for _, node := range t.nodes {
 		node := node
-		g.Go(func() error { return node.Instance.Close() })
+		g.Go(func() error {
+			err := node.Instance.Close()
+			if progressCh != nil {
+				progressCh <- TopologyRunCloseProgressT{Code: CLOSE_NODE}
+			}
+
+			if err != nil {
+				return fmt.Errorf("node %s: %v", node.Instance.GetName(), err)
+			}
+			return nil
+		})
 	}
 	if err := g.Wait(); err != nil {
 		t.logger.Errorf("Error when closing nodes: %v", err)
@@ -744,6 +767,10 @@ func (t *NetemTopologyManager) Close() error {
 				peer.Node.GetShortName(), peer.IfIndex)
 			if err := link.DeleteLink(ifName, rootNs); err != nil {
 				t.logger.Warnf("Error when deleting link %s: %v", ifName, err)
+			}
+
+			if progressCh != nil {
+				progressCh <- TopologyRunCloseProgressT{Code: CLOSE_BRIDGE}
 			}
 		}
 	}

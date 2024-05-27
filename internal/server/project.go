@@ -76,7 +76,7 @@ func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
 	topology, err := LoadTopology(prjId, dir)
 	if err != nil {
 		defer func() {
-			topology.Close()
+			topology.Close(nil)
 			os.RemoveAll(dir)
 		}()
 		return nil, err
@@ -129,7 +129,7 @@ func GetProjectConfigs(prjId string) (*bytes.Buffer, error) {
 	return buffer, nil
 }
 
-func CloseProject(prjId string) error {
+func CloseProject(prjId string, progressCh chan TopologyRunCloseProgressT) error {
 	project := GetProject(prjId)
 	if project == nil {
 		return &ProjectNotFoundError{prjId}
@@ -138,5 +138,5 @@ func CloseProject(prjId string) error {
 	defer os.RemoveAll(project.Dir)
 	defer delete(openProjects, prjId)
 
-	return project.Topology.Close()
+	return project.Topology.Close(progressCh)
 }

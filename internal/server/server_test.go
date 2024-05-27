@@ -117,9 +117,18 @@ func TestServer_Project(t *testing.T) {
 	}
 
 	// close project
-	_, err = client.CloseProject(ctx, &proto.ProjectRequest{Id: prjID})
+	closeStream, err := client.ProjectClose(ctx, &proto.ProjectRequest{Id: prjID})
 	if err != nil {
 		t.Errorf("CloseProject method return an error: %v", err)
+	}
+	for {
+		_, err := closeStream.Recv()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			t.Errorf("ProjectClose stream return an error: %v", err)
+			return
+		}
 	}
 }
 
@@ -157,7 +166,21 @@ func TestServer_Save(t *testing.T) {
 		return
 	}
 	prjID := openResponse.GetId()
-	defer client.CloseProject(ctx, &proto.ProjectRequest{Id: prjID})
+	defer func() {
+		closeStream, err := client.ProjectClose(ctx, &proto.ProjectRequest{Id: prjID})
+		if err != nil {
+			t.Errorf("CloseProject method return an error: %v", err)
+		}
+		for {
+			_, err := closeStream.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				t.Errorf("ProjectClose stream return an error: %v", err)
+				return
+			}
+		}
+	}()
 
 	// read network file
 	netResponse, err := client.ReadNetworkFile(ctx, &proto.ProjectRequest{Id: prjID})

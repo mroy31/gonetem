@@ -159,7 +159,7 @@ func TestTopology_UpdateLink(t *testing.T) {
 				t.Errorf("LoadTopology returns an unexpected error: %v", err)
 				return
 			}
-			defer topology.Close()
+			defer topology.Close(nil)
 
 			if _, err := topology.Run(nil); err != nil {
 				t.Errorf("Run returns an error: %v", err)
@@ -230,10 +230,10 @@ func TestTopology_Load(t *testing.T) {
 			if err != nil && !tt.expectedError {
 				t.Errorf("LoadTopology returns an unexpected error: %v", err)
 			} else if tt.expectedError {
-				topology.Close()
+				topology.Close(nil)
 				return
 			}
-			defer topology.Close()
+			defer topology.Close(nil)
 
 			for _, n := range tt.nodes {
 				node := topology.GetNode(n)
@@ -266,7 +266,7 @@ func TestTopology_Save(t *testing.T) {
 	if err != nil {
 		t.Errorf("LoadTopology returns an unexpected error: %v", err)
 	}
-	defer topology.Close()
+	defer topology.Close(nil)
 
 	// start all nodes and save configuration
 	if _, err := topology.Run(nil); err != nil {

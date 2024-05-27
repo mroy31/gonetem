@@ -160,13 +160,45 @@ func (s *netemServer) OpenProject(ctx context.Context, request *proto.OpenReques
 	}, nil
 }
 
-func (s *netemServer) CloseProject(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
-	if err := CloseProject(request.GetId()); err != nil {
-		return nil, err
-	}
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-	}, nil
+func (s *netemServer) ProjectClose(request *proto.ProjectRequest, stream proto.Netem_ProjectCloseServer) error {
+	progressCh := make(chan TopologyRunCloseProgressT)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case p := <-progressCh:
+				switch p.Code {
+				case NODE_COUNT:
+					stream.Send(&proto.ProjectCloseMsg{
+						Code:  proto.ProjectCloseMsg_NODE_COUNT,
+						Total: int32(p.Value),
+					})
+
+				case BRIDGE_COUNT:
+					stream.Send(&proto.ProjectCloseMsg{
+						Code:  proto.ProjectCloseMsg_BRIDGE_COUNT,
+						Total: int32(p.Value),
+					})
+
+				case CLOSE_NODE:
+					stream.Send(&proto.ProjectCloseMsg{
+						Code: proto.ProjectCloseMsg_NODE_CLOSE,
+					})
+
+				case CLOSE_BRIDGE:
+					stream.Send(&proto.ProjectCloseMsg{
+						Code: proto.ProjectCloseMsg_BRIDGE_CLOSE,
+					})
+				}
+			}
+		}
+	}()
+
+	return CloseProject(request.GetId(), progressCh)
 }
 
 func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Netem_ProjectSaveServer) error {
@@ -946,7 +978,7 @@ func (s *netemServer) Close() error {
 	}
 
 	for _, prjId := range ids {
-		if err := CloseProject(prjId); err != nil {
+		if err := CloseProject(prjId, nil); err != nil {
 			logrus.Errorf("Error when closing project %s: %v", prjId, err)
 		}
 	}

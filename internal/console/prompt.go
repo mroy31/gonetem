@@ -263,12 +263,7 @@ func (p *NetemPrompt) Execute(s string) {
 	}
 
 	if s == "quit" || s == "exit" {
-		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-		s.Prefix = "Close project " + p.prjPath + " : "
-		s.Start()
-
 		err := p.Close()
-		s.Stop()
 		if err != nil {
 			RedPrintf(err.Error() + "\n")
 		}
@@ -906,7 +901,7 @@ func (p *NetemPrompt) Run(client proto.NetemClient, cmdArgs []string) {
 			return
 		}
 
-		ProgressHandleMsg(mpBar, bars, msg)
+		ProgressRunHandleMsg(mpBar, bars, msg)
 	}
 
 	mpBar.Wait()
@@ -970,10 +965,28 @@ func (p *NetemPrompt) Close() error {
 	} else {
 		defer client.Conn.Close()
 
-		_, err = client.Client.CloseProject(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+		stream, err := client.Client.ProjectClose(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 		if err != nil {
 			return fmt.Errorf("unable to close project: %v", err)
 		}
+
+		mpBar := mpb.New(mpb.WithWidth(48))
+		bars := make([]ProgressBarT, 4)
+
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				ProgressForceComplete(bars)
+				break
+			} else if err != nil {
+				ProgressAbort(bars, true)
+				return err
+			}
+
+			ProgressCloseHandleMsg(mpBar, bars, msg)
+		}
+
+		mpBar.Wait()
 	}
 
 	return nil

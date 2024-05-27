@@ -38,7 +38,7 @@ func TestProject_OpenClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unable to open project: %v", err)
 	}
-	defer CloseProject(prjID)
+	defer CloseProject(prjID, nil)
 
 	// check topology
 	checkTopology(simpleNetwork, project.Topology, t)
@@ -67,7 +67,7 @@ func TestProject_Save(t *testing.T) {
 		t.Errorf("Unable to open project: %v", err)
 		return
 	}
-	defer CloseProject(prjID)
+	defer CloseProject(prjID, nil)
 
 	if _, err := project.Topology.Run(nil); err != nil {
 		t.Errorf("Unable to start project: %v", err)
