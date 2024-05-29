@@ -50,7 +50,7 @@ func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.Ack
 
 	for _, cObj := range cList {
 		groups := re.FindStringSubmatch(cObj.Name)
-		if len(groups) == 2 && !IdProjectExist(groups[1]) {
+		if len(groups) == 2 && !ProjectIsIdExist(groups[1]) {
 			cObj := cObj
 
 			g.Go(func() error {
@@ -114,8 +114,8 @@ func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImag
 	return nil
 }
 
-func (s *netemServer) GetProjects(ctx context.Context, empty *empty.Empty) (*proto.PrjListResponse, error) {
-	prjList := GetAllProjects()
+func (s *netemServer) ProjectGetMany(ctx context.Context, empty *empty.Empty) (*proto.PrjListResponse, error) {
+	prjList := ProjectGetMany()
 	response := proto.PrjListResponse{
 		Status: &proto.Status{
 			Code: proto.StatusCode_OK,
@@ -134,8 +134,8 @@ func (s *netemServer) GetProjects(ctx context.Context, empty *empty.Empty) (*pro
 	return &response, nil
 }
 
-func (s *netemServer) OpenProject(ctx context.Context, request *proto.OpenRequest) (*proto.PrjOpenResponse, error) {
-	if IsProjectExist(request.GetName()) {
+func (s *netemServer) ProjectOpen(ctx context.Context, request *proto.OpenRequest) (*proto.PrjOpenResponse, error) {
+	if ProjectIsExist(request.GetName()) {
 		return &proto.PrjOpenResponse{
 			Status: &proto.Status{
 				Code:  proto.StatusCode_ERROR,
@@ -145,11 +145,11 @@ func (s *netemServer) OpenProject(ctx context.Context, request *proto.OpenReques
 	}
 
 	prjID := utils.RandString(3)
-	for IdProjectExist(prjID) {
+	for ProjectIsIdExist(prjID) {
 		prjID = utils.RandString(3)
 	}
 
-	prj, err := OpenProject(prjID, request.GetName(), request.GetData())
+	prj, err := ProjectOpen(prjID, request.GetName(), request.GetData())
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (s *netemServer) ProjectClose(request *proto.ProjectRequest, stream proto.N
 		}
 	}()
 
-	return CloseProject(request.GetId(), progressCh)
+	return ProjectClose(request.GetId(), progressCh)
 }
 
 func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Netem_ProjectSaveServer) error {
@@ -228,7 +228,7 @@ func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Ne
 		}
 	}()
 
-	data, err := SaveProject(request.GetId(), progressCh)
+	data, err := ProjectSave(request.GetId(), progressCh)
 	if err != nil {
 		return err
 	}
@@ -240,8 +240,8 @@ func (s *netemServer) ProjectSave(request *proto.ProjectRequest, stream proto.Ne
 	return nil
 }
 
-func (s *netemServer) GetProjectConfigs(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {
-	data, err := GetProjectConfigs(request.GetId())
+func (s *netemServer) ProjectGetNodeConfigs(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {
+	data, err := ProjectGetNodeConfigs(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -252,8 +252,8 @@ func (s *netemServer) GetProjectConfigs(ctx context.Context, request *proto.Proj
 	}, nil
 }
 
-func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.ProjectRequest) (*proto.StatusResponse, error) {
-	project := GetProject(request.GetId())
+func (s *netemServer) ProjectGetStatus(ctx context.Context, request *proto.ProjectRequest) (*proto.StatusResponse, error) {
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -290,7 +290,7 @@ func (s *netemServer) GetProjectStatus(ctx context.Context, request *proto.Proje
 }
 
 func (s *netemServer) ReadNetworkFile(ctx context.Context, request *proto.ProjectRequest) (*proto.FileResponse, error) {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -306,7 +306,7 @@ func (s *netemServer) ReadNetworkFile(ctx context.Context, request *proto.Projec
 }
 
 func (s *netemServer) WriteNetworkFile(ctx context.Context, request *proto.WNetworkRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -321,7 +321,7 @@ func (s *netemServer) WriteNetworkFile(ctx context.Context, request *proto.WNetw
 }
 
 func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -392,7 +392,7 @@ func toppologyRunProgressGoroutine(
 }
 
 func (s *netemServer) TopologyRun(request *proto.ProjectRequest, stream proto.Netem_TopologyRunServer) error {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return &ProjectNotFoundError{request.GetId()}
 	}
@@ -416,7 +416,7 @@ func (s *netemServer) TopologyRun(request *proto.ProjectRequest, stream proto.Ne
 }
 
 func (s *netemServer) TopologyReload(request *proto.ProjectRequest, stream proto.Netem_TopologyReloadServer) error {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return &ProjectNotFoundError{request.GetId()}
 	}
@@ -440,7 +440,7 @@ func (s *netemServer) TopologyReload(request *proto.ProjectRequest, stream proto
 }
 
 func (s *netemServer) TopologyStartAll(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -471,7 +471,7 @@ func (s *netemServer) TopologyStartAll(ctx context.Context, request *proto.Proje
 }
 
 func (s *netemServer) TopologyStopAll(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -499,7 +499,7 @@ func (s *netemServer) TopologyStopAll(ctx context.Context, request *proto.Projec
 }
 
 func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -514,7 +514,7 @@ func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*p
 }
 
 func (s *netemServer) Stop(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -529,7 +529,7 @@ func (s *netemServer) Stop(ctx context.Context, request *proto.NodeRequest) (*pr
 }
 
 func (s *netemServer) Restart(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -547,7 +547,7 @@ func (s *netemServer) Restart(ctx context.Context, request *proto.NodeRequest) (
 }
 
 func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetId())
+	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
 	}
@@ -567,7 +567,7 @@ func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) 
 }
 
 func (s *netemServer) SetIfState(ctx context.Context, request *proto.NodeIfStateRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -595,7 +595,7 @@ func (s *netemServer) SetIfState(ctx context.Context, request *proto.NodeIfState
 }
 
 func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.Netem_CaptureServer) error {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return stream.Send(&proto.CaptureSrvMsg{
 			Code: proto.CaptureSrvMsg_ERROR,
@@ -664,7 +664,7 @@ func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.
 }
 
 func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRequest) (*proto.ConfigFilesResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -700,7 +700,7 @@ func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRe
 }
 
 func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
@@ -737,7 +737,7 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	}
 
 	// get project
-	project := GetProject(resp.GetPrjId())
+	project := ProjectGetOne(resp.GetPrjId())
 	if project == nil {
 		return stream.Send(&proto.ConsoleSrvMsg{
 			Code: proto.ConsoleSrvMsg_ERROR,
@@ -835,7 +835,7 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 
 func (s *netemServer) CopyFrom(request *proto.CopyMsg, stream proto.Netem_CopyFromServer) error {
 	// get project
-	project := GetProject(request.GetPrjId())
+	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return stream.Send(&proto.CopyMsg{
 			Code: proto.CopyMsg_ERROR,
@@ -921,7 +921,7 @@ func (s *netemServer) CopyTo(stream proto.Netem_CopyToServer) error {
 
 		switch msg.Code {
 		case proto.CopyMsg_INIT:
-			project := GetProject(msg.GetPrjId())
+			project := ProjectGetOne(msg.GetPrjId())
 			if project == nil {
 				return stream.SendAndClose(&proto.AckResponse{
 					Status: &proto.Status{
@@ -973,12 +973,12 @@ func (s *netemServer) CopyTo(stream proto.Netem_CopyToServer) error {
 
 func (s *netemServer) Close() error {
 	var ids []string
-	for _, project := range GetAllProjects() {
+	for _, project := range ProjectGetMany() {
 		ids = append(ids, project.Id)
 	}
 
 	for _, prjId := range ids {
-		if err := CloseProject(prjId, nil); err != nil {
+		if err := ProjectClose(prjId, nil); err != nil {
 			logrus.Errorf("Error when closing project %s: %v", prjId, err)
 		}
 	}

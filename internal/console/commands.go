@@ -51,7 +51,7 @@ func ListProjects() *proto.PrjListResponse {
 	}
 	defer client.Conn.Close()
 
-	projects, err := client.Client.GetProjects(context.Background(), &emptypb.Empty{})
+	projects, err := client.Client.ProjectGetMany(context.Background(), &emptypb.Empty{})
 	if err != nil {
 		Fatal("Unable to get list of projects: %v", err)
 	}
@@ -90,7 +90,7 @@ func OpenProject(prjPath string) (string, string, error) {
 		// use filename as name
 		name = strings.TrimSuffix(filepath.Base(prjPath), ".gnet")
 	}
-	response, err := client.Client.OpenProject(context.Background(), &proto.OpenRequest{
+	response, err := client.Client.ProjectOpen(context.Background(), &proto.OpenRequest{
 		Name: name,
 		Data: data,
 	})

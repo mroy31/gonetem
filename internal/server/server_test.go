@@ -75,7 +75,7 @@ func TestServer_Project(t *testing.T) {
 	client := proto.NewNetemClient(conn)
 
 	// get project list
-	response, err := client.GetProjects(ctx, &emptypb.Empty{})
+	response, err := client.ProjectGetMany(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Errorf("GetProjects method return an error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestServer_Project(t *testing.T) {
 	}
 
 	// open project
-	openResponse, err := client.OpenProject(ctx, &proto.OpenRequest{
+	openResponse, err := client.ProjectOpen(ctx, &proto.OpenRequest{
 		Name: filepath.Base(prjPath),
 		Data: data,
 	})
@@ -108,7 +108,7 @@ func TestServer_Project(t *testing.T) {
 	prjID := openResponse.GetId()
 
 	// get project list
-	response, err = client.GetProjects(ctx, &emptypb.Empty{})
+	response, err = client.ProjectGetMany(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Errorf("GetProjects method return an error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestServer_Save(t *testing.T) {
 	}
 
 	// open project
-	openResponse, err := client.OpenProject(ctx, &proto.OpenRequest{
+	openResponse, err := client.ProjectOpen(ctx, &proto.OpenRequest{
 		Name: filepath.Base(prjPath),
 		Data: data,
 	})

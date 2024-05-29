@@ -12,12 +12,12 @@ service Netem {
     rpc Clean(google.protobuf.Empty) returns (AckResponse) {}
 
     // Project actions
-    rpc GetProjects(google.protobuf.Empty) returns (PrjListResponse) {}
-    rpc OpenProject(OpenRequest) returns (PrjOpenResponse) {}
+    rpc ProjectGetMany(google.protobuf.Empty) returns (PrjListResponse) {}
+    rpc ProjectOpen(OpenRequest) returns (PrjOpenResponse) {}
     rpc ProjectClose(ProjectRequest) returns (stream ProjectCloseMsg) {}
     rpc ProjectSave(ProjectRequest) returns (stream ProjectSaveMsg) {}
-    rpc GetProjectConfigs(ProjectRequest) returns (FileResponse) {}
-    rpc GetProjectStatus(ProjectRequest) returns (StatusResponse) {}
+    rpc ProjectGetNodeConfigs(ProjectRequest) returns (FileResponse) {}
+    rpc ProjectGetStatus(ProjectRequest) returns (StatusResponse) {}
 
     // Read/Write network topology
     rpc ReadNetworkFile(ProjectRequest) returns (FileResponse) {}

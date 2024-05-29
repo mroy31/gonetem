@@ -34,11 +34,11 @@ func TestProject_OpenClose(t *testing.T) {
 
 	// open project
 	prjID := utils.RandString(4)
-	project, err := OpenProject(prjID, "PrjTest", data)
+	project, err := ProjectOpen(prjID, "PrjTest", data)
 	if err != nil {
 		t.Fatalf("Unable to open project: %v", err)
 	}
-	defer CloseProject(prjID, nil)
+	defer ProjectClose(prjID, nil)
 
 	// check topology
 	checkTopology(simpleNetwork, project.Topology, t)
@@ -62,12 +62,12 @@ func TestProject_Save(t *testing.T) {
 
 	// open project
 	prjID := utils.RandString(4)
-	project, err := OpenProject(prjID, "PrjTest", data)
+	project, err := ProjectOpen(prjID, "PrjTest", data)
 	if err != nil {
 		t.Errorf("Unable to open project: %v", err)
 		return
 	}
-	defer CloseProject(prjID, nil)
+	defer ProjectClose(prjID, nil)
 
 	if _, err := project.Topology.Run(nil); err != nil {
 		t.Errorf("Unable to start project: %v", err)

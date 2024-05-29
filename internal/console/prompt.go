@@ -316,7 +316,7 @@ func (p *NetemPrompt) refreshNodeList() {
 	}
 	defer client.Conn.Close()
 
-	status, err := client.Client.GetProjectStatus(
+	status, err := client.Client.ProjectGetStatus(
 		context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		return
@@ -599,7 +599,7 @@ func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
 		return
 	}
 
-	response, err := client.GetProjectConfigs(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	response, err := client.ProjectGetNodeConfigs(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get project configuration files: %v\n", err)
 		return
@@ -670,7 +670,7 @@ func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, sh
 }
 
 func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
-	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get project status: %v\n", err)
 		return
@@ -803,7 +803,7 @@ func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
-	response, err := client.GetProjectStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf("Unable to get project status: %v\n", err)
 		return

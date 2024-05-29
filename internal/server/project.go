@@ -31,7 +31,7 @@ var (
 	openProjects = make(map[string]*NetemProject, 0)
 )
 
-func IsProjectExist(prjName string) bool {
+func ProjectIsExist(prjName string) bool {
 	for _, prj := range openProjects {
 		if prj.Name == prjName {
 			return true
@@ -40,7 +40,7 @@ func IsProjectExist(prjName string) bool {
 	return false
 }
 
-func IdProjectExist(prjID string) bool {
+func ProjectIsIdExist(prjID string) bool {
 	for _, prj := range openProjects {
 		if prj.Id == prjID {
 			return true
@@ -49,11 +49,11 @@ func IdProjectExist(prjID string) bool {
 	return false
 }
 
-func GetAllProjects() map[string]*NetemProject {
+func ProjectGetMany() map[string]*NetemProject {
 	return openProjects
 }
 
-func GetProject(prjID string) *NetemProject {
+func ProjectGetOne(prjID string) *NetemProject {
 	prj, found := openProjects[prjID]
 	if found {
 		return prj
@@ -61,7 +61,7 @@ func GetProject(prjID string) *NetemProject {
 	return nil
 }
 
-func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
+func ProjectOpen(prjId, name string, data []byte) (*NetemProject, error) {
 	// create temp directory for the project
 	dir, err := os.MkdirTemp(options.ServerConfig.Workdir, "gonetem-"+prjId+"-")
 	if err != nil {
@@ -93,8 +93,8 @@ func OpenProject(prjId, name string, data []byte) (*NetemProject, error) {
 	return prj, nil
 }
 
-func SaveProject(prjId string, progressCh chan TopologySaveProgressT) (*bytes.Buffer, error) {
-	project := GetProject(prjId)
+func ProjectSave(prjId string, progressCh chan TopologySaveProgressT) (*bytes.Buffer, error) {
+	project := ProjectGetOne(prjId)
 	if project == nil {
 		return nil, &ProjectNotFoundError{prjId}
 	}
@@ -110,8 +110,8 @@ func SaveProject(prjId string, progressCh chan TopologySaveProgressT) (*bytes.Bu
 	return buffer, nil
 }
 
-func GetProjectConfigs(prjId string) (*bytes.Buffer, error) {
-	project := GetProject(prjId)
+func ProjectGetNodeConfigs(prjId string) (*bytes.Buffer, error) {
+	project := ProjectGetOne(prjId)
 	if project == nil {
 		return nil, &ProjectNotFoundError{prjId}
 	}
@@ -129,8 +129,8 @@ func GetProjectConfigs(prjId string) (*bytes.Buffer, error) {
 	return buffer, nil
 }
 
-func CloseProject(prjId string, progressCh chan TopologyRunCloseProgressT) error {
-	project := GetProject(prjId)
+func ProjectClose(prjId string, progressCh chan TopologyRunCloseProgressT) error {
+	project := ProjectGetOne(prjId)
 	if project == nil {
 		return &ProjectNotFoundError{prjId}
 	}
