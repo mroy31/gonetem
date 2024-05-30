@@ -31,21 +31,21 @@ const (
 	Netem_ProjectGetStatus_FullMethodName      = "/netem.Netem/ProjectGetStatus"
 	Netem_ReadNetworkFile_FullMethodName       = "/netem.Netem/ReadNetworkFile"
 	Netem_WriteNetworkFile_FullMethodName      = "/netem.Netem/WriteNetworkFile"
-	Netem_Check_FullMethodName                 = "/netem.Netem/Check"
+	Netem_TopologyCheck_FullMethodName         = "/netem.Netem/TopologyCheck"
 	Netem_TopologyReload_FullMethodName        = "/netem.Netem/TopologyReload"
 	Netem_TopologyRun_FullMethodName           = "/netem.Netem/TopologyRun"
 	Netem_TopologyStartAll_FullMethodName      = "/netem.Netem/TopologyStartAll"
 	Netem_TopologyStopAll_FullMethodName       = "/netem.Netem/TopologyStopAll"
-	Netem_ReadConfigFiles_FullMethodName       = "/netem.Netem/ReadConfigFiles"
-	Netem_CanRunConsole_FullMethodName         = "/netem.Netem/CanRunConsole"
-	Netem_Console_FullMethodName               = "/netem.Netem/Console"
-	Netem_Start_FullMethodName                 = "/netem.Netem/Start"
-	Netem_Stop_FullMethodName                  = "/netem.Netem/Stop"
-	Netem_Restart_FullMethodName               = "/netem.Netem/Restart"
-	Netem_SetIfState_FullMethodName            = "/netem.Netem/SetIfState"
-	Netem_Capture_FullMethodName               = "/netem.Netem/Capture"
-	Netem_CopyFrom_FullMethodName              = "/netem.Netem/CopyFrom"
-	Netem_CopyTo_FullMethodName                = "/netem.Netem/CopyTo"
+	Netem_NodeReadConfigFiles_FullMethodName   = "/netem.Netem/NodeReadConfigFiles"
+	Netem_NodeCanRunConsole_FullMethodName     = "/netem.Netem/NodeCanRunConsole"
+	Netem_NodeConsole_FullMethodName           = "/netem.Netem/NodeConsole"
+	Netem_NodeStart_FullMethodName             = "/netem.Netem/NodeStart"
+	Netem_NodeStop_FullMethodName              = "/netem.Netem/NodeStop"
+	Netem_NodeRestart_FullMethodName           = "/netem.Netem/NodeRestart"
+	Netem_NodeSetIfState_FullMethodName        = "/netem.Netem/NodeSetIfState"
+	Netem_NodeCapture_FullMethodName           = "/netem.Netem/NodeCapture"
+	Netem_NodeCopyFrom_FullMethodName          = "/netem.Netem/NodeCopyFrom"
+	Netem_NodeCopyTo_FullMethodName            = "/netem.Netem/NodeCopyTo"
 	Netem_LinkUpdate_FullMethodName            = "/netem.Netem/LinkUpdate"
 )
 
@@ -53,7 +53,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NetemClient interface {
-	// general action
+	// Server actions
 	ServerGetVersion(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VersionResponse, error)
 	ServerPullImages(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (Netem_ServerPullImagesClient, error)
 	ServerCleanContainers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*AckResponse, error)
@@ -68,22 +68,22 @@ type NetemClient interface {
 	ReadNetworkFile(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*FileResponse, error)
 	WriteNetworkFile(ctx context.Context, in *WNetworkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// topology actions
-	Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	TopologyCheck(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	TopologyReload(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyReloadClient, error)
 	TopologyRun(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (Netem_TopologyRunClient, error)
 	TopologyStartAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	TopologyStopAll(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error)
 	// Node actions
-	ReadConfigFiles(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*ConfigFilesResponse, error)
-	CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error)
-	Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	SetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error)
-	Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error)
-	CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error)
-	CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error)
+	NodeReadConfigFiles(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*ConfigFilesResponse, error)
+	NodeCanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	NodeConsole(ctx context.Context, opts ...grpc.CallOption) (Netem_NodeConsoleClient, error)
+	NodeStart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	NodeStop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	NodeRestart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	NodeSetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	NodeCapture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_NodeCaptureClient, error)
+	NodeCopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_NodeCopyFromClient, error)
+	NodeCopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_NodeCopyToClient, error)
 	// Link actions
 	LinkUpdate(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 }
@@ -264,9 +264,9 @@ func (c *netemClient) WriteNetworkFile(ctx context.Context, in *WNetworkRequest,
 	return out, nil
 }
 
-func (c *netemClient) Check(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) TopologyCheck(ctx context.Context, in *ProjectRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_Check_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_TopologyCheck_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -355,48 +355,48 @@ func (c *netemClient) TopologyStopAll(ctx context.Context, in *ProjectRequest, o
 	return out, nil
 }
 
-func (c *netemClient) ReadConfigFiles(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*ConfigFilesResponse, error) {
+func (c *netemClient) NodeReadConfigFiles(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*ConfigFilesResponse, error) {
 	out := new(ConfigFilesResponse)
-	err := c.cc.Invoke(ctx, Netem_ReadConfigFiles_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeReadConfigFiles_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) CanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) NodeCanRunConsole(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_CanRunConsole_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeCanRunConsole_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) Console(ctx context.Context, opts ...grpc.CallOption) (Netem_ConsoleClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[5], Netem_Console_FullMethodName, opts...)
+func (c *netemClient) NodeConsole(ctx context.Context, opts ...grpc.CallOption) (Netem_NodeConsoleClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[5], Netem_NodeConsole_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &netemConsoleClient{stream}
+	x := &netemNodeConsoleClient{stream}
 	return x, nil
 }
 
-type Netem_ConsoleClient interface {
+type Netem_NodeConsoleClient interface {
 	Send(*ConsoleCltMsg) error
 	Recv() (*ConsoleSrvMsg, error)
 	grpc.ClientStream
 }
 
-type netemConsoleClient struct {
+type netemNodeConsoleClient struct {
 	grpc.ClientStream
 }
 
-func (x *netemConsoleClient) Send(m *ConsoleCltMsg) error {
+func (x *netemNodeConsoleClient) Send(m *ConsoleCltMsg) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *netemConsoleClient) Recv() (*ConsoleSrvMsg, error) {
+func (x *netemNodeConsoleClient) Recv() (*ConsoleSrvMsg, error) {
 	m := new(ConsoleSrvMsg)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -404,48 +404,48 @@ func (x *netemConsoleClient) Recv() (*ConsoleSrvMsg, error) {
 	return m, nil
 }
 
-func (c *netemClient) Start(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) NodeStart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_Start_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeStart_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) Stop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) NodeStop(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_Stop_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeStop_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) Restart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) NodeRestart(ctx context.Context, in *NodeRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_Restart_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeRestart_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) SetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *netemClient) NodeSetIfState(ctx context.Context, in *NodeIfStateRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, Netem_SetIfState_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Netem_NodeSetIfState_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *netemClient) Capture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_CaptureClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[6], Netem_Capture_FullMethodName, opts...)
+func (c *netemClient) NodeCapture(ctx context.Context, in *NodeInterfaceRequest, opts ...grpc.CallOption) (Netem_NodeCaptureClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[6], Netem_NodeCapture_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &netemCaptureClient{stream}
+	x := &netemNodeCaptureClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -455,16 +455,16 @@ func (c *netemClient) Capture(ctx context.Context, in *NodeInterfaceRequest, opt
 	return x, nil
 }
 
-type Netem_CaptureClient interface {
+type Netem_NodeCaptureClient interface {
 	Recv() (*CaptureSrvMsg, error)
 	grpc.ClientStream
 }
 
-type netemCaptureClient struct {
+type netemNodeCaptureClient struct {
 	grpc.ClientStream
 }
 
-func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
+func (x *netemNodeCaptureClient) Recv() (*CaptureSrvMsg, error) {
 	m := new(CaptureSrvMsg)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -472,12 +472,12 @@ func (x *netemCaptureClient) Recv() (*CaptureSrvMsg, error) {
 	return m, nil
 }
 
-func (c *netemClient) CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_CopyFromClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[7], Netem_CopyFrom_FullMethodName, opts...)
+func (c *netemClient) NodeCopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.CallOption) (Netem_NodeCopyFromClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[7], Netem_NodeCopyFrom_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &netemCopyFromClient{stream}
+	x := &netemNodeCopyFromClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -487,16 +487,16 @@ func (c *netemClient) CopyFrom(ctx context.Context, in *CopyMsg, opts ...grpc.Ca
 	return x, nil
 }
 
-type Netem_CopyFromClient interface {
+type Netem_NodeCopyFromClient interface {
 	Recv() (*CopyMsg, error)
 	grpc.ClientStream
 }
 
-type netemCopyFromClient struct {
+type netemNodeCopyFromClient struct {
 	grpc.ClientStream
 }
 
-func (x *netemCopyFromClient) Recv() (*CopyMsg, error) {
+func (x *netemNodeCopyFromClient) Recv() (*CopyMsg, error) {
 	m := new(CopyMsg)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -504,30 +504,30 @@ func (x *netemCopyFromClient) Recv() (*CopyMsg, error) {
 	return m, nil
 }
 
-func (c *netemClient) CopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_CopyToClient, error) {
-	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[8], Netem_CopyTo_FullMethodName, opts...)
+func (c *netemClient) NodeCopyTo(ctx context.Context, opts ...grpc.CallOption) (Netem_NodeCopyToClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Netem_ServiceDesc.Streams[8], Netem_NodeCopyTo_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &netemCopyToClient{stream}
+	x := &netemNodeCopyToClient{stream}
 	return x, nil
 }
 
-type Netem_CopyToClient interface {
+type Netem_NodeCopyToClient interface {
 	Send(*CopyMsg) error
 	CloseAndRecv() (*AckResponse, error)
 	grpc.ClientStream
 }
 
-type netemCopyToClient struct {
+type netemNodeCopyToClient struct {
 	grpc.ClientStream
 }
 
-func (x *netemCopyToClient) Send(m *CopyMsg) error {
+func (x *netemNodeCopyToClient) Send(m *CopyMsg) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *netemCopyToClient) CloseAndRecv() (*AckResponse, error) {
+func (x *netemNodeCopyToClient) CloseAndRecv() (*AckResponse, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
@@ -551,7 +551,7 @@ func (c *netemClient) LinkUpdate(ctx context.Context, in *LinkRequest, opts ...g
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
 type NetemServer interface {
-	// general action
+	// Server actions
 	ServerGetVersion(context.Context, *emptypb.Empty) (*VersionResponse, error)
 	ServerPullImages(*emptypb.Empty, Netem_ServerPullImagesServer) error
 	ServerCleanContainers(context.Context, *emptypb.Empty) (*AckResponse, error)
@@ -566,22 +566,22 @@ type NetemServer interface {
 	ReadNetworkFile(context.Context, *ProjectRequest) (*FileResponse, error)
 	WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error)
 	// topology actions
-	Check(context.Context, *ProjectRequest) (*AckResponse, error)
+	TopologyCheck(context.Context, *ProjectRequest) (*AckResponse, error)
 	TopologyReload(*ProjectRequest, Netem_TopologyReloadServer) error
 	TopologyRun(*ProjectRequest, Netem_TopologyRunServer) error
 	TopologyStartAll(context.Context, *ProjectRequest) (*AckResponse, error)
 	TopologyStopAll(context.Context, *ProjectRequest) (*AckResponse, error)
 	// Node actions
-	ReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error)
-	CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error)
-	Console(Netem_ConsoleServer) error
-	Start(context.Context, *NodeRequest) (*AckResponse, error)
-	Stop(context.Context, *NodeRequest) (*AckResponse, error)
-	Restart(context.Context, *NodeRequest) (*AckResponse, error)
-	SetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error)
-	Capture(*NodeInterfaceRequest, Netem_CaptureServer) error
-	CopyFrom(*CopyMsg, Netem_CopyFromServer) error
-	CopyTo(Netem_CopyToServer) error
+	NodeReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error)
+	NodeCanRunConsole(context.Context, *NodeRequest) (*AckResponse, error)
+	NodeConsole(Netem_NodeConsoleServer) error
+	NodeStart(context.Context, *NodeRequest) (*AckResponse, error)
+	NodeStop(context.Context, *NodeRequest) (*AckResponse, error)
+	NodeRestart(context.Context, *NodeRequest) (*AckResponse, error)
+	NodeSetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error)
+	NodeCapture(*NodeInterfaceRequest, Netem_NodeCaptureServer) error
+	NodeCopyFrom(*CopyMsg, Netem_NodeCopyFromServer) error
+	NodeCopyTo(Netem_NodeCopyToServer) error
 	// Link actions
 	LinkUpdate(context.Context, *LinkRequest) (*AckResponse, error)
 	mustEmbedUnimplementedNetemServer()
@@ -624,8 +624,8 @@ func (UnimplementedNetemServer) ReadNetworkFile(context.Context, *ProjectRequest
 func (UnimplementedNetemServer) WriteNetworkFile(context.Context, *WNetworkRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WriteNetworkFile not implemented")
 }
-func (UnimplementedNetemServer) Check(context.Context, *ProjectRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Check not implemented")
+func (UnimplementedNetemServer) TopologyCheck(context.Context, *ProjectRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TopologyCheck not implemented")
 }
 func (UnimplementedNetemServer) TopologyReload(*ProjectRequest, Netem_TopologyReloadServer) error {
 	return status.Errorf(codes.Unimplemented, "method TopologyReload not implemented")
@@ -639,35 +639,35 @@ func (UnimplementedNetemServer) TopologyStartAll(context.Context, *ProjectReques
 func (UnimplementedNetemServer) TopologyStopAll(context.Context, *ProjectRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TopologyStopAll not implemented")
 }
-func (UnimplementedNetemServer) ReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReadConfigFiles not implemented")
+func (UnimplementedNetemServer) NodeReadConfigFiles(context.Context, *NodeRequest) (*ConfigFilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeReadConfigFiles not implemented")
 }
-func (UnimplementedNetemServer) CanRunConsole(context.Context, *NodeRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CanRunConsole not implemented")
+func (UnimplementedNetemServer) NodeCanRunConsole(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeCanRunConsole not implemented")
 }
-func (UnimplementedNetemServer) Console(Netem_ConsoleServer) error {
-	return status.Errorf(codes.Unimplemented, "method Console not implemented")
+func (UnimplementedNetemServer) NodeConsole(Netem_NodeConsoleServer) error {
+	return status.Errorf(codes.Unimplemented, "method NodeConsole not implemented")
 }
-func (UnimplementedNetemServer) Start(context.Context, *NodeRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Start not implemented")
+func (UnimplementedNetemServer) NodeStart(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeStart not implemented")
 }
-func (UnimplementedNetemServer) Stop(context.Context, *NodeRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Stop not implemented")
+func (UnimplementedNetemServer) NodeStop(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeStop not implemented")
 }
-func (UnimplementedNetemServer) Restart(context.Context, *NodeRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Restart not implemented")
+func (UnimplementedNetemServer) NodeRestart(context.Context, *NodeRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeRestart not implemented")
 }
-func (UnimplementedNetemServer) SetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetIfState not implemented")
+func (UnimplementedNetemServer) NodeSetIfState(context.Context, *NodeIfStateRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NodeSetIfState not implemented")
 }
-func (UnimplementedNetemServer) Capture(*NodeInterfaceRequest, Netem_CaptureServer) error {
-	return status.Errorf(codes.Unimplemented, "method Capture not implemented")
+func (UnimplementedNetemServer) NodeCapture(*NodeInterfaceRequest, Netem_NodeCaptureServer) error {
+	return status.Errorf(codes.Unimplemented, "method NodeCapture not implemented")
 }
-func (UnimplementedNetemServer) CopyFrom(*CopyMsg, Netem_CopyFromServer) error {
-	return status.Errorf(codes.Unimplemented, "method CopyFrom not implemented")
+func (UnimplementedNetemServer) NodeCopyFrom(*CopyMsg, Netem_NodeCopyFromServer) error {
+	return status.Errorf(codes.Unimplemented, "method NodeCopyFrom not implemented")
 }
-func (UnimplementedNetemServer) CopyTo(Netem_CopyToServer) error {
-	return status.Errorf(codes.Unimplemented, "method CopyTo not implemented")
+func (UnimplementedNetemServer) NodeCopyTo(Netem_NodeCopyToServer) error {
+	return status.Errorf(codes.Unimplemented, "method NodeCopyTo not implemented")
 }
 func (UnimplementedNetemServer) LinkUpdate(context.Context, *LinkRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LinkUpdate not implemented")
@@ -892,20 +892,20 @@ func _Netem_WriteNetworkFile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Check_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_TopologyCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProjectRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).Check(ctx, in)
+		return srv.(NetemServer).TopologyCheck(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_Check_FullMethodName,
+		FullMethod: Netem_TopologyCheck_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Check(ctx, req.(*ProjectRequest))
+		return srv.(NetemServer).TopologyCheck(ctx, req.(*ProjectRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -988,61 +988,61 @@ func _Netem_TopologyStopAll_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_ReadConfigFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeReadConfigFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).ReadConfigFiles(ctx, in)
+		return srv.(NetemServer).NodeReadConfigFiles(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_ReadConfigFiles_FullMethodName,
+		FullMethod: Netem_NodeReadConfigFiles_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).ReadConfigFiles(ctx, req.(*NodeRequest))
+		return srv.(NetemServer).NodeReadConfigFiles(ctx, req.(*NodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_CanRunConsole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeCanRunConsole_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).CanRunConsole(ctx, in)
+		return srv.(NetemServer).NodeCanRunConsole(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_CanRunConsole_FullMethodName,
+		FullMethod: Netem_NodeCanRunConsole_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).CanRunConsole(ctx, req.(*NodeRequest))
+		return srv.(NetemServer).NodeCanRunConsole(ctx, req.(*NodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Console_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(NetemServer).Console(&netemConsoleServer{stream})
+func _Netem_NodeConsole_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NetemServer).NodeConsole(&netemNodeConsoleServer{stream})
 }
 
-type Netem_ConsoleServer interface {
+type Netem_NodeConsoleServer interface {
 	Send(*ConsoleSrvMsg) error
 	Recv() (*ConsoleCltMsg, error)
 	grpc.ServerStream
 }
 
-type netemConsoleServer struct {
+type netemNodeConsoleServer struct {
 	grpc.ServerStream
 }
 
-func (x *netemConsoleServer) Send(m *ConsoleSrvMsg) error {
+func (x *netemNodeConsoleServer) Send(m *ConsoleSrvMsg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *netemConsoleServer) Recv() (*ConsoleCltMsg, error) {
+func (x *netemNodeConsoleServer) Recv() (*ConsoleCltMsg, error) {
 	m := new(ConsoleCltMsg)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -1050,139 +1050,139 @@ func (x *netemConsoleServer) Recv() (*ConsoleCltMsg, error) {
 	return m, nil
 }
 
-func _Netem_Start_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).Start(ctx, in)
+		return srv.(NetemServer).NodeStart(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_Start_FullMethodName,
+		FullMethod: Netem_NodeStart_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Start(ctx, req.(*NodeRequest))
+		return srv.(NetemServer).NodeStart(ctx, req.(*NodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeStop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).Stop(ctx, in)
+		return srv.(NetemServer).NodeStop(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_Stop_FullMethodName,
+		FullMethod: Netem_NodeStop_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Stop(ctx, req.(*NodeRequest))
+		return srv.(NetemServer).NodeStop(ctx, req.(*NodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Restart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeRestart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).Restart(ctx, in)
+		return srv.(NetemServer).NodeRestart(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_Restart_FullMethodName,
+		FullMethod: Netem_NodeRestart_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).Restart(ctx, req.(*NodeRequest))
+		return srv.(NetemServer).NodeRestart(ctx, req.(*NodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_SetIfState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Netem_NodeSetIfState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(NodeIfStateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(NetemServer).SetIfState(ctx, in)
+		return srv.(NetemServer).NodeSetIfState(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Netem_SetIfState_FullMethodName,
+		FullMethod: Netem_NodeSetIfState_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetemServer).SetIfState(ctx, req.(*NodeIfStateRequest))
+		return srv.(NetemServer).NodeSetIfState(ctx, req.(*NodeIfStateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Netem_Capture_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _Netem_NodeCapture_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(NodeInterfaceRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(NetemServer).Capture(m, &netemCaptureServer{stream})
+	return srv.(NetemServer).NodeCapture(m, &netemNodeCaptureServer{stream})
 }
 
-type Netem_CaptureServer interface {
+type Netem_NodeCaptureServer interface {
 	Send(*CaptureSrvMsg) error
 	grpc.ServerStream
 }
 
-type netemCaptureServer struct {
+type netemNodeCaptureServer struct {
 	grpc.ServerStream
 }
 
-func (x *netemCaptureServer) Send(m *CaptureSrvMsg) error {
+func (x *netemNodeCaptureServer) Send(m *CaptureSrvMsg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _Netem_CopyFrom_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _Netem_NodeCopyFrom_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(CopyMsg)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(NetemServer).CopyFrom(m, &netemCopyFromServer{stream})
+	return srv.(NetemServer).NodeCopyFrom(m, &netemNodeCopyFromServer{stream})
 }
 
-type Netem_CopyFromServer interface {
+type Netem_NodeCopyFromServer interface {
 	Send(*CopyMsg) error
 	grpc.ServerStream
 }
 
-type netemCopyFromServer struct {
+type netemNodeCopyFromServer struct {
 	grpc.ServerStream
 }
 
-func (x *netemCopyFromServer) Send(m *CopyMsg) error {
+func (x *netemNodeCopyFromServer) Send(m *CopyMsg) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func _Netem_CopyTo_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(NetemServer).CopyTo(&netemCopyToServer{stream})
+func _Netem_NodeCopyTo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NetemServer).NodeCopyTo(&netemNodeCopyToServer{stream})
 }
 
-type Netem_CopyToServer interface {
+type Netem_NodeCopyToServer interface {
 	SendAndClose(*AckResponse) error
 	Recv() (*CopyMsg, error)
 	grpc.ServerStream
 }
 
-type netemCopyToServer struct {
+type netemNodeCopyToServer struct {
 	grpc.ServerStream
 }
 
-func (x *netemCopyToServer) SendAndClose(m *AckResponse) error {
+func (x *netemNodeCopyToServer) SendAndClose(m *AckResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *netemCopyToServer) Recv() (*CopyMsg, error) {
+func (x *netemNodeCopyToServer) Recv() (*CopyMsg, error) {
 	m := new(CopyMsg)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -1248,8 +1248,8 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Netem_WriteNetworkFile_Handler,
 		},
 		{
-			MethodName: "Check",
-			Handler:    _Netem_Check_Handler,
+			MethodName: "TopologyCheck",
+			Handler:    _Netem_TopologyCheck_Handler,
 		},
 		{
 			MethodName: "TopologyStartAll",
@@ -1260,28 +1260,28 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Netem_TopologyStopAll_Handler,
 		},
 		{
-			MethodName: "ReadConfigFiles",
-			Handler:    _Netem_ReadConfigFiles_Handler,
+			MethodName: "NodeReadConfigFiles",
+			Handler:    _Netem_NodeReadConfigFiles_Handler,
 		},
 		{
-			MethodName: "CanRunConsole",
-			Handler:    _Netem_CanRunConsole_Handler,
+			MethodName: "NodeCanRunConsole",
+			Handler:    _Netem_NodeCanRunConsole_Handler,
 		},
 		{
-			MethodName: "Start",
-			Handler:    _Netem_Start_Handler,
+			MethodName: "NodeStart",
+			Handler:    _Netem_NodeStart_Handler,
 		},
 		{
-			MethodName: "Stop",
-			Handler:    _Netem_Stop_Handler,
+			MethodName: "NodeStop",
+			Handler:    _Netem_NodeStop_Handler,
 		},
 		{
-			MethodName: "Restart",
-			Handler:    _Netem_Restart_Handler,
+			MethodName: "NodeRestart",
+			Handler:    _Netem_NodeRestart_Handler,
 		},
 		{
-			MethodName: "SetIfState",
-			Handler:    _Netem_SetIfState_Handler,
+			MethodName: "NodeSetIfState",
+			Handler:    _Netem_NodeSetIfState_Handler,
 		},
 		{
 			MethodName: "LinkUpdate",
@@ -1315,24 +1315,24 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "Console",
-			Handler:       _Netem_Console_Handler,
+			StreamName:    "NodeConsole",
+			Handler:       _Netem_NodeConsole_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "Capture",
-			Handler:       _Netem_Capture_Handler,
+			StreamName:    "NodeCapture",
+			Handler:       _Netem_NodeCapture_Handler,
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "CopyFrom",
-			Handler:       _Netem_CopyFrom_Handler,
+			StreamName:    "NodeCopyFrom",
+			Handler:       _Netem_NodeCopyFrom_Handler,
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "CopyTo",
-			Handler:       _Netem_CopyTo_Handler,
+			StreamName:    "NodeCopyTo",
+			Handler:       _Netem_NodeCopyTo_Handler,
 			ClientStreams: true,
 		},
 	},

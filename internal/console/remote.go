@@ -37,7 +37,7 @@ func StartRemoteConsole(server, node string, shell bool) error {
 		return err
 	}
 
-	stream, err := client.Client.Console(context.Background())
+	stream, err := client.Client.NodeConsole(context.Background())
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func StartRemoteConsole(server, node string, shell bool) error {
 	return <-waitc
 }
 
-func monitorTty(stream proto.Netem_ConsoleClient, terminalFd uintptr) {
+func monitorTty(stream proto.Netem_NodeConsoleClient, terminalFd uintptr) {
 	resizeTty(stream, terminalFd)
 
 	sigchan := make(chan os.Signal, 1)
@@ -154,7 +154,7 @@ func monitorTty(stream proto.Netem_ConsoleClient, terminalFd uintptr) {
 	}()
 }
 
-func resizeTty(stream proto.Netem_ConsoleClient, terminalFd uintptr) error {
+func resizeTty(stream proto.Netem_NodeConsoleClient, terminalFd uintptr) error {
 	height, width := getTtySize(terminalFd)
 	if height == 0 && width == 0 {
 		return nil

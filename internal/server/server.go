@@ -498,55 +498,7 @@ func (s *netemServer) TopologyStopAll(ctx context.Context, request *proto.Projec
 	}, nil
 }
 
-func (s *netemServer) Start(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := ProjectGetOne(request.GetPrjId())
-	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetPrjId()}
-	}
-
-	if _, err := project.Topology.Start(request.GetNode()); err != nil {
-		return nil, err
-	}
-
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-	}, nil
-}
-
-func (s *netemServer) Stop(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := ProjectGetOne(request.GetPrjId())
-	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetPrjId()}
-	}
-
-	if err := project.Topology.Stop(request.GetNode()); err != nil {
-		return nil, err
-	}
-
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-	}, nil
-}
-
-func (s *netemServer) Restart(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := ProjectGetOne(request.GetPrjId())
-	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetPrjId()}
-	}
-
-	if err := project.Topology.Stop(request.GetNode()); err != nil {
-		return nil, err
-	}
-	if _, err := project.Topology.Start(request.GetNode()); err != nil {
-		return nil, err
-	}
-
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-	}, nil
-}
-
-func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
+func (s *netemServer) TopologyCheck(ctx context.Context, request *proto.ProjectRequest) (*proto.AckResponse, error) {
 	project := ProjectGetOne(request.GetId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetId()}
@@ -566,7 +518,55 @@ func (s *netemServer) Check(ctx context.Context, request *proto.ProjectRequest) 
 	}, nil
 }
 
-func (s *netemServer) SetIfState(ctx context.Context, request *proto.NodeIfStateRequest) (*proto.AckResponse, error) {
+func (s *netemServer) NodeStart(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if _, err := project.Topology.Start(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) NodeStop(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if err := project.Topology.Stop(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) NodeRestart(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	if err := project.Topology.Stop(request.GetNode()); err != nil {
+		return nil, err
+	}
+	if _, err := project.Topology.Start(request.GetNode()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
+func (s *netemServer) NodeSetIfState(ctx context.Context, request *proto.NodeIfStateRequest) (*proto.AckResponse, error) {
 	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
@@ -594,7 +594,7 @@ func (s *netemServer) SetIfState(ctx context.Context, request *proto.NodeIfState
 	}, nil
 }
 
-func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.Netem_CaptureServer) error {
+func (s *netemServer) NodeCapture(request *proto.NodeInterfaceRequest, stream proto.Netem_NodeCaptureServer) error {
 	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return stream.Send(&proto.CaptureSrvMsg{
@@ -663,7 +663,7 @@ func (s *netemServer) Capture(request *proto.NodeInterfaceRequest, stream proto.
 	return <-waitCh
 }
 
-func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRequest) (*proto.ConfigFilesResponse, error) {
+func (s *netemServer) NodeReadConfigFiles(ctx context.Context, request *proto.NodeRequest) (*proto.ConfigFilesResponse, error) {
 	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
@@ -699,7 +699,7 @@ func (s *netemServer) ReadConfigFiles(ctx context.Context, request *proto.NodeRe
 	return answer, nil
 }
 
-func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
+func (s *netemServer) NodeCanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
 	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
@@ -729,7 +729,7 @@ func (s *netemServer) CanRunConsole(ctx context.Context, request *proto.NodeRequ
 	}, nil
 }
 
-func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
+func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
 	// read first msg from client
 	resp, err := stream.Recv()
 	if err != nil {
@@ -833,7 +833,7 @@ func (s *netemServer) Console(stream proto.Netem_ConsoleServer) error {
 	return g.Wait()
 }
 
-func (s *netemServer) CopyFrom(request *proto.CopyMsg, stream proto.Netem_CopyFromServer) error {
+func (s *netemServer) NodeCopyFrom(request *proto.CopyMsg, stream proto.Netem_NodeCopyFromServer) error {
 	// get project
 	project := ProjectGetOne(request.GetPrjId())
 	if project == nil {
@@ -887,7 +887,7 @@ func (s *netemServer) CopyFrom(request *proto.CopyMsg, stream proto.Netem_CopyFr
 	return nil
 }
 
-func (s *netemServer) CopyTo(stream proto.Netem_CopyToServer) error {
+func (s *netemServer) NodeCopyTo(stream proto.Netem_NodeCopyToServer) error {
 	var tempPath, destPath string
 	var tempFile *os.File
 	var node INetemNode

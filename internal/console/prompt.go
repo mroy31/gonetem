@@ -379,7 +379,7 @@ func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
 	}
 	defer client.Conn.Close()
 
-	stream, err := client.Client.CopyFrom(context.Background(), &proto.CopyMsg{
+	stream, err := client.Client.NodeCopyFrom(context.Background(), &proto.CopyMsg{
 		Code:     proto.CopyMsg_INIT,
 		PrjId:    p.prjID,
 		Node:     srcNode,
@@ -440,7 +440,7 @@ func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) {
 	}
 	defer file.Close()
 
-	stream, err := client.Client.CopyTo(context.Background())
+	stream, err := client.Client.NodeCopyTo(context.Background())
 	if err != nil {
 		RedPrintf("CopyTo: %v\n", err)
 		return
@@ -494,7 +494,7 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 		return
 	}
 
-	stream, err := client.Client.Capture(context.Background(), &proto.NodeInterfaceRequest{
+	stream, err := client.Client.NodeCapture(context.Background(), &proto.NodeInterfaceRequest{
 		PrjId:   p.prjID,
 		Node:    args[0],
 		IfIndex: int32(ifIndex),
@@ -562,7 +562,7 @@ func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
 	ifArgs := strings.Split(cmdArgs[0], ".")
 	ifIndex, _ := strconv.Atoi(ifArgs[1])
 
-	_, err := client.SetIfState(
+	_, err := client.NodeSetIfState(
 		context.Background(),
 		&proto.NodeIfStateRequest{
 			PrjId:   p.prjID,
@@ -576,7 +576,7 @@ func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
-	ack, err := client.Check(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	ack, err := client.TopologyCheck(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
 		RedPrintf(err.Error() + "\n")
 	} else {
@@ -613,7 +613,7 @@ func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
 
 func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) {
 	// first check that we can run console for this node
-	ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
+	ack, err := client.NodeCanRunConsole(context.Background(), &proto.NodeRequest{
 		PrjId: p.prjID,
 		Node:  nodeName,
 	})
@@ -677,7 +677,7 @@ func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
 	}
 
 	for _, node := range response.GetNodes() {
-		ack, err := client.CanRunConsole(context.Background(), &proto.NodeRequest{
+		ack, err := client.NodeCanRunConsole(context.Background(), &proto.NodeRequest{
 			PrjId: p.prjID,
 			Node:  node.GetName(),
 		})
@@ -748,7 +748,7 @@ func (p *NetemPrompt) SaveAs(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
-	ack, err := client.Start(p.getCancelContext(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	ack, err := client.NodeStart(p.getCancelContext(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to start node: %v\n", err)
 	} else {
@@ -770,7 +770,7 @@ func (p *NetemPrompt) StartAll(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
-	ack, err := client.Stop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	ack, err := client.NodeStop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to stop node: %v\n", err)
 	} else {
@@ -792,7 +792,7 @@ func (p *NetemPrompt) StopAll(client proto.NetemClient, cmdArgs []string) {
 }
 
 func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
-	ack, err := client.Restart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	ack, err := client.NodeRestart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
 		RedPrintf("Unable to restart node: %v\n", err)
 	} else {

@@ -24,23 +24,23 @@ service Netem {
     rpc WriteNetworkFile(WNetworkRequest) returns (AckResponse) {}
 
     // topology actions
-    rpc Check(ProjectRequest) returns (AckResponse) {}
+    rpc TopologyCheck(ProjectRequest) returns (AckResponse) {}
     rpc TopologyReload(ProjectRequest) returns (stream TopologyRunMsg) {}
     rpc TopologyRun(ProjectRequest) returns (stream TopologyRunMsg) {}
     rpc TopologyStartAll(ProjectRequest) returns (AckResponse) {}
     rpc TopologyStopAll(ProjectRequest) returns (AckResponse) {}
 
     // Node actions
-    rpc ReadConfigFiles(NodeRequest) returns (ConfigFilesResponse) {}
-    rpc CanRunConsole(NodeRequest) returns (AckResponse) {}
-    rpc Console(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
-    rpc Start(NodeRequest) returns (AckResponse) {}
-    rpc Stop(NodeRequest) returns (AckResponse) {}
-    rpc Restart(NodeRequest) returns (AckResponse) {}
-    rpc SetIfState(NodeIfStateRequest) returns (AckResponse) {}
-    rpc Capture(NodeInterfaceRequest) returns (stream CaptureSrvMsg) {}
-    rpc CopyFrom(CopyMsg) returns (stream CopyMsg) {}
-    rpc CopyTo(stream CopyMsg) returns (AckResponse) {}
+    rpc NodeReadConfigFiles(NodeRequest) returns (ConfigFilesResponse) {}
+    rpc NodeCanRunConsole(NodeRequest) returns (AckResponse) {}
+    rpc NodeConsole(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
+    rpc NodeStart(NodeRequest) returns (AckResponse) {}
+    rpc NodeStop(NodeRequest) returns (AckResponse) {}
+    rpc NodeRestart(NodeRequest) returns (AckResponse) {}
+    rpc NodeSetIfState(NodeIfStateRequest) returns (AckResponse) {}
+    rpc NodeCapture(NodeInterfaceRequest) returns (stream CaptureSrvMsg) {}
+    rpc NodeCopyFrom(CopyMsg) returns (stream CopyMsg) {}
+    rpc NodeCopyTo(stream CopyMsg) returns (AckResponse) {}
 
     // Link actions
     rpc LinkUpdate(LinkRequest) returns (AckResponse) {}
