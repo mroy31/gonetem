@@ -46,7 +46,7 @@ func TestServer_Version(t *testing.T) {
 	defer conn.Close()
 
 	client := proto.NewNetemClient(conn)
-	response, err := client.GetVersion(ctx, &emptypb.Empty{})
+	response, err := client.ServerGetVersion(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Error("GetVersion method return an error", err)
 	}

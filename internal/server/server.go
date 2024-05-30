@@ -23,7 +23,7 @@ type netemServer struct {
 	proto.UnimplementedNetemServer
 }
 
-func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*proto.VersionResponse, error) {
+func (s *netemServer) ServerGetVersion(ctx context.Context, empty *empty.Empty) (*proto.VersionResponse, error) {
 	return &proto.VersionResponse{
 		Status: &proto.Status{
 			Code: proto.StatusCode_OK,
@@ -32,7 +32,7 @@ func (s *netemServer) GetVersion(ctx context.Context, empty *empty.Empty) (*prot
 	}, nil
 }
 
-func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.AckResponse, error) {
+func (s *netemServer) ServerCleanContainers(ctx context.Context, empty *empty.Empty) (*proto.AckResponse, error) {
 	client, err := docker.NewDockerClient()
 	if err != nil {
 		return nil, fmt.Errorf("unable to init docker client: %w", err)
@@ -74,7 +74,7 @@ func (s *netemServer) Clean(ctx context.Context, empty *empty.Empty) (*proto.Ack
 	}, nil
 }
 
-func (s *netemServer) PullImages(empty *empty.Empty, stream proto.Netem_PullImagesServer) error {
+func (s *netemServer) ServerPullImages(empty *empty.Empty, stream proto.Netem_ServerPullImagesServer) error {
 	imageTypes := []options.DockerImageT{
 		options.IMG_HOST,
 		options.IMG_OVS,

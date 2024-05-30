@@ -187,7 +187,7 @@ var cleanCmd = &cobra.Command{
 			s.Prefix = "Clean command launched: "
 			s.Start()
 
-			_, err = client.Client.Clean(context.Background(), &emptypb.Empty{})
+			_, err = client.Client.ServerCleanContainers(context.Background(), &emptypb.Empty{})
 			s.Stop()
 
 			if err != nil {
@@ -348,7 +348,7 @@ var pullCmd = &cobra.Command{
 		}
 		defer client.Conn.Close()
 
-		stream, err := client.Client.PullImages(context.Background(), &emptypb.Empty{})
+		stream, err := client.Client.ServerPullImages(context.Background(), &emptypb.Empty{})
 		if err != nil {
 			Fatal("Unable to pull gonetem images: %v", err)
 		}

@@ -6,10 +6,10 @@ package netem;
 import "google/protobuf/empty.proto";
 
 service Netem {
-    // general action
-    rpc GetVersion(google.protobuf.Empty) returns (VersionResponse) {}
-    rpc PullImages(google.protobuf.Empty) returns (stream PullSrvMsg) {}
-    rpc Clean(google.protobuf.Empty) returns (AckResponse) {}
+    // Server actions
+    rpc ServerGetVersion(google.protobuf.Empty) returns (VersionResponse) {}
+    rpc ServerPullImages(google.protobuf.Empty) returns (stream PullSrvMsg) {}
+    rpc ServerCleanContainers(google.protobuf.Empty) returns (AckResponse) {}
 
     // Project actions
     rpc ProjectGetMany(google.protobuf.Empty) returns (PrjListResponse) {}
