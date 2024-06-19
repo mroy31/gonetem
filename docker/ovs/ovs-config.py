@@ -7,6 +7,11 @@ import os.path
 import subprocess
 import argparse
 import shlex
+from typing import TypedDict
+
+class BondingInfosT(TypedDict):
+    members: list[str]
+    name: str
 
 
 class RunError(Exception):
@@ -42,7 +47,30 @@ def list_sw_ports(name: str) -> str:
     return [p for p in ports.split("\n") if p != '']
 
 
-def load_ovs_config(_: str, conf: str):
+def list_bond_ports(sw_name: str) -> list[BondingInfosT]:
+    infos: list[BondingInfosT] = []
+
+    bond_ifaces = run_command(f"ovs-appctl bond/list", check_output=True)
+    for line in bond_ifaces.splitlines():
+        if line.startswith(sw_name):
+            data = line.split("\t")
+            members = [i.strip() for i in data[3].split(",")]
+            infos.append({
+                'name': data[0],
+                'members': members,
+            })
+    
+    return infos
+
+def port_is_bonding(bonds: list[BondingInfosT], if_name: str) -> BondingInfosT:
+    for bond in bonds:
+        if bond["name"] == if_name:
+            return bond
+
+    return None
+
+
+def load_ovs_config(sw_name: str, conf: str):
     with open(conf) as f_hd:
         last_error = ""
         ovs_config = json.load(f_hd)
@@ -51,8 +79,16 @@ def load_ovs_config(_: str, conf: str):
         while attempt < 10:
             try:
                 for p_config in ovs_config:
+                    if "bonding" in p_config:
+                        for iface in p_config["bonding"]["members"]:
+                            run_command(f"ovs-vsctl del-port {sw_name} {iface}")
+
+                        ifaces = " ".join(p_config["bonding"]["members"])
+                        run_command(f"ovs-vsctl add-bond {sw_name} {p_config['name']} {ifaces} lacp=active")
+
                     if "tag" in p_config:
                         run_command("ovs-vsctl set port {} tag={}".format(p_config["name"], p_config["tag"]))
+
                     if "trunks" in p_config:
                         run_command("ovs-vsctl set port {} trunks={}".format(p_config["name"], p_config["trunks"]))
             except RunError as err:
@@ -70,8 +106,11 @@ def load_ovs_config(_: str, conf: str):
 def save_ovs_config(sw_name: str, conf: str):
     config = []
     try:
+        bonds = list_bond_ports(sw_name)
+
         ports = list_sw_ports(sw_name)
         for port in ports:
+            # save vlan config
             p_config = {"name": port}
             tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
             if tag != "[]":
@@ -79,6 +118,14 @@ def save_ovs_config(sw_name: str, conf: str):
             trunks = run_command(f"ovs-vsctl get port {port} trunks", check_output=True)
             if trunks != "[]":
                 p_config["trunks"] = trunks.strip("[]").replace(" ", "")
+            
+            # save bonding config
+            bonding_conf = port_is_bonding(bonds, port)
+            if bonding_conf is not None:
+                p_config["bonding"] = {
+                    "members": bonding_conf["members"]
+                }
+
             config.append(p_config)
 
     except RunError as err:

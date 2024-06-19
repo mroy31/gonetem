@@ -1,20 +1,17 @@
-FROM alpine:3.15
+FROM debian:bookworm-slim
 
 
 # Install dependencies
-RUN apk --update add \
-    bash dumb-init openvswitch \
-    htop net-tools tcpdump less vim \
-    iputils procps python3 shadow ethtool \
-    py3-pip
-
-# Install python dependencies
-RUN pip3 install cmd2
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -y && \
+    apt-get install -y python3 python3-cmd2 less vim tcpdump \
+	    iputils-ping iputils-arping iputils-tracepath net-tools \
+	    traceroute htop procps openvswitch-switch \
+	    ethtool && rm -rf /var/lib/apt/lists/*
 
 # Create database and pid file directory
 RUN /usr/bin/ovsdb-tool create /etc/openvswitch/conf.db
 RUN mkdir -pv /var/run/openvswitch/
-
 
 # Add scripts to manage ovs
 ADD ovs-console.py /usr/bin/ovs-console.py
@@ -26,6 +23,4 @@ RUN chmod +x /usr/bin/ovs-config.py
 ADD run-ovs.sh /bin/run-ovs.sh
 RUN chmod +x /bin/run-ovs.sh
 
-
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["/bin/run-ovs.sh"]

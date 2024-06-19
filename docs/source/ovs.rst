@@ -8,77 +8,89 @@ thanks to ``openvswitch``.
 
 This page lists all commands available in the switch console.
 
-vlan_show
----------
+VLAN configuration
+------------------
 
 Show vlan configuration
+```````````````````````
 
-vlan_access
------------
+.. code-block:: shell
 
-Assign a port to a VLAN in access mode
+  show vlan
 
-.. code-block:: bash
+Set vlan configuration
+``````````````````````
 
-  # example
-  vlan_access port 0 vlan 10
+.. code-block:: shell
 
-vlan_trunks
------------
+  set vlan port <port-number> access|trunk <tags>
 
-Set a port as trunk and assign VLANs
+Examples
 
-.. code-block:: bash
+.. code-block:: shell
 
-  # example
-  vlan_trunks port 0 vlan 10,20
+  set vlan port O access 10
+  set vlan port 1 trunk 20,30
 
-no_vlan_access
---------------
+Delete vlan configuration
+`````````````````````````
 
-Cancel a ``vlan_access`` command
+.. code-block:: shell
 
-.. code-block:: bash
+  delete vlan port <port-number> access|trunk <tags>
 
-  # example
-  no_vlan_access port 0 vlan 10
+Examples
 
-no_vlan_trunks
---------------
+.. code-block:: shell
 
-Cancel a ``vlan_trunks`` command
+  delete vlan port O access 10
+  delete vlan port 1 trunk 20,30
 
-.. code-block:: bash
 
-  # example
-  no_vlan_trunks port 0 vlan 10,20
+Bonding configuration
+---------------------
 
-bonding_show
-------------
+Show status of a bond interface
+```````````````````````````````
 
-Display informations about a bonding interface
+.. code-block:: shell
 
-.. code-block:: bash
+  show bonding <bond-name>
 
-  # example
-  bonding_show bond0
+Example
 
-bonding
--------
+.. code-block:: shell
 
-Set a bonding interface and attach physical interface (minimum 2)
+  show bonding my-bond
+  
 
-.. code-block:: bash
+Create a new bond interface
+```````````````````````````
 
-  # example
-  bonding bond0 0 1
+.. code-block:: shell
 
-no_bonding
-----------
+  set bonding <bond-name> port <port-number1> <port-number2>
 
-Remove a bonding interface
+Example
 
-.. code-block:: bash
+.. code-block:: shell
 
-  # example
-  no_bonding bond0
+  set bonding my-bond port 2 3
+
+For now, the configuration of the bond interface is :
+
+- Mode: active-backup
+- LACP active
+
+Delete a bond interface
+```````````````````````
+
+.. code-block:: shell
+
+  delete bonding <bond-name>
+
+Example
+
+.. code-block:: shell
+
+  delete bonding my-bond
