@@ -712,12 +712,14 @@ func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
 
 		switch msg.Code {
 		case proto.ProjectSaveMsg_NODE_COUNT:
-			bars[0] = ProgressBarT{
-				Total: int(msg.Total),
-				Bar: mpBar.AddBar(int64(msg.Total),
-					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
-				),
+			if msg.GetTotal() > 0 {
+				bars[0] = ProgressBarT{
+					Total: int(msg.Total),
+					Bar: mpBar.AddBar(int64(msg.Total),
+						mpb.BarRemoveOnComplete(),
+						mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
+					),
+				}
 			}
 
 		case proto.ProjectSaveMsg_NODE_SAVE:
