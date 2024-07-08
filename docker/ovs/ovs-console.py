@@ -86,6 +86,8 @@ def parse_bonding_infos(sw_name: str, bond_name: str) -> BondingInfosT:
                     "status": groups[2],
                     "active": False,
                 })
+            elif "active member" in line and len(result["members"]) > 0:
+                result["members"][-1]["active"] = True
         
         return result
 
@@ -201,7 +203,8 @@ class OvsBondingCommandSet(CommandSet):
             self._cmd.poutput(f"Mode: {infos['mode']}")
             self._cmd.poutput("Members:")
             for member in infos["members"]:
-                self._cmd.poutput(f"\t{member['name']}: {member['status']}")
+                active = member['active'] and "(active)" or ""
+                self._cmd.poutput(f"\t{member['name']}: {member['status']} {active}")
 
     bonding_add_argparser = Cmd2ArgumentParser()
     bonding_add_argparser.add_argument('name', help='name of the bonding')
