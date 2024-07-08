@@ -70,6 +70,14 @@ And after to open it
     $[myproject]> console all # to open all consoles
     $[myproject]> quit
 
+
+Graphical User Interface
+------------------------
+
+Now, a graphical user interface is available for gonetem,
+see [gonetem-ui](https://github.com/mroy31/gonetem-ui)
+
+
 License
 -------
 

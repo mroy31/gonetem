@@ -20,13 +20,13 @@
 # -- Project information -----------------------------------------------------
 
 project = 'gonetem'
-copyright = "2023, Mickael Royer"
+copyright = "2024, Mickael Royer"
 author = "Mickael Royer"
 
 # The short X.Y version
-version = '0.2.0'
+version = '0.3.0'
 # The full version, including alpha/beta/rc tags
-release = '0.2.0'
+release = '0.3.0'
 
 
 # -- General configuration ---------------------------------------------------
