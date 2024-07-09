@@ -156,6 +156,14 @@ func (p *NetemPrompt) RegisterCommands() {
 			p.execWithClient(cmdArgs, p.Edit)
 		},
 	}
+	p.commands["exec"] = &NetemCommand{
+		Desc:  "Exec a command on a node",
+		Usage: "exec <node_name> <cmd>",
+		Args:  []string{`^\w+$`, `^.+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.Exec)
+		},
+	}
 	p.commands["ifState"] = &NetemCommand{
 		Desc:  "Enable/disable a node interface",
 		Usage: "ifState <node_name>.<if_number> up|down",
@@ -608,6 +616,33 @@ func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
 	buffer := bytes.NewBuffer(response.GetData())
 	if err := utils.OpenArchive(dstPath, buffer); err != nil {
 		RedPrintf("Unable to extract configuration files: %v\n", err)
+	}
+}
+
+func (p *NetemPrompt) Exec(client proto.NetemClient, cmdArgs []string) {
+	node := cmdArgs[0]
+	cmd := strings.Join(cmdArgs[1:], " ")
+
+	terminalFd, _ := TermGetFd()
+	stream, err := client.NodeExec(context.Background())
+	if err != nil {
+		RedPrintf(err.Error() + "\n")
+		return
+	}
+	defer stream.CloseSend()
+
+	if err := stream.Send(&proto.ExecCltMsg{
+		Code:  proto.ExecCltMsg_CMD,
+		Cmd:   cmd,
+		PrjId: p.prjID,
+		Node:  node,
+	}); err != nil {
+		RedPrintf(err.Error() + "\n")
+		return
+	}
+
+	if err := monitorExec(stream, terminalFd); err != nil {
+		RedPrintf(err.Error() + "\n")
 	}
 }
 
