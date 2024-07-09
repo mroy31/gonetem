@@ -194,6 +194,7 @@ message LinkConfig {
 message LinkRequest {
     string prjId = 1;
     LinkConfig link = 2;
+    bool sync = 3;
 }
 
 message NodeIfStateRequest {

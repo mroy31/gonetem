@@ -42,6 +42,10 @@ func (s *OvsNode) GetType() string {
 	return "ovs"
 }
 
+func (s *OvsNode) GetFullType() string {
+	return "ovs"
+}
+
 func (o *OvsNode) IsRunning() bool {
 	return o.Running
 }

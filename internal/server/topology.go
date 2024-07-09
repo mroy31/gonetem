@@ -15,6 +15,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -35,13 +36,13 @@ type VrrpOptions struct {
 
 type NodeConfig struct {
 	Type    string
-	IPv6    bool `default:"false"`
-	Mpls    bool `default:"false"`
-	Vrfs    []string
-	Vrrps   []VrrpOptions
-	Volumes []string
-	Image   string
-	Launch  bool `default:"true"`
+	IPv6    bool          `yaml:",omitempty" default:"false"`
+	Mpls    bool          `yaml:",omitempty" default:"false"`
+	Vrfs    []string      `yaml:",omitempty"`
+	Vrrps   []VrrpOptions `yaml:",omitempty"`
+	Volumes []string      `yaml:",omitempty"`
+	Image   string        `yaml:",omitempty"`
+	Launch  bool          `default:"true"`
 }
 
 type RunCloseProgressCode int
@@ -90,22 +91,22 @@ func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type LinkConfig struct {
 	Peer1  string
 	Peer2  string
-	Loss   float64 // percent
-	Delay  int     // ms
-	Jitter int     // ms
-	Rate   int     // kbps
-	Buffer float64 // BDP scale factor
+	Loss   float64 `yaml:",omitempty"` // percent
+	Delay  int     `yaml:",omitempty"` // ms
+	Jitter int     `yaml:",omitempty"` // ms
+	Rate   int     `yaml:",omitempty"` // kbps
+	Buffer float64 `yaml:",omitempty"` // BDP scale factor
 }
 
 type BridgeConfig struct {
 	Host       string
-	Interfaces []string
+	Interfaces []string `yaml:",omitempty"`
 }
 
 type NetemTopology struct {
-	Nodes   map[string]NodeConfig
-	Links   []LinkConfig
-	Bridges map[string]BridgeConfig
+	Nodes   map[string]NodeConfig   `yaml:",omitempty"`
+	Links   []LinkConfig            `yaml:",omitempty"`
+	Bridges map[string]BridgeConfig `yaml:",omitempty"`
 }
 
 type NetemLinkPeer struct {
@@ -116,11 +117,7 @@ type NetemLinkPeer struct {
 type NetemLink struct {
 	Peer1    NetemLinkPeer
 	Peer2    NetemLinkPeer
-	Loss     float64
-	Delay    int
-	Jitter   int     // ms
-	Rate     int     // kbps
-	Buffer   float64 // BDP scale factor
+	Config   LinkConfig
 	HasNetem bool
 	HasTbf   bool
 }
@@ -129,11 +126,13 @@ type NetemBridge struct {
 	Name          string
 	HostInterface string
 	Peers         []NetemLinkPeer
+	Config        BridgeConfig
 }
 
 type NetemNode struct {
 	Instance        INetemNode
 	LaunchAtStartup bool
+	Config          NodeConfig
 }
 
 type NetemTopologyManager struct {
@@ -158,6 +157,32 @@ func (t *NetemTopologyManager) Check() error {
 			msg += "\n\t" + err.Error()
 		}
 		return fmt.Errorf("topology is not valid:%s", msg)
+	}
+
+	return nil
+}
+
+func (t *NetemTopologyManager) SynchroniseTopology() error {
+	topo := &NetemTopology{
+		Nodes: make(map[string]NodeConfig),
+		Links: make([]LinkConfig, 0),
+	}
+
+	for _, node := range t.nodes {
+		topo.Nodes[node.Instance.GetName()] = node.Config
+	}
+
+	for _, link := range t.links {
+		topo.Links = append(topo.Links, link.Config)
+	}
+
+	data, err := yaml.Marshal(topo)
+	if err != nil {
+		return fmt.Errorf("unable to marshal yaml topo: %v", err)
+	}
+
+	if err := os.WriteFile(t.GetNetFilePath(), data, 0644); err != nil {
+		return fmt.Errorf("unable to write network file: %v", err)
 	}
 
 	return nil
@@ -203,6 +228,7 @@ func (t *NetemTopologyManager) Load() error {
 			t.nodes = append(t.nodes, NetemNode{
 				Instance:        node,
 				LaunchAtStartup: nConfig.Launch,
+				Config:          nConfig,
 			})
 			mutex.Unlock()
 
@@ -240,13 +266,9 @@ func (t *NetemTopologyManager) Load() error {
 				Node:    t.GetNode(peer2[0]),
 				IfIndex: peer2Idx,
 			},
-			Delay:    lConfig.Delay,
-			Jitter:   lConfig.Jitter,
-			Loss:     lConfig.Loss,
-			Rate:     lConfig.Rate,
-			Buffer:   lConfig.Buffer,
 			HasNetem: false,
 			HasTbf:   false,
+			Config:   lConfig,
 		}
 	}
 
@@ -263,6 +285,7 @@ func (t *NetemTopologyManager) Load() error {
 			Name:          options.NETEM_ID + t.prjID + "." + shortName,
 			HostInterface: bConfig.Host,
 			Peers:         make([]NetemLinkPeer, len(bConfig.Interfaces)),
+			Config:        bConfig,
 		}
 
 		for pIdx, ifName := range bConfig.Interfaces {
@@ -484,21 +507,21 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 
 	// create netem qdisc if necessary
-	if l.Delay > 0 || l.Loss > 0 {
-		if err := link.Netem(peer1IfName, peer1Netns, l.Delay, l.Jitter, l.Loss, false); err != nil {
+	if l.Config.Delay > 0 || l.Config.Loss > 0 {
+		if err := link.Netem(peer1IfName, peer1Netns, l.Config.Delay, l.Config.Jitter, l.Config.Loss, false); err != nil {
 			return err
 		}
-		if err := link.Netem(peer2IfName, peer2Netns, l.Delay, l.Jitter, l.Loss, false); err != nil {
+		if err := link.Netem(peer2IfName, peer2Netns, l.Config.Delay, l.Config.Jitter, l.Config.Loss, false); err != nil {
 			return err
 		}
 		l.HasNetem = true
 	}
 	// create tbf qdisc if necessary
-	if l.Rate > 0 {
-		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Delay+l.Jitter, l.Rate, l.Buffer); err != nil {
+	if l.Config.Rate > 0 {
+		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Config.Delay+l.Config.Jitter, l.Config.Rate, l.Config.Buffer); err != nil {
 			return err
 		}
-		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Delay+l.Jitter, l.Rate, l.Buffer); err != nil {
+		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Config.Delay+l.Config.Jitter, l.Config.Rate, l.Config.Buffer); err != nil {
 			return err
 		}
 		l.HasTbf = true
@@ -546,7 +569,7 @@ func (t *NetemTopologyManager) GetLink(peer1V string, peer2V string) (*NetemLink
 	)
 }
 
-func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig) error {
+func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
 	l, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
 	if err != nil {
 		return err
@@ -571,12 +594,16 @@ func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig) error {
 	if err := link.Netem(peer2IfName, peer2Netns, linkCfg.Delay, linkCfg.Jitter, linkCfg.Loss, l.HasNetem); err != nil {
 		return err
 	}
-
-	l.Delay = linkCfg.Delay
-	l.Jitter = linkCfg.Jitter
-	l.Loss = linkCfg.Loss
 	l.HasNetem = true
 
+	// update config
+	l.Config.Delay = linkCfg.Delay
+	l.Config.Jitter = linkCfg.Jitter
+	l.Config.Loss = linkCfg.Loss
+
+	if sync {
+		return t.SynchroniseTopology()
+	}
 	return nil
 }
 

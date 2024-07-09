@@ -76,6 +76,10 @@ func (n *DockerNode) GetType() string {
 	return "docker"
 }
 
+func (n *DockerNode) GetFullType() string {
+	return fmt.Sprintf("docker.%s", n.Type)
+}
+
 func (n *DockerNode) GetStatus() (DockerNodeStatus, error) {
 	client, err := NewDockerClient()
 	if err != nil {

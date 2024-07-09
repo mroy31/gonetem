@@ -336,7 +336,7 @@ func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest
 		Jitter: int(rLink.GetJitter()),
 	}
 
-	if err := project.Topology.LinkUpdate(linkConfig); err != nil {
+	if err := project.Topology.LinkUpdate(linkConfig, request.GetSync()); err != nil {
 		return nil, err
 	}
 

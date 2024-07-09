@@ -172,17 +172,17 @@ func TestTopology_UpdateLink(t *testing.T) {
 				Delay:  tt.delay,
 				Jitter: tt.jitter,
 				Loss:   tt.loss,
-			}); err != nil && !tt.expectedError {
+			}, true); err != nil && !tt.expectedError {
 				t.Errorf("LinkUpdate returns an unexpected error: %v", err)
 				return
 			}
 
 			if !tt.expectedError {
 				link, _ := topology.GetLink(tt.peer1, tt.peer2)
-				if link.Delay != tt.delay || link.Jitter != tt.jitter {
+				if link.Config.Delay != tt.delay || link.Config.Jitter != tt.jitter {
 					t.Errorf(
 						"Delay or jitter have wrong value: %d|%d %d|%d",
-						link.Delay, tt.delay, link.Jitter, tt.jitter,
+						link.Config.Delay, tt.delay, link.Config.Jitter, tt.jitter,
 					)
 				}
 			}

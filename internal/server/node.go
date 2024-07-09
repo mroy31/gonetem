@@ -25,6 +25,7 @@ type INetemNode interface {
 	GetName() string
 	GetShortName() string
 	GetType() string
+	GetFullType() string
 	IsRunning() bool
 	Start() error
 	Stop() error
