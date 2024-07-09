@@ -345,6 +345,30 @@ func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest
 	}, nil
 }
 
+func (s *netemServer) LinkAdd(ctx context.Context, request *proto.LinkRequest) (*proto.AckResponse, error) {
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	rLink := request.GetLink()
+	linkConfig := LinkConfig{
+		Peer1:  rLink.GetPeer1(),
+		Peer2:  rLink.GetPeer2(),
+		Loss:   float64(rLink.GetLoss()),
+		Delay:  int(rLink.GetDelay()),
+		Jitter: int(rLink.GetJitter()),
+	}
+
+	if err := project.Topology.LinkAdd(linkConfig, request.GetSync()); err != nil {
+		return nil, err
+	}
+
+	return &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
+}
+
 func toppologyRunProgressGoroutine(
 	ctx context.Context,
 	progressCh chan TopologyRunCloseProgressT,

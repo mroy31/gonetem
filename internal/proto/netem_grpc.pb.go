@@ -48,6 +48,7 @@ const (
 	Netem_NodeCopyTo_FullMethodName            = "/netem.Netem/NodeCopyTo"
 	Netem_NodeExec_FullMethodName              = "/netem.Netem/NodeExec"
 	Netem_LinkUpdate_FullMethodName            = "/netem.Netem/LinkUpdate"
+	Netem_LinkAdd_FullMethodName               = "/netem.Netem/LinkAdd"
 )
 
 // NetemClient is the client API for Netem service.
@@ -88,6 +89,7 @@ type NetemClient interface {
 	NodeExec(ctx context.Context, opts ...grpc.CallOption) (Netem_NodeExecClient, error)
 	// Link actions
 	LinkUpdate(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	LinkAdd(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*AckResponse, error)
 }
 
 type netemClient struct {
@@ -580,6 +582,15 @@ func (c *netemClient) LinkUpdate(ctx context.Context, in *LinkRequest, opts ...g
 	return out, nil
 }
 
+func (c *netemClient) LinkAdd(ctx context.Context, in *LinkRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, Netem_LinkAdd_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NetemServer is the server API for Netem service.
 // All implementations must embed UnimplementedNetemServer
 // for forward compatibility
@@ -618,6 +629,7 @@ type NetemServer interface {
 	NodeExec(Netem_NodeExecServer) error
 	// Link actions
 	LinkUpdate(context.Context, *LinkRequest) (*AckResponse, error)
+	LinkAdd(context.Context, *LinkRequest) (*AckResponse, error)
 	mustEmbedUnimplementedNetemServer()
 }
 
@@ -708,6 +720,9 @@ func (UnimplementedNetemServer) NodeExec(Netem_NodeExecServer) error {
 }
 func (UnimplementedNetemServer) LinkUpdate(context.Context, *LinkRequest) (*AckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LinkUpdate not implemented")
+}
+func (UnimplementedNetemServer) LinkAdd(context.Context, *LinkRequest) (*AckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LinkAdd not implemented")
 }
 func (UnimplementedNetemServer) mustEmbedUnimplementedNetemServer() {}
 
@@ -1271,6 +1286,24 @@ func _Netem_LinkUpdate_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Netem_LinkAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NetemServer).LinkAdd(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Netem_LinkAdd_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NetemServer).LinkAdd(ctx, req.(*LinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Netem_ServiceDesc is the grpc.ServiceDesc for Netem service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1349,6 +1382,10 @@ var Netem_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LinkUpdate",
 			Handler:    _Netem_LinkUpdate_Handler,
+		},
+		{
+			MethodName: "LinkAdd",
+			Handler:    _Netem_LinkAdd_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

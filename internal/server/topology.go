@@ -569,6 +569,48 @@ func (t *NetemTopologyManager) GetLink(peer1V string, peer2V string) (*NetemLink
 	)
 }
 
+func (t *NetemTopologyManager) LinkAdd(linkCfg LinkConfig, sync bool) error {
+	_, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
+	if err == nil {
+		return fmt.Errorf("this link already exist")
+	}
+
+	peer1 := strings.Split(linkCfg.Peer1, ".")
+	peer2 := strings.Split(linkCfg.Peer2, ".")
+
+	peer1Idx, _ := strconv.Atoi(peer1[1])
+	peer2Idx, _ := strconv.Atoi(peer2[1])
+
+	if linkCfg.Buffer == 0.0 {
+		// by default set limit buffer to 1.0 * BDP
+		linkCfg.Buffer = 1.0
+	}
+
+	link := &NetemLink{
+		Peer1: NetemLinkPeer{
+			Node:    t.GetNode(peer1[0]),
+			IfIndex: peer1Idx,
+		},
+		Peer2: NetemLinkPeer{
+			Node:    t.GetNode(peer2[0]),
+			IfIndex: peer2Idx,
+		},
+		HasNetem: false,
+		HasTbf:   false,
+		Config:   linkCfg,
+	}
+	if err := t.setupLink(link); err != nil {
+		return err
+	}
+
+	t.links = append(t.links, link)
+	if sync {
+		return t.SynchroniseTopology()
+	}
+
+	return nil
+}
+
 func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
 	l, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
 	if err != nil {

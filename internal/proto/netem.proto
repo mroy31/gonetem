@@ -45,6 +45,7 @@ service Netem {
 
     // Link actions
     rpc LinkUpdate(LinkRequest) returns (AckResponse) {}
+    rpc LinkAdd(LinkRequest) returns (AckResponse) {}
 
 }
 
