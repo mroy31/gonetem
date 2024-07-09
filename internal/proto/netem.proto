@@ -33,7 +33,7 @@ service Netem {
     // Node actions
     rpc NodeReadConfigFiles(NodeRequest) returns (ConfigFilesResponse) {}
     rpc NodeCanRunConsole(NodeRequest) returns (AckResponse) {}
-    rpc NodeConsole(stream ConsoleCltMsg) returns (stream ConsoleSrvMsg) {}
+    rpc NodeConsole(stream ExecCltMsg) returns (stream ExecSrvMsg) {}
     rpc NodeStart(NodeRequest) returns (AckResponse) {}
     rpc NodeStop(NodeRequest) returns (AckResponse) {}
     rpc NodeRestart(NodeRequest) returns (AckResponse) {}
@@ -41,6 +41,7 @@ service Netem {
     rpc NodeCapture(NodeInterfaceRequest) returns (stream CaptureSrvMsg) {}
     rpc NodeCopyFrom(CopyMsg) returns (stream CopyMsg) {}
     rpc NodeCopyTo(stream CopyMsg) returns (AckResponse) {}
+    rpc NodeExec(stream ExecCltMsg) returns (stream ExecSrvMsg) {}
 
     // Link actions
     rpc LinkUpdate(LinkRequest) returns (AckResponse) {}
@@ -63,6 +64,38 @@ enum IfState {
 
 // Stream messages
 
+message ExecCltMsg {
+    enum Code {
+        CMD = 0;
+        CONSOLE = 1;
+        DATA = 2;
+        RESIZE = 3;
+        ERROR = 4;
+        CLOSE = 5;
+    }
+
+    Code code = 1;
+    string prjId = 2;
+    string node = 3;
+    string cmd = 4;
+    bool shell = 5;
+    bytes data = 6;
+    int32 ttyWidth = 7;
+    int32 ttyHeight = 8;
+}
+
+message ExecSrvMsg {
+    enum Code {
+        STDOUT = 0;
+        STDERR = 1;
+        ERROR = 2;
+        CLOSE = 3;
+    }
+
+    Code code = 1;
+    bytes data = 3;
+}
+
 message CopyMsg {
     enum Code {
         INIT = 0;
@@ -75,35 +108,6 @@ message CopyMsg {
     string node = 3;
     string nodePath = 4;
     bytes data = 5;
-}
-
-message ConsoleCltMsg {
-    enum Code {
-        INIT = 0;
-        DATA = 1;
-        RESIZE = 2;
-        CLOSE = 3;
-    }
-
-    Code code = 1;
-    string prjId = 2;
-    string node = 3;
-    bool shell = 4;
-    int32 ttyWidth = 5;
-    int32 ttyHeight = 6;
-    bytes data = 7;
-}
-
-message ConsoleSrvMsg {
-    enum Code {
-        STDOUT = 0;
-        STDERR = 1;
-        ERROR = 2;
-        CLOSE = 3;
-    }
-
-    Code code = 1;
-    bytes data = 3;
 }
 
 message PullSrvMsg {

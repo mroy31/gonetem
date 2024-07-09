@@ -46,11 +46,19 @@ func (o *OvsNode) IsRunning() bool {
 	return o.Running
 }
 
+func (o *OvsNode) CanExecCommand() error {
+	return errors.New("command can not be executed on switch")
+}
+
 func (o *OvsNode) CanRunConsole() error {
 	if !o.Running {
 		return errors.New("not running")
 	}
 	return nil
+}
+
+func (o *OvsNode) ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+	return errors.New("command can not be executed on switch")
 }
 
 func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {

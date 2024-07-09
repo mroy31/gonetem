@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
@@ -729,36 +730,66 @@ func (s *netemServer) NodeCanRunConsole(ctx context.Context, request *proto.Node
 	}, nil
 }
 
-func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
+type ExecType int64
+
+const (
+	EXEC_CONSOLE ExecType = iota
+	EXEC_COMMAND
+)
+
+func (s *netemServer) nodeExec(stream proto.Netem_NodeExecServer, execT ExecType) error {
 	// read first msg from client
-	resp, err := stream.Recv()
+	msg, err := stream.Recv()
 	if err != nil {
 		return err
 	}
 
+	if (execT == EXEC_COMMAND && msg.GetCode() != proto.ExecCltMsg_CMD) || (execT == EXEC_CONSOLE && msg.GetCode() != proto.ExecCltMsg_CONSOLE) {
+		return stream.Send(&proto.ExecSrvMsg{
+			Code: proto.ExecSrvMsg_ERROR,
+			Data: []byte("Wrong code for first msg"),
+		})
+	}
+
 	// get project
-	project := ProjectGetOne(resp.GetPrjId())
+	project := ProjectGetOne(msg.GetPrjId())
 	if project == nil {
-		return stream.Send(&proto.ConsoleSrvMsg{
-			Code: proto.ConsoleSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Project %s not found", resp.PrjId)),
+		return stream.Send(&proto.ExecSrvMsg{
+			Code: proto.ExecSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Project %s not found", msg.PrjId)),
 		})
 	}
 
 	// get node
-	node := project.Topology.GetNode(resp.GetNode())
+	node := project.Topology.GetNode(msg.GetNode())
 	if node == nil {
-		return stream.Send(&proto.ConsoleSrvMsg{
-			Code: proto.ConsoleSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Node %s not found in project %s", resp.GetNode(), resp.GetPrjId())),
+		return stream.Send(&proto.ExecSrvMsg{
+			Code: proto.ExecSrvMsg_ERROR,
+			Data: []byte(fmt.Sprintf("Node %s not found in project %s", msg.GetNode(), msg.GetPrjId())),
 		})
+	}
+
+	if execT == EXEC_COMMAND {
+		if err := node.CanExecCommand(); err != nil {
+			return stream.Send(&proto.ExecSrvMsg{
+				Code: proto.ExecSrvMsg_ERROR,
+				Data: []byte(fmt.Sprintf("Node %s can not execute a command - %v", msg.GetNode(), err)),
+			})
+		}
+	} else if execT == EXEC_CONSOLE {
+		if err := node.CanRunConsole(); err != nil {
+			return stream.Send(&proto.ExecSrvMsg{
+				Code: proto.ExecSrvMsg_ERROR,
+				Data: []byte(fmt.Sprintf("Node %s can not run a console - %v", msg.GetNode(), err)),
+			})
+		}
 	}
 
 	logger := logrus.WithFields(logrus.Fields{
 		"project": project.Id,
 		"node":    node.GetName(),
 	})
-	logger.Debug("Start console stream")
+	logger.Debug("Start Exec stream")
 
 	rIn, wIn := io.Pipe()
 	rOut, wOut := io.Pipe()
@@ -779,16 +810,15 @@ func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
 			}
 
 			switch in.GetCode() {
-			case proto.ConsoleCltMsg_DATA:
+			case proto.ExecCltMsg_DATA:
 				wIn.Write(in.GetData())
-			case proto.ConsoleCltMsg_RESIZE:
+			case proto.ExecCltMsg_RESIZE:
 				resizeCh <- term.Winsize{
 					Width:  uint16(in.GetTtyWidth()),
 					Height: uint16(in.GetTtyHeight()),
 				}
-			case proto.ConsoleCltMsg_CLOSE:
-				// TODO: find a solution to terminate shell
-				// For now we block terminal close
+			case proto.ExecCltMsg_CLOSE:
+				// TODO: find a solution to terminate command
 			}
 		}
 	})
@@ -806,8 +836,8 @@ func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
 				continue
 			}
 
-			if err := stream.Send(&proto.ConsoleSrvMsg{
-				Code: proto.ConsoleSrvMsg_STDOUT,
+			if err := stream.Send(&proto.ExecSrvMsg{
+				Code: proto.ExecSrvMsg_STDOUT,
 				Data: data[:n],
 			}); err != nil {
 				return err
@@ -815,22 +845,37 @@ func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
 		}
 	})
 
-	if err := node.Console(resp.GetShell(), rIn, wOut, resizeCh); err != nil {
-		stream.Send(&proto.ConsoleSrvMsg{
-			Code: proto.ConsoleSrvMsg_ERROR,
+	if execT == EXEC_CONSOLE {
+		err = node.Console(msg.GetShell(), rIn, wOut, resizeCh)
+	} else if execT == EXEC_COMMAND {
+		cmd := strings.Split(msg.GetCmd(), " ")
+		err = node.ExecCommand(cmd, rIn, wOut, resizeCh)
+	}
+
+	if err != nil {
+		stream.Send(&proto.ExecSrvMsg{
+			Code: proto.ExecSrvMsg_ERROR,
 			Data: []byte(err.Error()),
 		})
 	} else {
-		stream.Send(&proto.ConsoleSrvMsg{
-			Code: proto.ConsoleSrvMsg_CLOSE,
+		stream.Send(&proto.ExecSrvMsg{
+			Code: proto.ExecSrvMsg_CLOSE,
 		})
 	}
 
 	wOut.Close()
 	defer wIn.Close()
 
-	logger.Debug("Close console stream")
+	logger.Debug("Close exec stream")
 	return g.Wait()
+}
+
+func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
+	return s.nodeExec(stream, EXEC_COMMAND)
+}
+
+func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
+	return s.nodeExec(stream, EXEC_CONSOLE)
 }
 
 func (s *netemServer) NodeCopyFrom(request *proto.CopyMsg, stream proto.Netem_NodeCopyFromServer) error {
