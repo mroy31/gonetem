@@ -2604,7 +2604,7 @@ var file_internal_proto_netem_proto_rawDesc = []byte{
 	0x43, 0x6f, 0x64, 0x65, 0x12, 0x06, 0x0a, 0x02, 0x4f, 0x4b, 0x10, 0x00, 0x12, 0x09, 0x0a, 0x05,
 	0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x01, 0x2a, 0x1b, 0x0a, 0x07, 0x49, 0x66, 0x53, 0x74, 0x61,
 	0x74, 0x65, 0x12, 0x06, 0x0a, 0x02, 0x55, 0x50, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x44, 0x4f,
-	0x57, 0x4e, 0x10, 0x01, 0x32, 0xaf, 0x0e, 0x0a, 0x05, 0x4e, 0x65, 0x74, 0x65, 0x6d, 0x12, 0x44,
+	0x57, 0x4e, 0x10, 0x01, 0x32, 0xe4, 0x0e, 0x0a, 0x05, 0x4e, 0x65, 0x74, 0x65, 0x6d, 0x12, 0x44,
 	0x0a, 0x10, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x47, 0x65, 0x74, 0x56, 0x65, 0x72, 0x73, 0x69,
 	0x6f, 0x6e, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74,
 	0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x16, 0x2e, 0x6e, 0x65, 0x74,
@@ -2719,10 +2719,13 @@ var file_internal_proto_netem_proto_rawDesc = []byte{
 	0x00, 0x12, 0x33, 0x0a, 0x07, 0x4c, 0x69, 0x6e, 0x6b, 0x41, 0x64, 0x64, 0x12, 0x12, 0x2e, 0x6e,
 	0x65, 0x74, 0x65, 0x6d, 0x2e, 0x4c, 0x69, 0x6e, 0x6b, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x1a, 0x12, 0x2e, 0x6e, 0x65, 0x74, 0x65, 0x6d, 0x2e, 0x41, 0x63, 0x6b, 0x52, 0x65, 0x73, 0x70,
-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x2a, 0x5a, 0x28, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62,
-	0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x72, 0x6f, 0x79, 0x33, 0x31, 0x2f, 0x67, 0x6f, 0x6e, 0x65,
-	0x74, 0x65, 0x6d, 0x2f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2f, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x33, 0x0a, 0x07, 0x4c, 0x69, 0x6e, 0x6b, 0x44, 0x65,
+	0x6c, 0x12, 0x12, 0x2e, 0x6e, 0x65, 0x74, 0x65, 0x6d, 0x2e, 0x4c, 0x69, 0x6e, 0x6b, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x12, 0x2e, 0x6e, 0x65, 0x74, 0x65, 0x6d, 0x2e, 0x41, 0x63,
+	0x6b, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x2a, 0x5a, 0x28, 0x67,
+	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6d, 0x72, 0x6f, 0x79, 0x33, 0x31,
+	0x2f, 0x67, 0x6f, 0x6e, 0x65, 0x74, 0x65, 0x6d, 0x2f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61,
+	0x6c, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -2837,37 +2840,39 @@ var file_internal_proto_netem_proto_depIdxs = []int32{
 	11, // 51: netem.Netem.NodeExec:input_type -> netem.ExecCltMsg
 	20, // 52: netem.Netem.LinkUpdate:input_type -> netem.LinkRequest
 	20, // 53: netem.Netem.LinkAdd:input_type -> netem.LinkRequest
-	30, // 54: netem.Netem.ServerGetVersion:output_type -> netem.VersionResponse
-	14, // 55: netem.Netem.ServerPullImages:output_type -> netem.PullSrvMsg
-	28, // 56: netem.Netem.ServerCleanContainers:output_type -> netem.AckResponse
-	33, // 57: netem.Netem.ProjectGetMany:output_type -> netem.PrjListResponse
-	34, // 58: netem.Netem.ProjectOpen:output_type -> netem.PrjOpenResponse
-	18, // 59: netem.Netem.ProjectClose:output_type -> netem.ProjectCloseMsg
-	17, // 60: netem.Netem.ProjectSave:output_type -> netem.ProjectSaveMsg
-	29, // 61: netem.Netem.ProjectGetNodeConfigs:output_type -> netem.FileResponse
-	31, // 62: netem.Netem.ProjectGetStatus:output_type -> netem.StatusResponse
-	29, // 63: netem.Netem.ReadNetworkFile:output_type -> netem.FileResponse
-	28, // 64: netem.Netem.WriteNetworkFile:output_type -> netem.AckResponse
-	28, // 65: netem.Netem.TopologyCheck:output_type -> netem.AckResponse
-	16, // 66: netem.Netem.TopologyReload:output_type -> netem.TopologyRunMsg
-	16, // 67: netem.Netem.TopologyRun:output_type -> netem.TopologyRunMsg
-	28, // 68: netem.Netem.TopologyStartAll:output_type -> netem.AckResponse
-	28, // 69: netem.Netem.TopologyStopAll:output_type -> netem.AckResponse
-	32, // 70: netem.Netem.NodeReadConfigFiles:output_type -> netem.ConfigFilesResponse
-	28, // 71: netem.Netem.NodeCanRunConsole:output_type -> netem.AckResponse
-	12, // 72: netem.Netem.NodeConsole:output_type -> netem.ExecSrvMsg
-	28, // 73: netem.Netem.NodeStart:output_type -> netem.AckResponse
-	28, // 74: netem.Netem.NodeStop:output_type -> netem.AckResponse
-	28, // 75: netem.Netem.NodeRestart:output_type -> netem.AckResponse
-	28, // 76: netem.Netem.NodeSetIfState:output_type -> netem.AckResponse
-	15, // 77: netem.Netem.NodeCapture:output_type -> netem.CaptureSrvMsg
-	13, // 78: netem.Netem.NodeCopyFrom:output_type -> netem.CopyMsg
-	28, // 79: netem.Netem.NodeCopyTo:output_type -> netem.AckResponse
-	12, // 80: netem.Netem.NodeExec:output_type -> netem.ExecSrvMsg
-	28, // 81: netem.Netem.LinkUpdate:output_type -> netem.AckResponse
-	28, // 82: netem.Netem.LinkAdd:output_type -> netem.AckResponse
-	54, // [54:83] is the sub-list for method output_type
-	25, // [25:54] is the sub-list for method input_type
+	20, // 54: netem.Netem.LinkDel:input_type -> netem.LinkRequest
+	30, // 55: netem.Netem.ServerGetVersion:output_type -> netem.VersionResponse
+	14, // 56: netem.Netem.ServerPullImages:output_type -> netem.PullSrvMsg
+	28, // 57: netem.Netem.ServerCleanContainers:output_type -> netem.AckResponse
+	33, // 58: netem.Netem.ProjectGetMany:output_type -> netem.PrjListResponse
+	34, // 59: netem.Netem.ProjectOpen:output_type -> netem.PrjOpenResponse
+	18, // 60: netem.Netem.ProjectClose:output_type -> netem.ProjectCloseMsg
+	17, // 61: netem.Netem.ProjectSave:output_type -> netem.ProjectSaveMsg
+	29, // 62: netem.Netem.ProjectGetNodeConfigs:output_type -> netem.FileResponse
+	31, // 63: netem.Netem.ProjectGetStatus:output_type -> netem.StatusResponse
+	29, // 64: netem.Netem.ReadNetworkFile:output_type -> netem.FileResponse
+	28, // 65: netem.Netem.WriteNetworkFile:output_type -> netem.AckResponse
+	28, // 66: netem.Netem.TopologyCheck:output_type -> netem.AckResponse
+	16, // 67: netem.Netem.TopologyReload:output_type -> netem.TopologyRunMsg
+	16, // 68: netem.Netem.TopologyRun:output_type -> netem.TopologyRunMsg
+	28, // 69: netem.Netem.TopologyStartAll:output_type -> netem.AckResponse
+	28, // 70: netem.Netem.TopologyStopAll:output_type -> netem.AckResponse
+	32, // 71: netem.Netem.NodeReadConfigFiles:output_type -> netem.ConfigFilesResponse
+	28, // 72: netem.Netem.NodeCanRunConsole:output_type -> netem.AckResponse
+	12, // 73: netem.Netem.NodeConsole:output_type -> netem.ExecSrvMsg
+	28, // 74: netem.Netem.NodeStart:output_type -> netem.AckResponse
+	28, // 75: netem.Netem.NodeStop:output_type -> netem.AckResponse
+	28, // 76: netem.Netem.NodeRestart:output_type -> netem.AckResponse
+	28, // 77: netem.Netem.NodeSetIfState:output_type -> netem.AckResponse
+	15, // 78: netem.Netem.NodeCapture:output_type -> netem.CaptureSrvMsg
+	13, // 79: netem.Netem.NodeCopyFrom:output_type -> netem.CopyMsg
+	28, // 80: netem.Netem.NodeCopyTo:output_type -> netem.AckResponse
+	12, // 81: netem.Netem.NodeExec:output_type -> netem.ExecSrvMsg
+	28, // 82: netem.Netem.LinkUpdate:output_type -> netem.AckResponse
+	28, // 83: netem.Netem.LinkAdd:output_type -> netem.AckResponse
+	28, // 84: netem.Netem.LinkDel:output_type -> netem.AckResponse
+	55, // [55:85] is the sub-list for method output_type
+	25, // [25:55] is the sub-list for method input_type
 	25, // [25:25] is the sub-list for extension type_name
 	25, // [25:25] is the sub-list for extension extendee
 	0,  // [0:25] is the sub-list for field type_name

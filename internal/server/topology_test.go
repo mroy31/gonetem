@@ -178,7 +178,7 @@ func TestTopology_UpdateLink(t *testing.T) {
 			}
 
 			if !tt.expectedError {
-				link, _ := topology.GetLink(tt.peer1, tt.peer2)
+				link, _, _ := topology.GetLink(tt.peer1, tt.peer2)
 				if link.Config.Delay != tt.delay || link.Config.Jitter != tt.jitter {
 					t.Errorf(
 						"Delay or jitter have wrong value: %d|%d %d|%d",

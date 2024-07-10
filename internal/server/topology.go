@@ -537,40 +537,40 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	return nil
 }
 
-func (t *NetemTopologyManager) GetLink(peer1V string, peer2V string) (*NetemLink, error) {
+func (t *NetemTopologyManager) GetLink(peer1V string, peer2V string) (*NetemLink, int, error) {
 	peer1 := strings.Split(peer1V, ".")
 	peer2 := strings.Split(peer2V, ".")
 
 	peer1Idx, _ := strconv.Atoi(peer1[1])
 	peer2Idx, _ := strconv.Atoi(peer2[1])
 
-	for _, l := range t.links {
+	for idx, l := range t.links {
 		if l.Peer1.IfIndex == peer1Idx &&
 			l.Peer1.Node.GetName() == peer1[0] &&
 			l.Peer2.IfIndex == peer2Idx &&
 			l.Peer2.Node.GetName() == peer2[0] {
-			return l, nil
+			return l, idx, nil
 		}
 	}
 
 	// check for inverse link
-	for _, l := range t.links {
+	for idx, l := range t.links {
 		if l.Peer1.IfIndex == peer2Idx &&
 			l.Peer1.Node.GetName() == peer2[0] &&
 			l.Peer2.IfIndex == peer1Idx &&
 			l.Peer2.Node.GetName() == peer1[0] {
-			return l, nil
+			return l, idx, nil
 		}
 	}
 
-	return nil, fmt.Errorf(
+	return nil, -1, fmt.Errorf(
 		"link %s - %s not found in the topology",
 		peer1V, peer2V,
 	)
 }
 
 func (t *NetemTopologyManager) LinkAdd(linkCfg LinkConfig, sync bool) error {
-	_, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
+	_, _, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
 	if err == nil {
 		return fmt.Errorf("this link already exist")
 	}
@@ -611,8 +611,32 @@ func (t *NetemTopologyManager) LinkAdd(linkCfg LinkConfig, sync bool) error {
 	return nil
 }
 
+func (t *NetemTopologyManager) LinkDel(linkCfg LinkConfig, sync bool) error {
+	l, idx, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
+	if err != nil {
+		return err
+	}
+
+	peer1Netns, err := l.Peer1.Node.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peer1Netns.Close()
+
+	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
+	if err := link.DeleteLink(peer1IfName, peer1Netns); err != nil {
+		return err
+	}
+
+	t.links = append(t.links[:idx], t.links[idx+1:]...)
+	if sync {
+		return t.SynchroniseTopology()
+	}
+	return nil
+}
+
 func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
-	l, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
+	l, _, err := t.GetLink(linkCfg.Peer1, linkCfg.Peer2)
 	if err != nil {
 		return err
 	}
