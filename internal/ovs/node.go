@@ -50,22 +50,14 @@ func (o *OvsNode) IsRunning() bool {
 	return o.Running
 }
 
-func (o *OvsNode) CanExecCommand() error {
-	return errors.New("command can not be executed on switch")
-}
-
-func (o *OvsNode) CanRunConsole() error {
-	if !o.Running {
-		return errors.New("not running")
-	}
-	return nil
-}
-
-func (o *OvsNode) ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
-	return errors.New("command can not be executed on switch")
-}
-
-func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (o *OvsNode) ExecCommand(
+	cmd []string,
+	in io.ReadCloser,
+	out io.Writer,
+	tty bool,
+	ttyHeight uint,
+	ttyWidth uint,
+	resizeCh chan term.Winsize) error {
 	if !o.Running {
 		return errors.New("not running")
 	}
@@ -76,13 +68,21 @@ func (o *OvsNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh 
 	}
 	defer client.Close()
 
+	return client.ExecTty(
+		context.Background(),
+		o.OvsInstance.containerId,
+		cmd, in, out,
+		tty, ttyHeight, ttyWidth,
+		resizeCh)
+}
+
+func (o *OvsNode) GetConsoleCmd(shell bool) []string {
 	cmd := []string{"/bin/bash"}
 	if !shell {
 		cmd = []string{"/usr/bin/ovs-console.py", o.GetBridgeName()}
 	}
 
-	ctx := context.Background()
-	return client.ExecTty(ctx, o.OvsInstance.containerId, cmd, in, out, resizeCh)
+	return cmd
 }
 
 func (o *OvsNode) CopyFrom(srcPath, destPath string) error {

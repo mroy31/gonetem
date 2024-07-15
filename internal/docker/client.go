@@ -184,7 +184,7 @@ func (c *DockerClient) Pid(ctx context.Context, containerId string) (int, error)
 	}
 
 	if !containerInfo.State.Running {
-		return -1, fmt.Errorf("Container %s is not running", containerId)
+		return -1, fmt.Errorf("container %s is not running", containerId)
 	}
 	return containerInfo.State.Pid, nil
 }
@@ -237,7 +237,7 @@ func (c *DockerClient) CopyFrom(ctx context.Context, containerId, source, dest s
 	defer destFile.Close()
 
 	srcTar := tar.NewReader(reader)
-	_, err = srcTar.Next()
+	_, _ = srcTar.Next()
 	if _, err = io.Copy(destFile, srcTar); err != nil {
 		return err
 	}
@@ -399,13 +399,23 @@ func (c *DockerClient) ExecOutStream(ctx context.Context, containerId string, cm
 	return nil
 }
 
-func (c *DockerClient) ExecTty(ctx context.Context, containerId string, cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (c *DockerClient) ExecTty(
+	ctx context.Context,
+	containerId string,
+	cmd []string,
+	in io.ReadCloser,
+	out io.Writer,
+	tty bool,
+	ttyHeight uint,
+	ttyWidth uint,
+	resizeCh chan term.Winsize) error {
 	config := types.ExecConfig{
 		AttachStderr: true,
 		AttachStdout: true,
 		AttachStdin:  true,
-		Tty:          true,
+		Tty:          tty,
 		Cmd:          cmd,
+		ConsoleSize:  &[2]uint{ttyHeight, ttyWidth},
 	}
 
 	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
@@ -414,7 +424,8 @@ func (c *DockerClient) ExecTty(ctx context.Context, containerId string, cmd []st
 	}
 
 	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{
-		Tty: config.Tty,
+		Tty:         config.Tty,
+		ConsoleSize: config.ConsoleSize,
 	})
 	if err != nil {
 		return err

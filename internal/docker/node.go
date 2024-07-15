@@ -213,20 +213,6 @@ func (n *DockerNode) PrepareInterface(ifName string) {
 	}
 }
 
-func (n *DockerNode) CanExecCommand() error {
-	if !n.Running {
-		return errors.New("not running")
-	}
-	return nil
-}
-
-func (n *DockerNode) CanRunConsole() error {
-	if !n.Running {
-		return errors.New("not running")
-	}
-	return nil
-}
-
 func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 	if !n.Running {
 		return errors.New("not running")
@@ -243,7 +229,14 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 	return client.ExecOutStream(context.Background(), n.ID, cmd, out)
 }
 
-func (n *DockerNode) ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (n *DockerNode) ExecCommand(
+	cmd []string,
+	in io.ReadCloser,
+	out io.Writer,
+	tty bool,
+	ttyHeight uint,
+	ttyWidth uint,
+	resizeCh chan term.Winsize) error {
 	if !n.Running {
 		return errors.New("not running")
 	}
@@ -254,10 +247,15 @@ func (n *DockerNode) ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, 
 	}
 	defer client.Close()
 
-	return client.ExecTty(context.Background(), n.ID, cmd, in, out, resizeCh)
+	return client.ExecTty(
+		context.Background(),
+		n.ID,
+		cmd, in, out,
+		tty, ttyHeight, ttyWidth,
+		resizeCh)
 }
 
-func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error {
+func (n *DockerNode) GetConsoleCmd(shell bool) []string {
 	cmd := []string{"/bin/bash"}
 	if !shell {
 		switch n.Type {
@@ -266,7 +264,7 @@ func (n *DockerNode) Console(shell bool, in io.ReadCloser, out io.Writer, resize
 		}
 	}
 
-	return n.ExecCommand(cmd, in, out, resizeCh)
+	return cmd
 }
 
 func (n *DockerNode) Start() error {

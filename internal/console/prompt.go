@@ -621,43 +621,35 @@ func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
 
 func (p *NetemPrompt) Exec(client proto.NetemClient, cmdArgs []string) {
 	node := cmdArgs[0]
-	cmd := strings.Join(cmdArgs[1:], " ")
 
-	terminalFd, _ := TermGetFd()
-	stream, err := client.NodeExec(context.Background())
+	cmd, err := shlex.Split(cmdArgs[1])
 	if err != nil {
 		RedPrintf(err.Error() + "\n")
 		return
 	}
-	defer stream.CloseSend()
 
-	if err := stream.Send(&proto.ExecCltMsg{
-		Code:  proto.ExecCltMsg_CMD,
-		Cmd:   cmd,
-		PrjId: p.prjID,
-		Node:  node,
-	}); err != nil {
-		RedPrintf(err.Error() + "\n")
-		return
-	}
-
-	if err := monitorExec(stream, terminalFd); err != nil {
+	if err := nodeExec(client, p.prjID, node, cmd); err != nil {
 		RedPrintf(err.Error() + "\n")
 	}
 }
 
 func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) {
-	// first check that we can run console for this node
-	ack, err := client.NodeCanRunConsole(context.Background(), &proto.NodeRequest{
-		PrjId: p.prjID,
-		Node:  nodeName,
-	})
+	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf(err.Error() + "\n")
+		RedPrintf("Unable to get project status: %v\n", err)
 		return
-	} else if ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
-		RedPrintf(ack.GetStatus().GetError() + "\n")
+	}
+
+	// check project and node status
+	if !response.Running {
+		RedPrintf("Project is not running\n")
 		return
+	}
+	for _, n := range response.GetNodes() {
+		if n.Name == nodeName && !n.Running {
+			RedPrintf("Node is not running\n")
+			return
+		}
 	}
 
 	node := fmt.Sprintf("%s.%s", p.prjID, nodeName)
@@ -712,15 +704,9 @@ func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
 	}
 
 	for _, node := range response.GetNodes() {
-		ack, err := client.NodeCanRunConsole(context.Background(), &proto.NodeRequest{
-			PrjId: p.prjID,
-			Node:  node.GetName(),
-		})
-		if err != nil || ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
-			continue
+		if node.Running {
+			p.startConsole(client, node.GetName(), shell)
 		}
-
-		p.startConsole(client, node.GetName(), shell)
 	}
 }
 

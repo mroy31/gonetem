@@ -9,11 +9,6 @@ import (
 )
 
 func StartRemoteConsole(server, node string, shell bool) error {
-	terminalFd, err := TermGetFd()
-	if err != nil {
-		return err
-	}
-
 	args := strings.Split(node, ".")
 	if len(args) != 2 {
 		return fmt.Errorf("%s is not a valid identifier, prj.node expected", node)
@@ -23,21 +18,19 @@ func StartRemoteConsole(server, node string, shell bool) error {
 	if err != nil {
 		return err
 	}
+	defer client.Conn.Close()
 
-	stream, err := client.Client.NodeConsole(context.Background())
+	cmd, err := client.Client.NodeGetConsoleCmd(
+		context.Background(),
+		&proto.ConsoleCmdRequest{
+			PrjId: args[0],
+			Node:  args[1],
+			Shell: shell,
+		},
+	)
 	if err != nil {
 		return err
 	}
-	defer stream.CloseSend()
 
-	if err := stream.Send(&proto.ExecCltMsg{
-		Code:  proto.ExecCltMsg_CONSOLE,
-		PrjId: args[0],
-		Node:  args[1],
-		Shell: shell,
-	}); err != nil {
-		return err
-	}
-
-	return monitorExec(stream, terminalFd)
+	return nodeExec(client.Client, args[0], args[1], cmd.GetCmd())
 }

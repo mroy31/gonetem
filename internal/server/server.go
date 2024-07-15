@@ -7,7 +7,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"strings"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/moby/term"
@@ -748,51 +747,14 @@ func (s *netemServer) NodeReadConfigFiles(ctx context.Context, request *proto.No
 	return answer, nil
 }
 
-func (s *netemServer) NodeCanRunConsole(ctx context.Context, request *proto.NodeRequest) (*proto.AckResponse, error) {
-	project := ProjectGetOne(request.GetPrjId())
-	if project == nil {
-		return nil, &ProjectNotFoundError{request.GetPrjId()}
-	}
-
-	node := project.Topology.GetNode(request.GetNode())
-	if node == nil {
-		return &proto.AckResponse{
-			Status: &proto.Status{
-				Code:  proto.StatusCode_ERROR,
-				Error: fmt.Sprintf("Node %s not found", request.GetNode()),
-			},
-		}, nil
-	}
-
-	if err := node.CanRunConsole(); err != nil {
-		return &proto.AckResponse{
-			Status: &proto.Status{
-				Code:  proto.StatusCode_ERROR,
-				Error: err.Error(),
-			},
-		}, nil
-	}
-
-	return &proto.AckResponse{
-		Status: &proto.Status{Code: proto.StatusCode_OK},
-	}, nil
-}
-
-type ExecType int64
-
-const (
-	EXEC_CONSOLE ExecType = iota
-	EXEC_COMMAND
-)
-
-func (s *netemServer) nodeExec(stream proto.Netem_NodeExecServer, execT ExecType) error {
+func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
 	// read first msg from client
 	msg, err := stream.Recv()
 	if err != nil {
 		return err
 	}
 
-	if (execT == EXEC_COMMAND && msg.GetCode() != proto.ExecCltMsg_CMD) || (execT == EXEC_CONSOLE && msg.GetCode() != proto.ExecCltMsg_CONSOLE) {
+	if msg.GetCode() != proto.ExecCltMsg_CMD {
 		return stream.Send(&proto.ExecSrvMsg{
 			Code: proto.ExecSrvMsg_ERROR,
 			Data: []byte("Wrong code for first msg"),
@@ -815,22 +777,6 @@ func (s *netemServer) nodeExec(stream proto.Netem_NodeExecServer, execT ExecType
 			Code: proto.ExecSrvMsg_ERROR,
 			Data: []byte(fmt.Sprintf("Node %s not found in project %s", msg.GetNode(), msg.GetPrjId())),
 		})
-	}
-
-	if execT == EXEC_COMMAND {
-		if err := node.CanExecCommand(); err != nil {
-			return stream.Send(&proto.ExecSrvMsg{
-				Code: proto.ExecSrvMsg_ERROR,
-				Data: []byte(fmt.Sprintf("Node %s can not execute a command - %v", msg.GetNode(), err)),
-			})
-		}
-	} else if execT == EXEC_CONSOLE {
-		if err := node.CanRunConsole(); err != nil {
-			return stream.Send(&proto.ExecSrvMsg{
-				Code: proto.ExecSrvMsg_ERROR,
-				Data: []byte(fmt.Sprintf("Node %s can not run a console - %v", msg.GetNode(), err)),
-			})
-		}
 	}
 
 	logger := logrus.WithFields(logrus.Fields{
@@ -893,13 +839,10 @@ func (s *netemServer) nodeExec(stream proto.Netem_NodeExecServer, execT ExecType
 		}
 	})
 
-	if execT == EXEC_CONSOLE {
-		err = node.Console(msg.GetShell(), rIn, wOut, resizeCh)
-	} else if execT == EXEC_COMMAND {
-		cmd := strings.Split(msg.GetCmd(), " ")
-		err = node.ExecCommand(cmd, rIn, wOut, resizeCh)
-	}
-
+	err = node.ExecCommand(
+		msg.GetCmd(), rIn, wOut,
+		msg.GetTty(), uint(msg.GetTtyHeight()), uint(msg.GetTtyWidth()),
+		resizeCh)
 	if err != nil {
 		stream.Send(&proto.ExecSrvMsg{
 			Code: proto.ExecSrvMsg_ERROR,
@@ -918,12 +861,26 @@ func (s *netemServer) nodeExec(stream proto.Netem_NodeExecServer, execT ExecType
 	return g.Wait()
 }
 
-func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
-	return s.nodeExec(stream, EXEC_COMMAND)
-}
+func (s *netemServer) NodeGetConsoleCmd(ctx context.Context, request *proto.ConsoleCmdRequest) (*proto.ConsoleCmdResponse, error) {
+	// get project
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
 
-func (s *netemServer) NodeConsole(stream proto.Netem_NodeConsoleServer) error {
-	return s.nodeExec(stream, EXEC_CONSOLE)
+	// get node
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return nil, &NodeNotFoundError{
+			prjId: request.GetPrjId(),
+			name:  request.GetNode(),
+		}
+	}
+
+	return &proto.ConsoleCmdResponse{
+		Cmd:    node.GetConsoleCmd(request.GetShell()),
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}, nil
 }
 
 func (s *netemServer) NodeCopyFrom(request *proto.CopyMsg, stream proto.Netem_NodeCopyFromServer) error {

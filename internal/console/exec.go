@@ -1,35 +1,103 @@
 package console
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
-type INetemNodeExecClient interface {
-	Send(*proto.ExecCltMsg) error
-	Recv() (*proto.ExecSrvMsg, error)
+func termGetTtySize(terminalFd uintptr) (int, int) {
+	ws, err := term.GetWinsize(terminalFd)
+	if err != nil && ws == nil {
+		return 0, 0
+	}
+	return int(ws.Height), int(ws.Width)
 }
 
-func monitorExec(stream INetemNodeExecClient, terminalFd uintptr) error {
+func termResizeTty(stream proto.Netem_NodeExecClient, terminalFd uintptr) error {
+	height, width := termGetTtySize(terminalFd)
+	if height == 0 && width == 0 {
+		return nil
+	}
+	return stream.Send(&proto.ExecCltMsg{
+		Code:      proto.ExecCltMsg_RESIZE,
+		TtyWidth:  int32(width),
+		TtyHeight: int32(height),
+	})
+}
+
+func termMonitorTty(stream proto.Netem_NodeExecClient, terminalFd uintptr) {
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGWINCH)
+	signal.Notify(sigchan, syscall.SIGHUP)
+	go func() {
+		for sig := range sigchan {
+			switch sig {
+			case syscall.SIGWINCH:
+				termResizeTty(stream, terminalFd)
+			case syscall.SIGHUP:
+				// terminal has been closed, send exit to
+				stream.Send(&proto.ExecCltMsg{
+					Code: proto.ExecCltMsg_CLOSE,
+				})
+			}
+		}
+	}()
+}
+
+func nodeExec(
+	client proto.NetemClient,
+	prjId string,
+	node string,
+	cmd []string,
+) error {
 	var (
-		oldState *term.State
-		err      error
+		terminalFd uintptr
+		out        io.Writer = os.Stdout
+		oldState   *term.State
+		err        error
 	)
 
-	if terminalFd != 0 {
-		// Set up the pseudo terminal
-		oldState, err = term.SetRawTerminal(terminalFd)
-		if err != nil {
-			return err
-		}
-
-		// Clean up after the command has exited
-		defer term.RestoreTerminal(terminalFd, oldState)
+	if file, ok := out.(*os.File); ok {
+		terminalFd = file.Fd()
+	} else {
+		return errors.New("not a terminal")
 	}
 
+	// Set up the pseudo terminal
+	oldState, err = term.SetRawTerminal(terminalFd)
+	if err != nil {
+		return err
+	}
+
+	// Clean up after the command has exited
+	defer term.RestoreTerminal(terminalFd, oldState)
+
+	stream, err := client.NodeExec(context.Background())
+	if err != nil {
+		return err
+	}
+	defer stream.CloseSend()
+
+	tHeight, tWidth := termGetTtySize(terminalFd)
+	if err := stream.Send(&proto.ExecCltMsg{
+		Code:      proto.ExecCltMsg_CMD,
+		PrjId:     prjId,
+		Node:      node,
+		Cmd:       cmd,
+		Tty:       true,
+		TtyHeight: int32(tHeight),
+		TtyWidth:  int32(tWidth),
+	}); err != nil {
+		return err
+	}
 	stdIn, stdOut, stderr := term.StdStreams()
 	waitc := make(chan error)
 
@@ -63,8 +131,7 @@ func monitorExec(stream INetemNodeExecClient, terminalFd uintptr) error {
 		for {
 			in, err := stream.Recv()
 
-			if err == io.EOF {
-				// read done.
+			if err == io.EOF { // read done.
 				waitc <- nil
 				return
 			}
@@ -99,9 +166,7 @@ func monitorExec(stream INetemNodeExecClient, terminalFd uintptr) error {
 		}
 	}()
 
-	if terminalFd != 0 {
-		TermMonitorTty(stream, terminalFd)
-	}
+	termMonitorTty(stream, terminalFd)
 
 	return <-waitc
 }

@@ -33,10 +33,8 @@ type INetemNode interface {
 	GetInterfaceName(ifIndex int) string
 	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
 	LoadConfig(confPath string, timeout int) ([]string, error)
-	CanRunConsole() error
-	CanExecCommand() error
-	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
-	Console(shell bool, in io.ReadCloser, out io.Writer, resizeCh chan term.Winsize) error
+	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
+	GetConsoleCmd(shell bool) []string
 	Capture(ifIndex int, out io.Writer) error
 	CopyFrom(srcPath, destPath string) error
 	CopyTo(srcPath, destPath string) error
