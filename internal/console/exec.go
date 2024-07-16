@@ -11,6 +11,7 @@ import (
 
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/proto"
+	"golang.org/x/sys/unix"
 )
 
 func termGetTtySize(terminalFd uintptr) (int, int) {
@@ -98,30 +99,56 @@ func nodeExec(
 	}); err != nil {
 		return err
 	}
-	stdIn, stdOut, stderr := term.StdStreams()
-	waitc := make(chan error)
+
+	inputDone := make(chan error)
+	outputDone := make(chan error)
+	outputClosed := false
 
 	// read stdin
 	go func() {
 		data := make([]byte, 32)
 		for {
-			n, err := stdIn.Read(data)
-			if err != nil {
-				waitc <- err
+			inFd := int(os.Stdin.Fd())
+			rFDSet := &unix.FdSet{}
+			rFDSet.Zero()
+			rFDSet.Set(inFd)
+
+			if _, err := unix.Select(int(inFd)+1, rFDSet, nil, nil, &unix.Timeval{
+				Sec:  0,
+				Usec: 100000, // 100ms
+			}); err != nil {
+				continue
+			}
+
+			if outputClosed {
+				inputDone <- nil
 				return
 			}
 
-			if err := stream.Send(&proto.ExecCltMsg{
-				Code: proto.ExecCltMsg_DATA,
-				Data: data[:n],
-			}); err != nil {
-				stdOut.Write(data[:n])
-				if err != io.EOF {
-					waitc <- err
-				} else {
-					waitc <- nil
+			if rFDSet.IsSet(inFd) {
+				n, err := os.Stdin.Read(data)
+
+				if err == io.EOF {
+					inputDone <- nil
+					return
 				}
-				return
+
+				if err != nil {
+					inputDone <- err
+					return
+				}
+
+				if err := stream.Send(&proto.ExecCltMsg{
+					Code: proto.ExecCltMsg_DATA,
+					Data: data[:n],
+				}); err != nil {
+					if err != io.EOF {
+						inputDone <- err
+					} else {
+						inputDone <- nil
+					}
+					return
+				}
 			}
 		}
 	}()
@@ -132,33 +159,33 @@ func nodeExec(
 			in, err := stream.Recv()
 
 			if err == io.EOF { // read done.
-				waitc <- nil
+				outputDone <- nil
 				return
 			}
 
 			if err != nil {
-				waitc <- err
+				outputDone <- err
 				return
 			}
 
 			switch in.GetCode() {
 			case proto.ExecSrvMsg_CLOSE:
-				waitc <- nil
+				outputDone <- nil
 				return
 			case proto.ExecSrvMsg_ERROR:
 				// the serveur return an error
-				waitc <- fmt.Errorf("%s", string(in.GetData()))
+				outputDone <- fmt.Errorf("%s", string(in.GetData()))
 				return
 			case proto.ExecSrvMsg_STDOUT:
-				if _, err := stdOut.Write(in.GetData()); err != nil {
+				if _, err := os.Stdout.Write(in.GetData()); err != nil {
 					fmt.Printf("Error os.Stdout.Write: %v\n", err)
-					waitc <- err
+					outputDone <- err
 					return
 				}
 			case proto.ExecSrvMsg_STDERR:
-				if _, err := stderr.Write(in.GetData()); err != nil {
+				if _, err := os.Stderr.Write(in.GetData()); err != nil {
 					fmt.Printf("Error os.Stdout.Write: %v\n", err)
-					waitc <- err
+					outputDone <- err
 					return
 				}
 			}
@@ -168,5 +195,12 @@ func nodeExec(
 
 	termMonitorTty(stream, terminalFd)
 
-	return <-waitc
+	// wait output to finish
+	err = <-outputDone
+	outputClosed = true
+
+	// wait input to finish
+	<-inputDone
+
+	return err
 }
