@@ -22,18 +22,21 @@ After the installation, the configuration of gonetem-server is done with the fil
       key: ""
     workdir: /tmp
     docker:
-      images:
-        server: mroy31/gonetem-server
-        host: mroy31/gonetem-host
-        router: mroy31/gonetem-frr
-        ovs: mroy31/gonetem-ovs
+      nodes:
+        router:
+          image: mroy31/gonetem-frr
+        host:
+          image: mroy31/gonetem-host
+        server:
+          image: mroy31/gonetem-server
+      extraNodes: []
 
 Description of available options:
 
 - ``listen``: ip address (or dns name) / port on which the server listen when launched
 - ``wordir``: the directory used by the server to store open project folders (with topology/configurations)
-- ``docker.images``: name of docker images used by the server when a network is loaded. You can also set a specific version for each image (ex: `my-server-img:0.1.0`)
 - ``tls.*``: options to enable and confgure a secure gRPC connection betwwen the console and the server. See :ref:`tls` for more detail to secure this connection
+- ``docker.*``: options for docker nodes. See :ref:`nodes` for detail to configure existing nodes and define new one
 
 
 Pull docker images

@@ -75,11 +75,11 @@ func (s *netemServer) ServerCleanContainers(ctx context.Context, empty *empty.Em
 }
 
 func (s *netemServer) ServerPullImages(empty *empty.Empty, stream proto.Netem_ServerPullImagesServer) error {
-	imageTypes := []options.DockerImageT{
-		options.IMG_HOST,
-		options.IMG_OVS,
-		options.IMG_ROUTER,
-		options.IMG_SERVER,
+	imageTypes := []string{
+		options.ServerConfig.Docker.Nodes.Router.Image,
+		options.ServerConfig.Docker.Nodes.Host.Image,
+		options.ServerConfig.Docker.Nodes.Server.Image,
+		options.ServerConfig.Docker.OvsImage,
 	}
 
 	client, err := docker.NewDockerClient()
@@ -877,8 +877,12 @@ func (s *netemServer) NodeGetConsoleCmd(ctx context.Context, request *proto.Cons
 		}
 	}
 
+	cmd, err := node.GetConsoleCmd(request.GetShell())
+	if err != nil {
+		return nil, err
+	}
 	return &proto.ConsoleCmdResponse{
-		Cmd:    node.GetConsoleCmd(request.GetShell()),
+		Cmd:    cmd,
 		Status: &proto.Status{Code: proto.StatusCode_OK},
 	}, nil
 }

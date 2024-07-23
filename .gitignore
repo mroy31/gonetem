@@ -5,3 +5,4 @@ docs/source/_build/*
 # openssl certificates and configuration files
 *.pem
 *.cnf
+.DS_Store

@@ -21,4 +21,5 @@ GoNetem is a command line network emulator written in go based on
    topology
    commands
    ovs
+   nodes
    tls

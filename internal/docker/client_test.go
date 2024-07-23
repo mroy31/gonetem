@@ -12,6 +12,30 @@ import (
 	"github.com/mroy31/gonetem/internal/utils"
 )
 
+type DockerImageT int
+
+const (
+	IMG_ROUTER DockerImageT = iota
+	IMG_HOST
+	IMG_SERVER
+	IMG_OVS
+)
+
+func getImageFromT(imgId DockerImageT) string {
+	switch imgId {
+	case IMG_ROUTER:
+		return options.GetDockerImageId(options.ServerConfig.Docker.Nodes.Router.Image)
+	case IMG_HOST:
+		return options.GetDockerImageId(options.ServerConfig.Docker.Nodes.Host.Image)
+	case IMG_SERVER:
+		return options.GetDockerImageId(options.ServerConfig.Docker.Nodes.Server.Image)
+	case IMG_OVS:
+		return options.GetDockerImageId(options.ServerConfig.Docker.OvsImage)
+	}
+
+	return ""
+}
+
 func setupClient(t *testing.T) (*DockerClient, func()) {
 	options.InitServerConfig()
 	client, err := NewDockerClient()
@@ -22,12 +46,12 @@ func setupClient(t *testing.T) (*DockerClient, func()) {
 	return client, func() { client.Close() }
 }
 
-func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, string, string, func()) {
+func setupContainer(t *testing.T, imgId DockerImageT) (*DockerClient, string, string, func()) {
 	options.InitServerConfig()
 	client, _ := NewDockerClient()
 
 	ctx := context.Background()
-	image := options.GetDockerImageId(imgId)
+	image := getImageFromT(imgId)
 	name := utils.RandString(10)
 
 	cID, err := client.Create(ctx, image, name, name, []string{}, true, true)
@@ -43,7 +67,7 @@ func setupContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, st
 	}
 }
 
-func setupStartedContainer(t *testing.T, imgId options.DockerImageT) (*DockerClient, string, string, func()) {
+func setupStartedContainer(t *testing.T, imgId DockerImageT) (*DockerClient, string, string, func()) {
 	client, cID, name, teardown := setupContainer(t, imgId)
 
 	if err := client.Start(context.Background(), cID); err != nil {
@@ -73,7 +97,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 	}{
 		{
 			name:    "ImagePresent: valid test",
-			imgName: options.GetDockerImageId(options.IMG_OVS),
+			imgName: getImageFromT(IMG_OVS),
 			result:  true,
 		},
 		{
@@ -96,7 +120,7 @@ func TestDockerClient_ImagePresent(t *testing.T) {
 }
 
 func TestDockerClient_CreateRm(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, options.IMG_HOST)
+	client, cID, _, teardown := setupContainer(t, IMG_HOST)
 	defer teardown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -131,7 +155,7 @@ func TestDockerClient_CreateRm(t *testing.T) {
 }
 
 func TestDockerClient_Exec(t *testing.T) {
-	client, cID, name, teardown := setupStartedContainer(t, options.IMG_SERVER)
+	client, cID, name, teardown := setupStartedContainer(t, IMG_SERVER)
 	defer teardown()
 
 	// get the hostname
@@ -145,7 +169,7 @@ func TestDockerClient_Exec(t *testing.T) {
 }
 
 func TestDockerClient_Copy(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, options.IMG_ROUTER)
+	client, cID, _, teardown := setupContainer(t, IMG_ROUTER)
 	defer teardown()
 
 	// create a file and copy it in the container
@@ -181,7 +205,7 @@ func TestDockerClient_Copy(t *testing.T) {
 }
 
 func TestDockerClient_Pid(t *testing.T) {
-	client, cID, _, teardown := setupContainer(t, options.IMG_ROUTER)
+	client, cID, _, teardown := setupContainer(t, IMG_ROUTER)
 	defer teardown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -211,7 +235,7 @@ func TestDockerClient_Pid(t *testing.T) {
 }
 
 func TestDockerClient_List(t *testing.T) {
-	client, _, name, teardown := setupContainer(t, options.IMG_ROUTER)
+	client, _, name, teardown := setupContainer(t, IMG_ROUTER)
 	defer teardown()
 
 	cList, err := client.List(context.Background(), name)

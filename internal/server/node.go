@@ -34,7 +34,7 @@ type INetemNode interface {
 	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
 	LoadConfig(confPath string, timeout int) ([]string, error)
 	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
-	GetConsoleCmd(shell bool) []string
+	GetConsoleCmd(shell bool) ([]string, error)
 	Capture(ifIndex int, out io.Writer) error
 	CopyFrom(srcPath, destPath string) error
 	CopyTo(srcPath, destPath string) error
@@ -111,8 +111,6 @@ func CreateNode(prjID string, name string, shortName string, config NodeConfig) 
 		options := docker.DockerNodeOptions{
 			Name:      name,
 			ShortName: shortName,
-			ImgName:   config.Image,
-			Type:      groups[1],
 			Ipv6:      config.IPv6,
 			Mpls:      config.Mpls,
 			Vrfs:      config.Vrfs,
@@ -126,7 +124,7 @@ func CreateNode(prjID string, name string, shortName string, config NodeConfig) 
 			})
 		}
 
-		return docker.NewDockerNode(prjID, options)
+		return docker.NewDockerNode(prjID, groups[1], options)
 	}
 
 	// then test if it is a switch

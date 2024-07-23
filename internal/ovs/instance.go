@@ -281,7 +281,7 @@ func NewOvsInstance(prjID string) (*OvsProjectInstance, error) {
 	}
 	defer client.Close()
 
-	imgName := options.GetDockerImageId(options.IMG_OVS)
+	imgName := options.GetDockerImageId(options.ServerConfig.Docker.OvsImage)
 	present, err := client.IsImagePresent(context.Background(), imgName)
 	if err != nil {
 		return nil, err

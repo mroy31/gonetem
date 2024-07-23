@@ -53,14 +53,13 @@ func TestDockerNode_StartStop(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			prjID := utils.RandString(4)
-			config := DockerNodeOptions{
+			options := DockerNodeOptions{
 				Name: tt.name,
-				Type: tt.nType,
 				Ipv6: tt.ipv6,
 				Mpls: tt.mpls,
 			}
 
-			node, err := NewDockerNode(prjID, config)
+			node, err := NewDockerNode(prjID, tt.nType, options)
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("An error is expected but it is not occurred")
@@ -98,10 +97,9 @@ func TestDockerNode_Copy(t *testing.T) {
 	prjID := utils.RandString(4)
 	config := DockerNodeOptions{
 		Name: utils.RandString(3),
-		Type: "router",
 	}
 
-	node, err := NewDockerNode(prjID, config)
+	node, err := NewDockerNode(prjID, "router", config)
 	if err != nil {
 		t.Errorf("Unable to create docker node: %v", err)
 		return
@@ -143,13 +141,13 @@ func TestDockerNode_ReadConfigFiles(t *testing.T) {
 			desc:          "DockerNode: read config files of host node",
 			name:          fmt.Sprintf("%s-%s", prefix, "host"),
 			nType:         "host",
-			confFileNames: []string{"Network", "NTP"},
+			confFileNames: []string{"Init", "Network", "NTP"},
 		},
 		{
 			desc:          "DockerNode: read config files of server node",
 			name:          fmt.Sprintf("%s-%s", prefix, "server"),
 			nType:         "server",
-			confFileNames: []string{"Network", "NTP"},
+			confFileNames: []string{"Init", "Network", "NTP", "DHCP", "TFTP", "DHCP-RELAY", "Bind"},
 		},
 		{
 			desc:          "DockerNode: read config files of router node",
@@ -164,10 +162,9 @@ func TestDockerNode_ReadConfigFiles(t *testing.T) {
 			prjID := utils.RandString(4)
 			config := DockerNodeOptions{
 				Name: tt.name,
-				Type: tt.nType,
 			}
 
-			node, err := NewDockerNode(prjID, config)
+			node, err := NewDockerNode(prjID, tt.nType, config)
 			if err != nil {
 				t.Fatalf("Unable to create docker node: %v", err)
 			}
@@ -244,12 +241,11 @@ func TestDockerNode_Save(t *testing.T) {
 			prjID := utils.RandString(4)
 			config := DockerNodeOptions{
 				Name: tt.name,
-				Type: tt.nType,
 				Ipv6: tt.ipv6,
 				Mpls: tt.mpls,
 			}
 
-			node, err := NewDockerNode(prjID, config)
+			node, err := NewDockerNode(prjID, tt.nType, config)
 			if err != nil {
 				t.Errorf("Unable to create docker node: %v", err)
 				return
@@ -299,9 +295,8 @@ func TestDockerNode_AttachLink(t *testing.T) {
 	// Create 2 nodes and create a link between
 	config := DockerNodeOptions{
 		Name: utils.RandString(3),
-		Type: "router",
 	}
-	node1, err := NewDockerNode(prjID, config)
+	node1, err := NewDockerNode(prjID, "router", config)
 	if err != nil {
 		t.Fatalf("Unable to create docker node: %v", err)
 	}
@@ -309,9 +304,8 @@ func TestDockerNode_AttachLink(t *testing.T) {
 
 	config = DockerNodeOptions{
 		Name: utils.RandString(3),
-		Type: "host",
 	}
-	node2, err := NewDockerNode(prjID, config)
+	node2, err := NewDockerNode(prjID, "host", config)
 	if err != nil {
 		t.Fatalf("Unable to create docker node: %v", err)
 	}
@@ -354,10 +348,9 @@ func TestDockerNode_Volumes(t *testing.T) {
 	// Create 1 host node
 	config := DockerNodeOptions{
 		Name:    utils.RandString(3),
-		Type:    "host",
 		Volumes: []string{"/tmp:/tmp/volume"},
 	}
-	node, err := NewDockerNode(prjID, config)
+	node, err := NewDockerNode(prjID, "host", config)
 	if err != nil {
 		t.Fatalf("Unable to create docker node: %v", err)
 	}

@@ -76,13 +76,13 @@ func (o *OvsNode) ExecCommand(
 		resizeCh)
 }
 
-func (o *OvsNode) GetConsoleCmd(shell bool) []string {
+func (o *OvsNode) GetConsoleCmd(shell bool) ([]string, error) {
 	cmd := []string{"/bin/bash"}
 	if !shell {
 		cmd = []string{"/usr/bin/ovs-console.py", o.GetBridgeName()}
 	}
 
-	return cmd
+	return cmd, nil
 }
 
 func (o *OvsNode) CopyFrom(srcPath, destPath string) error {

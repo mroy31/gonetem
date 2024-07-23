@@ -8,18 +8,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/google/shlex"
 	"github.com/moby/term"
 	"github.com/mroy31/gonetem/internal/link"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netns"
-)
-
-const (
-	initScript = "/gonetem-init.sh"
 )
 
 type VrrpOptions struct {
@@ -31,8 +27,6 @@ type VrrpOptions struct {
 type DockerNodeOptions struct {
 	Name      string
 	ShortName string
-	Type      string
-	ImgName   string
 	Ipv6      bool
 	Mpls      bool
 	Vrfs      []string
@@ -49,7 +43,7 @@ type DockerNode struct {
 	ID             string
 	Name           string
 	ShortName      string
-	Type           string
+	Config         *options.DockerNodeConfig
 	Interfaces     map[string]link.IfState
 	LocalNetnsName string
 	Running        bool
@@ -77,7 +71,7 @@ func (n *DockerNode) GetType() string {
 }
 
 func (n *DockerNode) GetFullType() string {
-	return fmt.Sprintf("docker.%s", n.Type)
+	return fmt.Sprintf("docker.%s", n.Config.Type)
 }
 
 func (n *DockerNode) GetStatus() (DockerNodeStatus, error) {
@@ -255,16 +249,18 @@ func (n *DockerNode) ExecCommand(
 		resizeCh)
 }
 
-func (n *DockerNode) GetConsoleCmd(shell bool) []string {
-	cmd := []string{"/bin/bash"}
-	if !shell {
-		switch n.Type {
-		case "router":
-			cmd = []string{"/usr/bin/vtysh"}
-		}
+func (n *DockerNode) GetConsoleCmd(shell bool) ([]string, error) {
+	cmd := n.Config.Commands.Console
+	if shell {
+		cmd = n.Config.Commands.Shell
 	}
 
-	return cmd
+	cmds, err := shlex.Split(cmd)
+	if err != nil {
+		return []string{}, fmt.Errorf("unable to parse console cmd: %v", err)
+	}
+
+	return cmds, nil
 }
 
 func (n *DockerNode) Start() error {
@@ -406,81 +402,58 @@ func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) 
 			}
 		}
 
+		// Load confifuration files/folders
 		if _, err := os.Stat(confPath); err == nil {
-			configFiles := make(map[string]string)
-			configFolders := make(map[string]string)
-
-			switch n.Type {
-			case "router":
-				configFiles[n.Name+".frr.conf"] = "/etc/frr/frr.conf"
-			case "host":
-				configFiles[n.Name+".net.conf"] = "/tmp/custom.net.conf"
-				configFiles[n.Name+".ntp.conf"] = "/etc/ntp.conf"
-			case "server":
-				configFiles[n.Name+".net.conf"] = "/tmp/custom.net.conf"
-				configFiles[n.Name+".ntp.conf"] = "/etc/ntp.conf"
-				configFiles[n.Name+".dhcpd.conf"] = "/etc/dhcp/dhcpd.conf"
-				configFiles[n.Name+".tftpd-hpa.default"] = "/etc/default/tftpd-hpa"
-				configFiles[n.Name+".isc-relay.default"] = "/etc/default/isc-dhcp-relay"
-				configFiles[n.Name+".bind.default"] = "/etc/default/named"
-
-				configFolders[n.Name+".tftp-data.tgz"] = "/srv/tftp"
-				configFolders[n.Name+".bind-etc.tgz"] = "/etc/bind"
-			}
-
-			configFiles[n.Name+".init.conf"] = initScript
-			for source, dest := range configFiles {
-				source = path.Join(confPath, source)
-				if _, err := os.Stat(source); os.IsNotExist(err) {
+			for _, confFileOpts := range n.Config.ConfigurationFiles {
+				confFile := path.Join(confPath, fmt.Sprintf("%s.%s", n.Name, confFileOpts.DestSuffix))
+				if _, err := os.Stat(confFile); os.IsNotExist(err) {
 					continue
 				}
 
-				if err := client.CopyTo(ctx, n.ID, source, dest); err != nil {
-					return messages, fmt.Errorf("unable to load config file %s:\n\t%w", source, err)
+				if err := client.CopyTo(ctx, n.ID, confFile, confFileOpts.Source); err != nil {
+					return messages, fmt.Errorf("unable to load config file %s:\n\tdest: %s\n\t%w", confFile, confFileOpts.Source, err)
 				}
 			}
 
-			for source := range configFolders {
-				sourcePath := path.Join(confPath, source)
-				if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+			for _, confFolderOpts := range n.Config.ConfigurationFolders {
+				filename := fmt.Sprintf("%s.%s", n.Name, confFolderOpts.DestSuffix)
+				confFolderArchive := path.Join(confPath, filename)
+				if _, err := os.Stat(confFolderArchive); os.IsNotExist(err) {
 					continue
 				}
 
-				if err := client.CopyTo(ctx, n.ID, sourcePath, filepath.Join("/tmp", source)); err != nil {
-					return messages, fmt.Errorf("unable to copy archile file %s:\n\t%w", source, err)
+				if err := client.CopyTo(ctx, n.ID, confFolderArchive, filepath.Join("/tmp", filename)); err != nil {
+					return messages, fmt.Errorf("unable to copy archile file %s:\n\t%w", filename, err)
 				}
 
-				if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "xzf", filepath.Join("/tmp", source)}, "/"); err != nil {
-					return messages, fmt.Errorf("unable to extract archile file %s in the node:\n\t%w", source, err)
+				if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "xzf", filepath.Join("/tmp", filename)}, "/"); err != nil {
+					return messages, fmt.Errorf("unable to extract archile file %s in the node:\n\t%w", filename, err)
 				}
 			}
 		}
 
-		// Start process when necessary
-		if n.Type == "router" {
-			// start FRR daemon
-			if _, err := client.Exec(ctx, n.ID, []string{"/usr/lib/frr/frrinit.sh", "start"}); err != nil {
-				return messages, fmt.Errorf("node %s - unable to start router process - %v", n.Name, err)
-			}
-		} else {
-			netconf := path.Join(confPath, n.Name+".net.conf")
-			if _, err := os.Stat(netconf); err == nil {
-				output, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-l", "/tmp/custom.net.conf"})
-				if err != nil {
-					return messages, fmt.Errorf("node %s - unable to load network config - %v", n.Name, err)
-				} else if output != "" {
-					messages = strings.Split(output, "\n")
+		// Execute load config commands
+		for _, loadConfigCmd := range n.Config.Commands.LoadConfig {
+			canExec := true
+			for _, filepath := range loadConfigCmd.CheckFiles {
+				if !client.IsFileExist(context.Background(), n.ID, filepath) {
+					canExec = false
 				}
 			}
-		}
+			if !canExec {
+				continue
+			}
 
-		// execute init script if it exists
-		if client.IsFileExist(ctx, n.ID, initScript) {
-			output, err := client.Exec(ctx, n.ID, []string{"sh", initScript})
+			cmd, err := shlex.Split(loadConfigCmd.Command)
 			if err != nil {
-				return messages, err
-			} else if output != "" {
-				messages = strings.Split(output, "\n")
+				return messages, fmt.Errorf("unable to parse loadConfig command %s: %v", loadConfigCmd.Command, err)
+			}
+
+			output, err := client.Exec(ctx, n.ID, cmd)
+			if err != nil {
+				return messages, fmt.Errorf("node %s - unable to exec load config cmd %s - %v", n.Name, loadConfigCmd.Command, err)
+			} else if output != "" && n.Config.LogOutput {
+				messages = append(messages, output)
 			}
 		}
 
@@ -499,7 +472,6 @@ func (n *DockerNode) ReadConfigFiles(confDir string, timeout int) (map[string][]
 	}
 	defer client.Close()
 
-	var configFiles map[string]string
 	filesDir := confDir
 	if n.Running || n.ConfigLoaded {
 		// create temp directory for the project
@@ -516,27 +488,10 @@ func (n *DockerNode) ReadConfigFiles(confDir string, timeout int) (map[string][]
 		defer os.RemoveAll(dir)
 	}
 
-	switch n.Type {
-	case "host":
-		configFiles = map[string]string{
-			"Network": fmt.Sprintf("%s.net.conf", n.Name),
-			"NTP":     fmt.Sprintf("%s.ntp.conf", n.Name),
-		}
-	case "server":
-		configFiles = map[string]string{
-			"Network": fmt.Sprintf("%s.net.conf", n.Name),
-			"NTP":     fmt.Sprintf("%s.ntp.conf", n.Name),
-		}
-	case "router":
-		configFiles = map[string]string{
-			"FRR": fmt.Sprintf("%s.frr.conf", n.Name),
-		}
-	}
-
-	for name, filename := range configFiles {
-		filepath := path.Join(filesDir, filename)
+	for _, confFileOpts := range n.Config.ConfigurationFiles {
+		filepath := path.Join(filesDir, fmt.Sprintf("%s.%s", n.Name, confFileOpts.DestSuffix))
 		if _, err := os.Stat(filepath); os.IsNotExist(err) {
-			configFilesData[name] = []byte{}
+			configFilesData[confFileOpts.Label] = []byte{}
 			continue
 		}
 
@@ -544,7 +499,7 @@ func (n *DockerNode) ReadConfigFiles(confDir string, timeout int) (map[string][]
 		if err != nil {
 			return nil, fmt.Errorf("unable to read config file '%s':\n\t%w", filepath, err)
 		}
-		configFilesData[name] = data
+		configFilesData[confFileOpts.Label] = data
 	}
 
 	return configFilesData, nil
@@ -572,68 +527,53 @@ func (n *DockerNode) Save(dstPath string, timeout int) error {
 		defer cancel()
 	}
 
-	configFiles := make(map[string]string)
-	configFolders := make(map[string]string)
-	switch n.Type {
-	case "host":
-		confFile := "/tmp/custom.net.conf"
-		if _, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
-			return fmt.Errorf("node %s - unable to save network config - %v", n.Name, err)
+	// Execute save config commands
+	for _, saveConfigCmd := range n.Config.Commands.SaveConfig {
+		canExec := true
+		for _, filepath := range saveConfigCmd.CheckFiles {
+			if !client.IsFileExist(context.Background(), n.ID, filepath) {
+				canExec = false
+			}
 		}
-		configFiles[confFile] = fmt.Sprintf("%s.net.conf", n.Name)
-		configFiles["/etc/ntp.conf"] = fmt.Sprintf("%s.ntp.conf", n.Name)
-
-	case "server":
-		confFile := "/tmp/custom.net.conf"
-		if _, err := client.Exec(ctx, n.ID, []string{"network-config.py", "-s", confFile}); err != nil {
-			return fmt.Errorf("node %s - unable to save network config - %v", n.Name, err)
-		}
-		configFiles[confFile] = fmt.Sprintf("%s.net.conf", n.Name)
-		configFiles["/etc/ntp.conf"] = fmt.Sprintf("%s.ntp.conf", n.Name)
-		configFiles["/etc/dhcp/dhcpd.conf"] = fmt.Sprintf("%s.dhcpd.conf", n.Name)
-		configFiles["/etc/default/tftpd-hpa"] = fmt.Sprintf("%s.tftpd-hpa.default", n.Name)
-		configFiles["/etc/default/isc-dhcp-relay"] = fmt.Sprintf("%s.isc-relay.default", n.Name)
-		configFiles["/etc/default/named"] = fmt.Sprintf("%s.bind.default", n.Name)
-
-		configFolders["/srv/tftp"] = fmt.Sprintf("%s.tftp-data.tgz", n.Name)
-		configFolders["/etc/bind"] = fmt.Sprintf("%s.bind-etc.tgz", n.Name)
-
-	case "router":
-		confFile := "/etc/frr/frr.conf"
-		if _, err := client.Exec(ctx, n.ID, []string{"vtysh", "-w"}); err != nil {
-			return fmt.Errorf("node %s - unable to save router config - %v", n.Name, err)
-		}
-		if _, err := client.Exec(ctx, n.ID, []string{"chmod", "+r", confFile}); err != nil {
-			return err
-		}
-		configFiles[confFile] = fmt.Sprintf("%s.frr.conf", n.Name)
-	}
-
-	// Save init script if it exists
-	configFiles[initScript] = fmt.Sprintf("%s.init.conf", n.Name)
-	for source, dest := range configFiles {
-		dest = path.Join(dstPath, dest)
-		if !client.IsFileExist(ctx, n.ID, source) {
+		if !canExec {
 			continue
 		}
 
-		if err := client.CopyFrom(ctx, n.ID, source, dest); err != nil {
-			return fmt.Errorf("node %s - unable to save file %s:\n\t%v", n.Name, source, err)
+		cmd, err := shlex.Split(saveConfigCmd.Command)
+		if err != nil {
+			return fmt.Errorf("unable to parse save config command %s: %v", saveConfigCmd.Command, err)
+		}
+
+		if _, err := client.Exec(ctx, n.ID, cmd); err != nil {
+			return fmt.Errorf("node %s - unable to exec save config cmd %s - %v", n.Name, saveConfigCmd.Command, err)
 		}
 	}
 
-	for source, dest := range configFolders {
-		destPath := path.Join(dstPath, dest)
-		if !client.IsFolderExist(ctx, n.ID, source) {
+	for _, confFileOpts := range n.Config.ConfigurationFiles {
+		if !client.IsFileExist(ctx, n.ID, confFileOpts.Source) {
 			continue
 		}
 
-		if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "czf", "/tmp/" + dest, source}, "/"); err != nil {
+		confFile := path.Join(dstPath, fmt.Sprintf("%s.%s", n.Name, confFileOpts.DestSuffix))
+		if err := client.CopyFrom(ctx, n.ID, confFileOpts.Source, confFile); err != nil {
+			return fmt.Errorf("unable to save config file %s:\n\t%w", confFile, err)
+		}
+	}
+
+	for _, confFolderOpts := range n.Config.ConfigurationFolders {
+		if !client.IsFolderExist(ctx, n.ID, confFolderOpts.Source) {
+			continue
+		}
+
+		filename := fmt.Sprintf("%s.%s", n.Name, confFolderOpts.DestSuffix)
+		confFolderArchive := path.Join(dstPath, filename)
+
+		if _, err := client.ExecWithWorkingDir(ctx, n.ID, []string{"tar", "czf", "/tmp/" + filename, confFolderOpts.Source}, "/"); err != nil {
 			return err
 		}
 
-		if err := client.CopyFrom(ctx, n.ID, "/tmp/"+dest, destPath); err != nil {
-			return fmt.Errorf("node %s - unable to save archive file %s:\n\t%v", n.Name, source, err)
+		if err := client.CopyFrom(ctx, n.ID, "/tmp/"+filename, confFolderArchive); err != nil {
+			return fmt.Errorf("node %s - unable to save archive file %s:\n\t%v", n.Name, filename, err)
 		}
 	}
 
@@ -719,13 +659,36 @@ func (n *DockerNode) Close() error {
 	return nil
 }
 
-func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, error) {
+func getDockerConfigFromType(nType string) (*options.DockerNodeConfig, error) {
+	switch nType {
+	case "router":
+		return &options.ServerConfig.Docker.Nodes.Router, nil
+	case "host":
+		return &options.ServerConfig.Docker.Nodes.Host, nil
+	case "server":
+		return &options.ServerConfig.Docker.Nodes.Server, nil
+	default:
+		for _, nConfig := range options.ServerConfig.Docker.ExtraNodes {
+			if nConfig.Type == nType {
+				return &nConfig, nil
+			}
+		}
+		return nil, fmt.Errorf("docker node of type %s does not exist in the configuraiton", nType)
+	}
+}
+
+func NewDockerNode(prjID string, nType string, dockerOpts DockerNodeOptions) (*DockerNode, error) {
+	nConfig, err := getDockerConfigFromType(nType)
+	if err != nil {
+		return nil, err
+	}
+
 	node := &DockerNode{
 		PrjID:      prjID,
 		ID:         "",
 		Name:       dockerOpts.Name,
 		ShortName:  dockerOpts.ShortName,
-		Type:       dockerOpts.Type,
+		Config:     nConfig,
 		Mpls:       dockerOpts.Mpls,
 		Vrfs:       dockerOpts.Vrfs,
 		Vrrps:      dockerOpts.Vrrps,
@@ -737,21 +700,7 @@ func NewDockerNode(prjID string, dockerOpts DockerNodeOptions) (*DockerNode, err
 		}),
 	}
 
-	imgName := dockerOpts.ImgName
-	if imgName == "" {
-		// use default image
-		switch dockerOpts.Type {
-		case "host":
-			imgName = options.GetDockerImageId(options.IMG_HOST)
-		case "server":
-			imgName = options.GetDockerImageId(options.IMG_SERVER)
-		case "router":
-			imgName = options.GetDockerImageId(options.IMG_ROUTER)
-		default:
-			return node, fmt.Errorf("docker type %s is not known", dockerOpts.Type)
-		}
-	}
-
+	imgName := options.GetDockerImageId(nConfig.Image)
 	if err := node.Create(imgName, dockerOpts.Ipv6); err != nil {
 		return node, err
 	}

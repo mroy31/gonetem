@@ -45,14 +45,17 @@ More details are given below for each type of node.
 
 Docker node
 ```````````
-A docker node is a container launch by gonetem. 3 kinds of docker node
-are available, each one associated to an image:
+A docker node is a container launch by gonetem. Bydefault, 3 kinds of docker node
+are available, each one associated to an image defined in the server 
+configuration file. These one ared by default:
 
 - mroy31/gonetem-host identified by the type *docker.host*, which emulates a terminal node
 - mroy31/gonetem-server identified by the type *docker.server*, which emulates a server node (with http, tftp and dhcp server for now)
 - mroy31/gonetem-frr identified by the type *docker.router*, which emulates router based on the software `FRR <https://frrouting.org/>`_
 
-All these images are available on docker hub. It is also possible to use a custom image thanks to the options ``image`` (see below).
+All these images are available on docker hub. It is also possible to use a custom image 
+thanks to the options ``image`` (see below). You can also defined new kind of
+node in the server configration file. See :ref:`nodes` for more details.
 
 Options
 """""""

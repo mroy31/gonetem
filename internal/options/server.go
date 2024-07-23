@@ -8,7 +8,7 @@ import (
 	"regexp"
 
 	"google.golang.org/grpc/credentials"
-	"gopkg.in/yaml.v2"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -16,6 +16,25 @@ const (
 	IMG_VERSION           = "0.2.0"
 	NETEM_ID              = "ntm"
 	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
+	MINIMUM_SERVER_CONFIG = `
+listen: "localhost:10110"
+tls:
+  enabled: false
+  ca: ""
+  cert: ""
+  key: ""
+workdir: /tmp
+docker:
+  timeoutop: 60
+  nodes:
+    router:
+      image: mroy31/gonetem-frr
+    host:
+      image: mroy31/gonetem-host
+    server:
+      image: mroy31/gonetem-server
+  extraNodes: []
+`
 	INITIAL_SERVER_CONFIG = `
 listen: "localhost:10110"
 tls:
@@ -26,22 +45,126 @@ tls:
 workdir: /tmp
 docker:
   timeoutop: 60
-  images:
-    server: mroy31/gonetem-server
-    host: mroy31/gonetem-host
-    router: mroy31/gonetem-frr
-    ovs: mroy31/gonetem-ovs
+  nodes:
+    router:
+      type: router
+      image: mroy31/gonetem-frr
+      logOutput: false
+      commands:
+        console: /usr/bin/vtysh
+        shell: /bin/bash
+        loadConfig:
+        - command: /usr/lib/frr/frrinit.sh start
+          checkFiles: []
+        saveConfig:
+        - command: vtysh -w
+          checkFiles: []
+      configurationFiles:
+      - destSuffix: frr.conf
+        source: /etc/frr/frr.conf
+        label: FRR
+    host:
+      type: host
+      image: mroy31/gonetem-host
+      logOutput: true
+      commands:
+        console: /bin/bash
+        shell: /bin/bash
+        loadConfig:
+        - command: network-config.py -l /tmp/custom.net.conf
+          checkFiles:
+          - /tmp/custom.net.conf
+        - command: /bin/bash /gonetem-init.sh
+          checkFiles:
+          - /gonetem-init.sh
+        saveConfig:
+        - command: network-config.py -s /tmp/custom.net.conf
+          checkFiles: []
+      configurationFiles:
+      - destSuffix: init.conf
+        source: /gonetem-init.sh
+        label: Init
+      - destSuffix: net.conf
+        source: /tmp/custom.net.conf
+        label: Network
+      - destSuffix: ntp.conf
+        source: /etc/ntpsec/ntp.conf
+        label: NTP
+    server:
+      type: server
+      image: mroy31/gonetem-server
+      logOutput: true
+      commands:
+        console: /bin/bash
+        shell: /bin/bash
+        loadConfig:
+        - command: network-config.py -l /tmp/custom.net.conf
+          checkFiles:
+          - /tmp/custom.net.conf
+        - command: /bin/bash /gonetem-init.sh
+          checkFiles:
+          - /gonetem-init.sh
+        saveConfig:
+        - command: network-config.py -s /tmp/custom.net.conf
+          checkFiles: []
+      configurationFiles:
+      - destSuffix: init.conf
+        source: /gonetem-init.sh
+        label: Init
+      - destSuffix: net.conf
+        source: /tmp/custom.net.conf
+        label: Network
+      - destSuffix: ntp.conf
+        source: /etc/ntpsec/ntp.conf
+        label: NTP
+      - destSuffix: dhcpd.conf
+        source: /etc/dhcp/dhcpd.conf
+        label: DHCP
+      - destSuffix: tftpd-hpa.default
+        source: /etc/default/tftpd-hpa
+        label: TFTP
+      - destSuffix: isc-relay.default
+        source: /etc/default/isc-dhcp-relay
+        label: DHCP-RELAY
+      - destSuffix: bind.default
+        source: /etc/default/named
+        label: Bind
+      configurationFolders:
+      - destSuffix: tftp-data.tgz
+        source: /srv/tftp
+        label: TFTP-Data
+      - destSuffix: bind-etc.tgz
+        source: /etc/bind
+        label: Bind-Data
+  extraNodes: []
+  ovsImage: mroy31/gonetem-ovs
 `
 )
 
-type DockerImageT int
+type DockerConfiguration struct {
+	DestSuffix string
+	Source     string
+	Label      string
+}
 
-const (
-	IMG_ROUTER DockerImageT = iota
-	IMG_HOST
-	IMG_SERVER
-	IMG_OVS
-)
+type DockerConfigCommand struct {
+	Command    string
+	CheckFiles []string
+}
+
+type DockerNodeConfig struct {
+	Type      string
+	Image     string
+	LogOutput bool
+	Commands  struct {
+		Console    string
+		Shell      string
+		LoadConfig []DockerConfigCommand
+		SaveConfig []DockerConfigCommand
+	}
+	ConfigurationFiles   []DockerConfiguration
+	ConfigurationFolders []DockerConfiguration
+}
 
 type NetemServerConfig struct {
 	Listen  string
@@ -49,12 +172,13 @@ type NetemServerConfig struct {
 	Workdir string
 	Docker  struct {
 		Timeoutop int
-		Images    struct {
-			Server string
-			Host   string
-			Router string
-			Ovs    string
+		Nodes     struct {
+			Router DockerNodeConfig
+			Host   DockerNodeConfig
+			Server DockerNodeConfig
 		}
+		ExtraNodes []DockerNodeConfig
+		OvsImage   string
 	}
 }
 
@@ -70,7 +194,7 @@ func InitServerConfig() {
 }
 
 func CreateServerConfig(config string) error {
-	return os.WriteFile(config, []byte(INITIAL_SERVER_CONFIG), 0644)
+	return os.WriteFile(config, []byte(MINIMUM_SERVER_CONFIG), 0644)
 }
 
 func ParseServerConfig(config string) error {
@@ -82,26 +206,14 @@ func ParseServerConfig(config string) error {
 	return yaml.Unmarshal(data, &ServerConfig)
 }
 
-func GetDockerImageId(imgType DockerImageT) string {
-	var name string
+func GetDockerImageId(image string) string {
 	hasTagRE := regexp.MustCompile(`^\S+:[\w\.]+$`)
 
-	switch imgType {
-	case IMG_ROUTER:
-		name = ServerConfig.Docker.Images.Router
-	case IMG_HOST:
-		name = ServerConfig.Docker.Images.Host
-	case IMG_SERVER:
-		name = ServerConfig.Docker.Images.Server
-	case IMG_OVS:
-		name = ServerConfig.Docker.Images.Ovs
+	if !hasTagRE.MatchString(image) {
+		image = fmt.Sprintf("%s:%s", image, IMG_VERSION)
 	}
 
-	if !hasTagRE.MatchString(name) {
-		name = fmt.Sprintf("%s:%s", name, IMG_VERSION)
-	}
-
-	return name
+	return image
 }
 
 func LoadServerTLSCredentials() (credentials.TransportCredentials, error) {

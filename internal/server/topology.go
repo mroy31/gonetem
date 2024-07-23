@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +16,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -224,6 +225,15 @@ func (t *NetemTopologyManager) Load() error {
 			}
 			node, err := CreateNode(t.prjID, name, shortName, nConfig)
 
+			if err != nil {
+				if !reflect.ValueOf(node).IsNil() {
+					t.logger.Infof("error node %t", node == nil)
+					node.Close()
+				}
+
+				return fmt.Errorf("unable to create node %s: %w", name, err)
+			}
+
 			mutex.Lock()
 			t.nodes = append(t.nodes, NetemNode{
 				Instance:        node,
@@ -231,10 +241,6 @@ func (t *NetemTopologyManager) Load() error {
 				Config:          nConfig,
 			})
 			mutex.Unlock()
-
-			if err != nil {
-				return fmt.Errorf("unable to create node %s: %w", name, err)
-			}
 
 			return nil
 		})

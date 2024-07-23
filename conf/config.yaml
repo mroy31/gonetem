@@ -6,8 +6,11 @@ tls:
   key: ""
 workdir: /tmp
 docker:
-  images:
-    server: mroy31/gonetem-server
-    host: mroy31/gonetem-host
-    router: mroy31/gonetem-frr
-    ovs: mroy31/gonetem-ovs
+  nodes:
+    router:
+      image: mroy31/gonetem-frr
+    host:
+      image: mroy31/gonetem-host
+    server:
+      image: mroy31/gonetem-server
+  extraNodes: []
