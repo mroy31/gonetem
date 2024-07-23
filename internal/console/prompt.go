@@ -937,8 +937,8 @@ func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
 
 	stream, err := client.TopologyReload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to reload the project: %v\n", err)
 		s.Stop()
+		RedPrintf("Unable to reload the project: %v\n", err)
 		return
 	}
 
@@ -947,6 +947,7 @@ func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
+			s.Stop()
 			RedPrintf("Unable to run topology: %v\n", err)
 			break
 		}
