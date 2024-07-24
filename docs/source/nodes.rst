@@ -39,6 +39,7 @@ the full configuration for the node ``host``:
         host:
           type: host
           image: mroy31/gonetem-host
+          volumes: []
           logOutput: true
           commands:
             console: /bin/bash
@@ -68,6 +69,7 @@ List of parameters:
 
 - ``type`` (string): type of node (used in the topology file to declare a docker node)
 - ``image`` (string): docker image used to launch the container
+- ``volumes`` (string list): Allow to bind host path in container filesystem (like -v option in ``docker run```). The syntax is ``/host/path:/container/path`` and can be completed in the topology definition.
 - ``logOutput`` (boolean): show output messages of loadConfig commands
 - ``commands``: list of commands needed by gonetem to manage the node
 
@@ -95,6 +97,7 @@ the integrated nodes in gonetem. Example:
       extraNodes:
       - type: myhost
         image: mydocker-img
+        volumes: []
         logOutput: false
         commands:
           console: /bin/myconsole

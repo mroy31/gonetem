@@ -49,6 +49,7 @@ docker:
     router:
       type: router
       image: mroy31/gonetem-frr
+      volumes: []
       logOutput: false
       commands:
         console: /usr/bin/vtysh
@@ -66,6 +67,7 @@ docker:
     host:
       type: host
       image: mroy31/gonetem-host
+      volumes: []
       logOutput: true
       commands:
         console: /bin/bash
@@ -93,6 +95,7 @@ docker:
     server:
       type: server
       image: mroy31/gonetem-server
+      volumes: []
       logOutput: true
       commands:
         console: /bin/bash
@@ -155,6 +158,7 @@ type DockerConfigCommand struct {
 type DockerNodeConfig struct {
 	Type      string
 	Image     string
+	Volumes   []string
 	LogOutput bool
 	Commands  struct {
 		Console    string

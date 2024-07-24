@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/google/shlex"
@@ -112,7 +113,9 @@ func (n *DockerNode) Create(imgName string, ipv6 bool) error {
 	}
 
 	containerName := fmt.Sprintf("%s%s.%s", options.NETEM_ID, n.PrjID, n.Name)
-	if n.ID, err = client.Create(ctx, imgName, containerName, n.Name, n.Volumes, ipv6, n.Mpls); err != nil {
+	volumes := slices.Concat(n.Config.Volumes, n.Volumes)
+
+	if n.ID, err = client.Create(ctx, imgName, containerName, n.Name, volumes, ipv6, n.Mpls); err != nil {
 		return err
 	}
 
