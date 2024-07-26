@@ -119,6 +119,8 @@ func OpenProject(prjPath string) (string, string, error) {
 				break
 			} else if err != nil {
 				ProgressAbort(bars, true)
+				mpBar.Wait()
+
 				RedPrintf("Unable to run topology: %v\n", err)
 				return name, prjID, err
 			}

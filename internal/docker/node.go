@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/shlex"
@@ -453,9 +454,11 @@ func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) 
 			}
 
 			output, err := client.Exec(ctx, n.ID, cmd)
+			output = strings.Trim(output, " ")
 			if err != nil {
 				return messages, fmt.Errorf("node %s - unable to exec load config cmd %s - %v", n.Name, loadConfigCmd.Command, err)
-			} else if output != "" && n.Config.LogOutput {
+			} else if output != "" && output != "\n" && n.Config.LogOutput {
+				n.Logger.Infof("\nLoadCOnfig Message: '%s'", output)
 				messages = append(messages, output)
 			}
 		}

@@ -89,13 +89,13 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 
 	case proto.TopologyRunMsg_NODE_MESSAGES:
 		ProgressForceComplete(bars)
+		mpBar.Wait()
+
 		for _, nMessages := range msg.NodeMessages {
 			if len(nMessages.Messages) > 0 {
 				fmt.Println(color.YellowString(nMessages.Name + ":"))
 				for _, msg := range nMessages.Messages {
-					if msg != "" {
-						fmt.Println(color.YellowString("  - " + msg))
-					}
+					fmt.Println(color.YellowString("  - " + msg))
 				}
 			}
 		}
