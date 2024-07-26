@@ -58,6 +58,18 @@ edit
 ----
 Edit the topology. The editor used to open the topology file is vim.
 
+exec
+----
+Execute a command on a specific node
+
+Usage:
+
+.. code-block:: bash
+
+  exec <node_name> "<cmd>"
+  # example
+  exec host1 "ip addr show"
+
 ifState
 -------
 Enable/disable a node interface.
