@@ -4,10 +4,10 @@ Docker nodes configuration
 ==========================
 
 
-Gonetem default nodes
+Pre-configured nodes
 ---------------------
 
-By default, 3 kind of docker nodes can ben used in gonetem topology
+By default, 3 kind of docker nodes have been pre-configured in gonetem
 
 - `router` to emulate a router thanks to FRR
 - `host` to emulate a simple machine
@@ -122,3 +122,34 @@ Once define in the server configuration file, you can use this new node in the t
         type: docker.myhost
 
 
+VyOS
+````
+
+A concrete example of this feature is the possibility to use `VyOS <https://vyos.io/>`_ router with gonetem.
+To do that:
+
+1. Build VyOS docker image compatible with gonetem (look at the ``docker/README.md`` file to do that)
+2. Add this extra node configuration in the server configuration file 
+
+.. code-block:: yaml
+
+    docker:
+      extraNodes:
+      - type: vyos
+        image: gonetem-vyos:1.4
+        logOutput: false
+        commands:
+          console: su - vyos
+          shell: /bin/bash
+          loadConfig:
+          - command: /bin/bash /usr/bin/start-vyos.sh
+            checkFiles: []
+          saveConfig:
+          - command: /bin/bash /usr/bin/save-vyos-config.sh
+            checkFiles: []
+        configurationFiles:
+        - destSuffix: vyos.conf
+          source: /opt/vyatta/etc/config/config.boot
+          label: VyOS
+
+Finally, restart gonetem server and after you can use ``docker.vyos`` node in your topology.
