@@ -458,7 +458,6 @@ func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) 
 			if err != nil {
 				return messages, fmt.Errorf("node %s - unable to exec load config cmd %s - %v", n.Name, loadConfigCmd.Command, err)
 			} else if output != "" && output != "\n" && n.Config.LogOutput {
-				n.Logger.Infof("\nLoadCOnfig Message: '%s'", output)
 				messages = append(messages, output)
 			}
 		}
