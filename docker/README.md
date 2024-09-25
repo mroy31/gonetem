@@ -68,7 +68,7 @@ $ sudo rm -rf vyos-docker-build
 ```bash
 $ cd vyos
 $ docker build -t gonetem-vyos:1.4 .
-# If needed, update the base vyos image name if the Dockerfile
+# If needed, update the base vyos image name in the Dockerfile
 ```
 
 

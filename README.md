@@ -38,7 +38,7 @@ The 2 binaries are then available in the `bin` folder
 Import docker images
 --------------------
 
-Before using gonetem, you need to pull from docker hub images used by gonetem.
+Before using gonetem, you need to pull from docker hub images used by default by gonetem.
 
 * mroy31/gonetem-frr -> to emulate router based on frr software
 * mroy31/gonetem-host -> tp emulate host
