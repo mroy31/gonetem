@@ -37,7 +37,7 @@ type VrrpOptions struct {
 
 type NodeConfig struct {
 	Type    string
-	IPv6    bool          `yaml:",omitempty" default:"false"`
+	IPv6    bool          `yaml:",omitempty" default:"true"`
 	Mpls    bool          `yaml:",omitempty" default:"false"`
 	Vrfs    []string      `yaml:",omitempty"`
 	Vrrps   []VrrpOptions `yaml:",omitempty"`
