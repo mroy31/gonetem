@@ -853,13 +853,10 @@ func (t *NetemTopologyManager) Close(progressCh chan TopologyRunCloseProgressT) 
 		t.logger.Errorf("Error when closing nodes: %v", err)
 	}
 
+	// close all bridges
 	rootNs := link.GetRootNetns()
 	defer rootNs.Close()
 	for _, br := range t.bridges {
-		if err := link.DeleteLink(br.Name, rootNs); err != nil {
-			t.logger.Warnf("Error when deleting bridge %s: %v", br.Name, err)
-		}
-
 		for _, peer := range br.Peers {
 			ifName := fmt.Sprintf(
 				"%s%s%s.%d", options.NETEM_ID, t.prjID,
@@ -868,9 +865,14 @@ func (t *NetemTopologyManager) Close(progressCh chan TopologyRunCloseProgressT) 
 				t.logger.Warnf("Error when deleting link %s: %v", ifName, err)
 			}
 
-			if progressCh != nil {
-				progressCh <- TopologyRunCloseProgressT{Code: CLOSE_BRIDGE}
-			}
+		}
+
+		if err := link.DeleteLink(br.Name, rootNs); err != nil {
+			t.logger.Warnf("Error when deleting bridge %s: %v", br.Name, err)
+		}
+
+		if progressCh != nil {
+			progressCh <- TopologyRunCloseProgressT{Code: CLOSE_BRIDGE}
 		}
 	}
 
@@ -879,6 +881,7 @@ func (t *NetemTopologyManager) Close(progressCh chan TopologyRunCloseProgressT) 
 	t.bridges = make([]*NetemBridge, 0)
 	t.IdGenerator.Close()
 
+	// close OVS instance
 	if err := ovs.CloseOvsInstance(t.prjID); err != nil {
 		t.logger.Warnf("Error when closing ovswitch instance: %v", err)
 	}
