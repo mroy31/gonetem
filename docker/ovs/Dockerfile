@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -y && \
     apt-get install -y python3 python3-cmd2 less vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools \
-	    traceroute htop procps openvswitch-switch \
+	    traceroute htop procps openvswitch-switch iproute2 \
 	    ethtool && rm -rf /var/lib/apt/lists/*
 
 # Create database and pid file directory
