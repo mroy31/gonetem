@@ -98,6 +98,50 @@ def format_vlan_tags(v: str) -> str:
     return v
 
 
+@cmd2.with_category("interfaces")
+class OvsIfCommandSet(CommandSet):
+
+    def __init__(self, sw_name: str):
+        super().__init__()
+        self.sw_name = sw_name
+
+
+    if_show_parser = cmd2.Cmd2ArgumentParser()
+
+    @cmd2.as_subcommand_to('show', 'interfaces', if_show_parser)
+    def show_table(self, _: argparse.Namespace):
+        try:
+            result = run_command(f"ovs-dpctl show", check_output=True)
+            for line in result.splitlines():
+                groups = re.search(r"port \d+: (\S+)", line)
+                if groups is None or not groups[1].startswith(self.sw_name):
+                    continue
+                self._cmd.poutput(line)
+        except ConsoleError as err:
+            self._cmd.perror("Unable to get interface informations: {}".format(err))
+
+
+@cmd2.with_category("mac")
+class OvsMacCommandSet(CommandSet):
+
+    def __init__(self, sw_name: str):
+        super().__init__()
+        self.sw_name = sw_name
+
+
+    table_show_parser = cmd2.Cmd2ArgumentParser()
+    table_show_parser.add_argument('table', choices=["address-table"]) 
+
+    @cmd2.as_subcommand_to('show', 'mac', table_show_parser)
+    def show_table(self, args: argparse.Namespace):
+        if args.table == "address-table":
+            try:
+                table = run_command(f"ovs-appctl fdb/show {self.sw_name}", check_output=True)
+                self._cmd.poutput(table)
+            except ConsoleError as err:
+                self._cmd.perror("Unable to get MAC address table: {}".format(err))
+
+
 @cmd2.with_category("vlan")
 class OvsVlanCommandSet(CommandSet):
 
@@ -145,14 +189,14 @@ class OvsVlanCommandSet(CommandSet):
         """
         if args.type == "access":
             try:
-                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.tag}")
+                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.tag} vlan_mode=access")
             except ConsoleError as err:
                 self._cmd.perror(f"Unable add port {args.port} to vlan {args.tag} in access mode: {err}")
 
         if args.type == "trunk":
             try:
                 run_command(
-                    f"ovs-vsctl set port {self.sw_name}.{args.port} trunks={args.tag}"
+                    f"ovs-vsctl set port {self.sw_name}.{args.port} trunks={args.tag} vlan_mode=trunk"
                 )
             except ConsoleError as err:
                 self._cmd.perror( f"Unable add port {args.port} to trunks {args.tag}: {err}")
@@ -171,13 +215,13 @@ class OvsVlanCommandSet(CommandSet):
         """
         if args.type == "access":
             try:
-                run_command(f"ovs-vsctl remove port {self.sw_name}.{args.port} tag={args.tag}")
+                run_command(f"ovs-vsctl remove port {self.sw_name}.{args.port} tag {args.tag}")
             except ConsoleError as err:
                 self._cmd.perror(f"Unable remove port {args.port} to vlan {args.tag} in access mode: {err}")
 
         if args.type == "trunk":
             try:
-                run_command(f"ovs-vsctl remove port {self.sw_name}.{args.port} trunks={args.tag}")
+                run_command(f"ovs-vsctl remove port {self.sw_name}.{args.port} trunks {args.tag}")
             except ConsoleError as err:
                 self._cmd.perror(f"Unable remove port {args.port} to vlan(s) {args.tag} in trunk mode: {err}")
 
@@ -275,6 +319,8 @@ class OvsConsole(Cmd):
         # load command set
         self.register_command_set(OvsVlanCommandSet(sw_name))
         self.register_command_set(OvsBondingCommandSet(sw_name))
+        self.register_command_set(OvsMacCommandSet(sw_name))
+        self.register_command_set(OvsIfCommandSet(sw_name))
 
     def emptyline(self):
         # do nothing when an empty line is entered

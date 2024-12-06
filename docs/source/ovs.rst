@@ -8,6 +8,25 @@ thanks to ``openvswitch``.
 
 This page lists all commands available in the switch console.
 
+Global commands
+---------------
+
+Show MAC address table
+```````````````````````
+
+.. code-block:: shell
+
+  show mac address-table
+
+Show interfaces
+```````````````
+Show ovs port number used for this switch 
+
+.. code-block:: shell
+
+  show interfaces
+
+
 VLAN configuration
 ------------------
 
