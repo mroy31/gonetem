@@ -233,6 +233,8 @@ var connectCmd = &cobra.Command{
 				prompt.WithPrefix("Select project: "),
 				prompt.WithCompleter(NewConnectCompleter(projects).Complete),
 			)
+			//
+			prjName = strings.TrimSpace(prjName)
 
 			// find project in list
 			for _, prj := range projects.GetProjects() {
