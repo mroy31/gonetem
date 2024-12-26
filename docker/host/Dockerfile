@@ -18,7 +18,8 @@ RUN apt-get update -y && \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
 	    telnet man traceroute hping3 iptables links htop ntp git wget at \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
-		bind9-dnsutils && rm -rf /var/lib/apt/lists/*
+		bind9-dnsutils python3-scapy python3-netifaces \
+		&& rm -rf /var/lib/apt/lists/*
 
 ## install quic-go client
 COPY --from=0 /quic-client /usr/local/bin/quic-client
@@ -28,6 +29,11 @@ COPY ./programs/mult-receive.py /usr/bin/mult_receive
 RUN chmod +x /usr/bin/mult_receive
 COPY ./programs/mult-send.py /usr/bin/mult_send
 RUN chmod +x /usr/bin/mult_send
+
+## install eth-gen program
+COPY ./programs/eth-gen.py /usr/bin/eth_gen
+RUN chmod +x /usr/bin/eth_gen
+
 
 COPY ./scripts/iinit.py /usr/bin/
 RUN chmod +x /usr/bin/iinit.py
