@@ -7,7 +7,8 @@ RUN apt-get update -y && \
     apt-get install -y python3 python3-cmd2 less vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools \
 	    traceroute htop procps openvswitch-switch iproute2 \
-	    ethtool && rm -rf /var/lib/apt/lists/*
+	    python3-rich python3-pyroute2 ethtool \
+		&& rm -rf /var/lib/apt/lists/*
 
 # Create database and pid file directory
 RUN /usr/bin/ovsdb-tool create /etc/openvswitch/conf.db

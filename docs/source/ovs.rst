@@ -27,6 +27,23 @@ Show ovs port number used for this switch
   show interfaces
 
 
+STP configuration
+------------------
+
+Show stp state
+``````````````
+
+.. code-block:: shell
+
+  show stp
+
+Enable/Disable stp
+``````````````````
+
+.. code-block:: shell
+
+  set stp enable|disable
+
 VLAN configuration
 ------------------
 

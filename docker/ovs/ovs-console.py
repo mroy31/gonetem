@@ -5,10 +5,16 @@ import argparse
 import shlex
 import subprocess
 import re
-from typing import List, TypedDict
+from typing import List, TypedDict, Dict
 import cmd2
 from cmd2 import Cmd, CommandSet
 from cmd2 import Cmd2ArgumentParser, with_argparser
+from rich.console import Console
+from rich.table import Table
+from pyroute2 import NDB
+
+
+CONSOLE = Console()
 
 
 class BondingMemberT(TypedDict):
@@ -98,6 +104,22 @@ def format_vlan_tags(v: str) -> str:
     return v
 
 
+def get_interfaces_ofport(sw_name: str) -> Dict[str, str]:
+    data = run_command(f"ovs-vsctl -- --columns=name,ofport list Interface", check_output=True)
+    result: Dict[str, str] = {}
+    current_ifname = ""
+
+    for line in data.splitlines():
+        if line.startswith("name"):
+            current_ifname = line.split(" : ")[1]
+        if line.startswith("ofport"):
+            ofport = line.split(" : ")[1]
+            if current_ifname.startswith(f"{sw_name}.") and ofport != -1:
+                result[ofport] = current_ifname.split(".")[1]
+    
+    return result
+
+
 @cmd2.with_category("interfaces")
 class OvsIfCommandSet(CommandSet):
 
@@ -110,15 +132,26 @@ class OvsIfCommandSet(CommandSet):
 
     @cmd2.as_subcommand_to('show', 'interfaces', if_show_parser)
     def show_table(self, _: argparse.Namespace):
-        try:
-            result = run_command(f"ovs-dpctl show", check_output=True)
-            for line in result.splitlines():
-                groups = re.search(r"port \d+: (\S+)", line)
-                if groups is None or not groups[1].startswith(self.sw_name):
-                    continue
-                self._cmd.poutput(line)
-        except ConsoleError as err:
-            self._cmd.perror("Unable to get interface informations: {}".format(err))
+        table = Table("Interface", "MAC", "State", show_edge=False, header_style="not bold")
+        with NDB() as ndb:
+            try:
+                result = run_command(f"ovs-dpctl show", check_output=True)
+                for line in result.splitlines():
+                    groups = re.search(r"port (\d+): (\S+)", line)
+                    if groups is None or not groups[2].startswith(self.sw_name):
+                        continue
+                    ifname = groups[2]
+                    if ifname == self.sw_name:
+                        ifname = f"{ifname} (internal)"
+                    else:
+                        ifname = ifname.split(".")[1]
+                    interface = ndb.interfaces[groups[2]]
+                    table.add_row(ifname, interface["address"], interface["state"].upper())
+
+            except ConsoleError as err:
+                self._cmd.perror("Unable to get interface informations: {}".format(err))
+                return
+            CONSOLE.print(table)
 
 
 @cmd2.with_category("mac")
@@ -135,11 +168,63 @@ class OvsMacCommandSet(CommandSet):
     @cmd2.as_subcommand_to('show', 'mac', table_show_parser)
     def show_table(self, args: argparse.Namespace):
         if args.table == "address-table":
+            table = Table("Interface", "VLAN", "MAC", "Age", show_edge=False, header_style="not bold")
             try:
-                table = run_command(f"ovs-appctl fdb/show {self.sw_name}", check_output=True)
-                self._cmd.poutput(table)
+                if_ofports = get_interfaces_ofport(self.sw_name)
+
+                output = run_command(f"ovs-appctl fdb/show {self.sw_name}", check_output=True)
+                for line in output.splitlines():
+                    line = line.strip()
+                    if line.startswith("port"):
+                        continue
+
+                    data = [d for d in line.split(" ") if d != '']
+                    table.add_row(if_ofports[data[0]], data[1], data[2], data[3])
+
+                CONSOLE.print(table)
             except ConsoleError as err:
                 self._cmd.perror("Unable to get MAC address table: {}".format(err))
+
+
+@cmd2.with_category("stp")
+class OvsSTPCommandSet(CommandSet):
+
+    def __init__(self, sw_name: str):
+        super().__init__()
+        self.sw_name = sw_name
+
+
+    stp_show_parser = cmd2.Cmd2ArgumentParser()
+
+    @cmd2.as_subcommand_to('show', 'stp', stp_show_parser)
+    def show_stp(self, _: argparse.Namespace):
+        """Show actual STP state"""
+        try:
+            stp_enable = run_command(f"ovs-vsctl get Bridge {self.sw_name} stp_enable", check_output=True)
+            if stp_enable == "false":
+                self._cmd.poutput("STP is disabled on this bridge")
+                return
+            stp_state = run_command(f"ovs-appctl stp/show {self.sw_name}", check_output=True)
+            self._cmd.poutput(stp_state)
+        except ConsoleError as err:
+            self._cmd.perror("Unable to get stp state: {}".format(err))
+
+    stp_set_parser = cmd2.Cmd2ArgumentParser()
+    stp_set_parser.add_argument('enable', choices=["enable", "disable"]) 
+
+    @cmd2.as_subcommand_to('set', 'stp', stp_set_parser)
+    def set_stp(self, args: argparse.Namespace):
+        """Enable/disable STP on the switch
+           ex: set stp enable
+           ex: set stp disable
+        """
+        stp_enable = "false"
+        if args.enable == "enable":
+            stp_enable= "true"
+        try:
+            run_command(f"ovs-vsctl set Bridge {self.sw_name} stp_enable={stp_enable}")
+        except ConsoleError as err:
+            self._cmd.perror("Unable to change stp state: {}".format(err))
 
 
 @cmd2.with_category("vlan")
@@ -156,23 +241,24 @@ class OvsVlanCommandSet(CommandSet):
     def show_vlan(self, _: argparse.Namespace):
         """Show actual VLAN configuration"""
         ports = list_sw_ports(self.sw_name)
+        table = Table(show_edge=False, header_style="not bold")
+        table.add_column("Interface", justify="right", no_wrap=True)
+        table.add_column("VLAN Mode", justify="right", no_wrap=True)
+        table.add_column("Tag", justify="right", no_wrap=False)
+        table.add_column("Trunks", justify="right", no_wrap=False)
+
         for port in ports:
             if not port.startswith(self.sw_name+"."):
                 continue
-            self._cmd.poutput(f"Port {port.split('.')[1]}")
-
             try:
-                # get vlan
                 tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
-                if tag == "[]":
-                    tag = "0"
-                self._cmd.poutput(f"  VLAN Access: {tag}")
-                # get trunks
                 trunks = run_command(f"ovs-vsctl get port {port} trunks", check_output=True)
-                if trunks != "[]":
-                    self._cmd.poutput(f"  VLAN Trunk: {trunks.strip('[]')}")
+                vlan_mode = run_command(f"ovs-vsctl get port {port} vlan_mode", check_output=True)
+                table.add_row(port.split(".")[1], vlan_mode, tag, trunks)
             except ConsoleError as err:
                 self._cmd.perror("Unable to get port info: {}".format(err))
+                return
+        CONSOLE.print(table)
 
 
     vlan_set_parser = cmd2.Cmd2ArgumentParser()
@@ -189,14 +275,14 @@ class OvsVlanCommandSet(CommandSet):
         """
         if args.type == "access":
             try:
-                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.tag} vlan_mode=access")
+                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.tag} trunks=[] vlan_mode=access")
             except ConsoleError as err:
                 self._cmd.perror(f"Unable add port {args.port} to vlan {args.tag} in access mode: {err}")
 
         if args.type == "trunk":
             try:
                 run_command(
-                    f"ovs-vsctl set port {self.sw_name}.{args.port} trunks={args.tag} vlan_mode=trunk"
+                    f"ovs-vsctl set port {self.sw_name}.{args.port} tag=[] trunks={args.tag} vlan_mode=trunk"
                 )
             except ConsoleError as err:
                 self._cmd.perror( f"Unable add port {args.port} to trunks {args.tag}: {err}")
@@ -321,6 +407,7 @@ class OvsConsole(Cmd):
         self.register_command_set(OvsBondingCommandSet(sw_name))
         self.register_command_set(OvsMacCommandSet(sw_name))
         self.register_command_set(OvsIfCommandSet(sw_name))
+        self.register_command_set(OvsSTPCommandSet(sw_name))
 
     def emptyline(self):
         # do nothing when an empty line is entered

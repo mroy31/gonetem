@@ -74,11 +74,21 @@ def load_ovs_config(sw_name: str, conf: str):
     with open(conf) as f_hd:
         last_error = ""
         ovs_config = json.load(f_hd)
+        if type(ovs_config) == list:
+            ovs_config = {
+                "stp_enable": "false",
+                "ports": ovs_config,
+            }
+
+        try:
+            run_command(f"ovs-vsctl set Bridge {sw_name} stp_enable={ovs_config['stp_enable']}")
+        except RunError as err:
+            pass
 
         attempt = 0
         while attempt < 10:
             try:
-                for p_config in ovs_config:
+                for p_config in ovs_config["ports"]:
                     if "bonding" in p_config:
                         for iface in p_config["bonding"]["members"]:
                             run_command(f"ovs-vsctl del-port {sw_name} {iface}")
@@ -86,11 +96,10 @@ def load_ovs_config(sw_name: str, conf: str):
                         ifaces = " ".join(p_config["bonding"]["members"])
                         run_command(f"ovs-vsctl add-bond {sw_name} {p_config['name']} {ifaces} lacp=active")
 
-                    if "tag" in p_config:
-                        run_command("ovs-vsctl set port {} tag={}".format(p_config["name"], p_config["tag"]))
-
-                    if "trunks" in p_config:
-                        run_command("ovs-vsctl set port {} trunks={}".format(p_config["name"], p_config["trunks"]))
+                    tag = p_config.get("tag", "[]")
+                    trunks = p_config.get("trunks", "[]")
+                    vlan_mode = p_config.get("vlan_mode", "[]")
+                    run_command(f"ovs-vsctl set port {p_config['name']} tag={tag} vlan_mode={vlan_mode} trunks={trunks}")
             except RunError as err:
                 attempt += 1
                 last_error = str(err)
@@ -104,20 +113,28 @@ def load_ovs_config(sw_name: str, conf: str):
 
 
 def save_ovs_config(sw_name: str, conf: str):
-    config = []
+    config = {
+        "stp_enable": "false",
+        "ports": [],
+    }
     try:
-        bonds = list_bond_ports(sw_name)
+        # save STP config
+        stp_enable = run_command(f"ovs-vsctl get Bridge {sw_name} stp_enable", check_output=True)
+        config["stp_enable"] = stp_enable
 
+        # save bonding / vlan config
+        bonds = list_bond_ports(sw_name)
         ports = list_sw_ports(sw_name)
+
         for port in ports:
             # save vlan config
-            p_config = {"name": port}
-            tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
-            if tag != "[]":
-                p_config["tag"] = tag
-            trunks = run_command(f"ovs-vsctl get port {port} trunks", check_output=True)
-            if trunks != "[]":
-                p_config["trunks"] = trunks.strip("[]").replace(" ", "")
+            p_config = {
+                "name": port,
+                "tag": run_command(f"ovs-vsctl get port {port} tag", check_output=True),
+                "trunks": run_command(f"ovs-vsctl get port {port} trunks", check_output=True),
+                "vlan_mode": run_command(f"ovs-vsctl get port {port} vlan_mode", check_output=True),
+            }
+            p_config["trunks"] = p_config["trunks"].replace(" ", "")
             
             # save bonding config
             bonding_conf = port_is_bonding(bonds, port)
@@ -126,7 +143,7 @@ def save_ovs_config(sw_name: str, conf: str):
                     "members": bonding_conf["members"]
                 }
 
-            config.append(p_config)
+            config["ports"].append(p_config)
 
     except RunError as err:
         sys.exit("Unable to save config: {}".format(err))
