@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,7 +100,7 @@ func OpenProject(prjPath string) (string, string, error) {
 	if err != nil {
 		return name, "", err
 	} else if response.GetStatus().GetCode() == proto.StatusCode_ERROR {
-		return name, "", fmt.Errorf(response.GetStatus().GetError())
+		return name, "", errors.New(response.GetStatus().GetError())
 	}
 
 	prjID := response.GetId()
