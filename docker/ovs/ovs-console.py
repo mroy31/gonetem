@@ -99,8 +99,10 @@ def parse_bonding_infos(sw_name: str, bond_name: str) -> BondingInfosT:
 
 
 def format_vlan_tags(v: str) -> str:
+    if v in ("access", "trunk"):
+        return v
     if re.match(r"^[\d|,]+$", v) is None:
-        raise argparse.ArgumentTypeError("")
+        raise argparse.ArgumentTypeError("Unexpected value")
     return v
 
 
@@ -264,28 +266,45 @@ class OvsVlanCommandSet(CommandSet):
     vlan_set_parser = cmd2.Cmd2ArgumentParser()
     vlan_set_parser.add_argument('port_alias', choices=["port"]) 
     vlan_set_parser.add_argument('port', type=str) 
-    vlan_set_parser.add_argument('type', type=str, choices=["access", "trunk"]) 
-    vlan_set_parser.add_argument('tag', type=format_vlan_tags) 
+    vlan_set_parser.add_argument('type', type=str, choices=["mode", "access", "trunk"]) 
+    vlan_set_parser.add_argument('value', type=format_vlan_tags) 
 
     @cmd2.as_subcommand_to('set', 'vlan', vlan_set_parser)
     def set_vlan(self, args: argparse.Namespace):
         """Configure VLAN on a port in access or trunk mode
+           ex: set vlan port 0 mode access
            ex: set vlan port 0 access 10
            ex: set vlan port 0 trunk 20,30
         """
-        if args.type == "access":
+        if args.type == "mode":
+            if args.value not in ("access", "trunk"):
+                self._cmd.perror(f"Wrong parameter for mode: access or trunk expected")
+                return
             try:
-                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.tag} trunks=[] vlan_mode=access")
+                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} vlan_mode={args.value}")
             except ConsoleError as err:
-                self._cmd.perror(f"Unable add port {args.port} to vlan {args.tag} in access mode: {err}")
+                self._cmd.perror(f"Unable to set port {args.port} in vlan mode {args.value}: {err}")
+
+        if args.type == "access":
+            if re.match(r"^\d+$", args.value) is None:
+                self._cmd.perror(f"Wrong parameter for access mode: a vlan tag is expected")
+                return
+
+            try:
+                run_command(f"ovs-vsctl set port {self.sw_name}.{args.port} tag={args.value}")
+            except ConsoleError as err:
+                self._cmd.perror(f"Unable add port {args.port} to vlan {args.value} in access mode: {err}")
 
         if args.type == "trunk":
+            if re.match(r"^[\d|,]+$", args.value) is None:
+                self._cmd.perror(f"Wrong parameter for trunk mode: a list of vlan tags is expected")
+
             try:
                 run_command(
-                    f"ovs-vsctl set port {self.sw_name}.{args.port} tag=[] trunks={args.tag} vlan_mode=trunk"
+                    f"ovs-vsctl set port {self.sw_name}.{args.port} trunks={args.value}"
                 )
             except ConsoleError as err:
-                self._cmd.perror( f"Unable add port {args.port} to trunks {args.tag}: {err}")
+                self._cmd.perror( f"Unable add port {args.port} to trunks {args.value}: {err}")
 
     vlan_delete_parser = cmd2.Cmd2ArgumentParser()
     vlan_delete_parser.add_argument('port_alias', choices=["port"]) 

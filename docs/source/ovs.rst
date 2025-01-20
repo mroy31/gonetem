@@ -57,6 +57,22 @@ Show vlan configuration
 Set vlan configuration
 ``````````````````````
 
+To configure the vlan mode on a port, use the following command:
+
+.. code-block:: shell
+
+  set vlan port <port-number> mode access|trunk
+
+Example
+
+.. code-block:: shell
+
+  set vlan port O mode trunk
+  set vlan port 1 mode access
+
+
+To configure access/trunk allowed tags, use the following command:
+
 .. code-block:: shell
 
   set vlan port <port-number> access|trunk <tags>

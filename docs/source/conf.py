@@ -20,7 +20,7 @@
 # -- Project information -----------------------------------------------------
 
 project = 'gonetem'
-copyright = "2024, Mickael Royer"
+copyright = "2025, Mickael Royer"
 author = "Mickael Royer"
 
 # The short X.Y version
