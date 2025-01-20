@@ -69,7 +69,7 @@ func TestLink_CreateBridge(t *testing.T) {
 	checkLinkExistence(t, br.Name)
 }
 
-func TestLink_CreateMacvlan(t *testing.T) {
+func TestLink_CreateVRRPMacvlan(t *testing.T) {
 	ns, teardown := setUpNetlinkTest(t)
 	defer teardown()
 
@@ -79,7 +79,7 @@ func TestLink_CreateMacvlan(t *testing.T) {
 	}
 	defer netlink.LinkDel(parent)
 
-	macvlan, err := CreateMacVlan(utils.RandString(5), "foo", 1, ns)
+	macvlan, err := CreateVRRPMacVlan(utils.RandString(5), "foo", 1, ns)
 	if err != nil {
 		t.Fatalf("Unable to create macvlan: %v", err)
 	}

@@ -98,7 +98,7 @@ func CreateBridge(name string, namespace netns.NsHandle) (*netlink.Bridge, error
 	return br, nil
 }
 
-func CreateMacVlan(name string, parent string, group int, namespace netns.NsHandle) (*netlink.Macvlan, error) {
+func CreateMacVlan(name string, parent string, peerMAC net.HardwareAddr, mode netlink.MacvlanMode, namespace netns.NsHandle) (*netlink.Macvlan, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -108,8 +108,6 @@ func CreateMacVlan(name string, parent string, group int, namespace netns.NsHand
 		return &netlink.Macvlan{}, fmt.Errorf("unable to find macvlan parent %s: %v", parent, err)
 	}
 
-	peerMAC, _ := net.ParseMAC(fmt.Sprintf("00:00:5E:00:01:%02X", group))
-
 	la := netlink.NewLinkAttrs()
 	la.Name = name
 	la.Namespace = netlink.NsFd(namespace)
@@ -117,13 +115,22 @@ func CreateMacVlan(name string, parent string, group int, namespace netns.NsHand
 	la.HardwareAddr = peerMAC
 	macvlan := &netlink.Macvlan{
 		LinkAttrs: la,
-		Mode:      netlink.MACVLAN_MODE_BRIDGE,
+		Mode:      mode,
 	}
 
 	if err := netlink.LinkAdd(macvlan); err != nil {
 		return macvlan, fmt.Errorf("error when creating MACVLAN %s: %v", name, err)
 	}
 	return macvlan, nil
+}
+
+func CreateVRRPMacVlan(name string, parent string, group int, namespace netns.NsHandle) (*netlink.Macvlan, error) {
+	peerMAC, err := net.ParseMAC(fmt.Sprintf("00:00:5E:00:01:%02X", group))
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateMacVlan(name, parent, peerMAC, netlink.MACVLAN_MODE_BRIDGE, namespace)
 }
 
 func CreateVrf(name string, namespace netns.NsHandle, table int) (*netlink.Vrf, error) {
@@ -223,6 +230,13 @@ func SetInterfaceState(name string, namespace netns.NsHandle, state IfState) err
 	}
 
 	return nil
+}
+
+func SetLinkNetns(link netlink.Link, targetNs netns.NsHandle) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	return netlink.LinkSetNsFd(link, int(targetNs))
 }
 
 func MoveInterfacesNetns(ifNames map[string]IfState, current netns.NsHandle, target netns.NsHandle) error {

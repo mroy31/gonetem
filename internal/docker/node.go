@@ -386,7 +386,7 @@ func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) 
 		// create vrrps interfaces
 		for _, vrrpGroup := range n.Vrrps {
 			name := fmt.Sprintf("vrrp-%d", vrrpGroup.Interface)
-			if _, err := link.CreateMacVlan(
+			if _, err := link.CreateVRRPMacVlan(
 				name, fmt.Sprintf("eth%d", vrrpGroup.Interface),
 				vrrpGroup.Group, ns); err != nil {
 				return messages, err
