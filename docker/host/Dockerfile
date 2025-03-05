@@ -13,12 +13,13 @@ FROM debian:bookworm-slim
 LABEL maintainer="mickael.royer@enac.fr"
 
 ENV DEBIAN_FRONTEND=noninteractive
+COPY ./conf/sources.list /etc/apt/sources.list
 RUN apt-get update -y && \
     apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
 	    telnet man traceroute hping3 iptables links htop ntp git wget at \
 	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
-		bind9-dnsutils python3-scapy python3-netifaces \
+		bind9-dnsutils python3-scapy python3-netifaces iperf \
 		&& rm -rf /var/lib/apt/lists/*
 
 ## install quic-go client
