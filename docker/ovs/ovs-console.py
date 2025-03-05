@@ -187,6 +187,17 @@ class OvsMacCommandSet(CommandSet):
             except ConsoleError as err:
                 self._cmd.perror("Unable to get MAC address table: {}".format(err))
 
+    table_clear_parser = cmd2.Cmd2ArgumentParser()
+    table_clear_parser.add_argument('table', choices=["address-table"]) 
+
+    @cmd2.as_subcommand_to('delete', 'mac', table_clear_parser)
+    def clear_table(self, args: argparse.Namespace):
+        if args.table == "address-table":
+            try:
+                run_command(f"ovs-appctl fdb/flush {self.sw_name}")
+            except ConsoleError as err:
+                self._cmd.perror(f"Unable to flush MAC address table: {err}")
+
 
 @cmd2.with_category("stp")
 class OvsSTPCommandSet(CommandSet):
@@ -238,29 +249,64 @@ class OvsVlanCommandSet(CommandSet):
 
 
     vlan_show_parser = cmd2.Cmd2ArgumentParser()
+    vlan_show_parser.add_argument('dmode', choices=["list", "table"], default="list", nargs="?") 
 
     @cmd2.as_subcommand_to('show', 'vlan', vlan_show_parser)
-    def show_vlan(self, _: argparse.Namespace):
+    def show_vlan(self, args: argparse.Namespace):
         """Show actual VLAN configuration"""
         ports = list_sw_ports(self.sw_name)
-        table = Table(show_edge=False, header_style="not bold")
-        table.add_column("Interface", justify="right", no_wrap=True)
-        table.add_column("VLAN Mode", justify="right", no_wrap=True)
-        table.add_column("Tag", justify="right", no_wrap=False)
-        table.add_column("Trunks", justify="right", no_wrap=False)
-
+        ports_info = []
         for port in ports:
             if not port.startswith(self.sw_name+"."):
                 continue
             try:
-                tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
-                trunks = run_command(f"ovs-vsctl get port {port} trunks", check_output=True)
                 vlan_mode = run_command(f"ovs-vsctl get port {port} vlan_mode", check_output=True)
-                table.add_row(port.split(".")[1], vlan_mode, tag, trunks)
+                trunks = run_command(f"ovs-vsctl get port {port} trunks", check_output=True)
+                tag = run_command(f"ovs-vsctl get port {port} tag", check_output=True)
+
+                if vlan_mode == "[]":
+                    vlan_mode = trunks == "[]" and "access" or "trunk"
+                    if vlan_mode == "trunk":
+                        tag = "not used"
+                    if vlan_mode == "access":
+                        trunks = "not used"
+
+                if tag == "[]":
+                    tag = vlan_mode == "access" and "0" or "not used"
+
+                if trunks == "[]":
+                    trunks = vlan_mode == "trunk" and "all" or "not used"
+
+                ports_info.append({
+                    "int": port.split(".")[1],
+                    "mode": vlan_mode,
+                    "tag": tag,
+                    "trunks": trunks,
+                })
             except ConsoleError as err:
                 self._cmd.perror("Unable to get port info: {}".format(err))
                 return
-        CONSOLE.print(table)
+
+        if args.dmode == "table":
+            table = Table(show_edge=False, header_style="not bold")
+            table.add_column("Interface", justify="right", no_wrap=True)
+            table.add_column("VLAN Mode", justify="right", no_wrap=True)
+            table.add_column("VLAN ID", justify="right", no_wrap=False)
+            table.add_column("Authorized VLAN IDs", justify="right", no_wrap=False)
+
+            for p_info in ports_info:
+                table.add_row(p_info["int"], p_info["mode"], p_info["tag"], p_info["trunks"])
+            CONSOLE.print(table)
+
+        elif args.dmode == "list":
+            for p_info in ports_info:
+                self._cmd.poutput(f"Interface {p_info['int']}")
+                self._cmd.poutput(f"  Mode: {p_info['mode']}")
+
+                if p_info["mode"] == "access":
+                  self._cmd.poutput(f"  VLAN ID: {p_info['tag']}")
+                if p_info["mode"] == "trunk":
+                  self._cmd.poutput(f"  Authorized VLAN IDs: {p_info['trunks'].strip('[]')}")
 
 
     vlan_set_parser = cmd2.Cmd2ArgumentParser()
