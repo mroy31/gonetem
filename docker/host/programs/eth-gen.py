@@ -62,10 +62,12 @@ if __name__ == '__main__':
         count_default=1000
         inter_default=1
 
+    mac = get_if_hwaddr (args.ifname)
     print("")
+    print(f'adresse mac source : {mac}')
     print(f'Intervalle envoi : {inter_default}')
     typeframe = hex(args.type)
     print(f'type : {typeframe}')
 
-    myframe=Ether(dst=args.dstaddr,type=args.type)/args.msg
+    myframe=Ether(src=mac,dst=args.dstaddr,type=args.type)/args.msg
     sendp(myframe,iface=args.ifname,verbose=args.verbose, loop=loop_default, count=count_default, inter=inter_default)

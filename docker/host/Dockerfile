@@ -31,9 +31,8 @@ COPY ./programs/mult-send.py /usr/bin/mult_send
 RUN chmod +x /usr/bin/mult_send
 
 ## install eth-gen program
-COPY ./programs/eth-gen.py /usr/bin/eth_gen
-RUN chmod +x /usr/bin/eth_gen
-
+COPY ./programs/eth-gen.py /usr/local/bin/traffic_ethernet
+RUN chmod +x /usr/local/bin/traffic_ethernet
 
 COPY ./scripts/iinit.py /usr/bin/
 RUN chmod +x /usr/bin/iinit.py
