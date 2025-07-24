@@ -110,7 +110,7 @@ def load_ovs_config(sw_name: str, conf: str):
 
                     tag = p_config.get("tag", "[]")
                     trunks = p_config.get("trunks", "[]")
-                    vlan_mode = p_config.get("vlan_mode", "[]")
+                    vlan_mode = p_config.get("vlan_mode", "access")
                     run_command(f"ovs-vsctl set port {p_config['name']} tag={tag} vlan_mode={vlan_mode} trunks={trunks}")
             except RunError as err:
                 attempt += 1
