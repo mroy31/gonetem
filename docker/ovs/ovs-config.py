@@ -7,7 +7,7 @@ import os.path
 import subprocess
 import argparse
 import shlex
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 class BondingInfosT(TypedDict):
     members: list[str]
@@ -42,7 +42,7 @@ def is_sw_exist(name: str) -> bool:
     return subprocess.run(args).returncode != 2
 
 
-def list_sw_ports(name: str) -> str:
+def list_sw_ports(name: str) -> list[str]:
     ports = run_command(f"ovs-vsctl list-ports {name}", check_output=True)
     return [p for p in ports.split("\n") if p != '']
 
@@ -62,12 +62,23 @@ def list_bond_ports(sw_name: str) -> list[BondingInfosT]:
     
     return infos
 
-def port_is_bonding(bonds: list[BondingInfosT], if_name: str) -> BondingInfosT:
+
+def port_is_bonding(bonds: list[BondingInfosT], if_name: str) -> Optional[BondingInfosT]:
     for bond in bonds:
         if bond["name"] == if_name:
             return bond
 
     return None
+
+
+def load_default_ovs_config(sw_name: str):
+    ports = list_sw_ports(sw_name)
+    for p in ports:
+        # VLAN: by default set mode to access
+        try:
+            run_command(f"ovs-vsctl set port {p} vlan_mode=access")
+        except RunError as err:
+            pass # ignore error
 
 
 def load_ovs_config(sw_name: str, conf: str):
@@ -80,6 +91,7 @@ def load_ovs_config(sw_name: str, conf: str):
                 "ports": ovs_config,
             }
 
+        # load stp configuration
         try:
             run_command(f"ovs-vsctl set Bridge {sw_name} stp_enable={ovs_config['stp_enable']}")
         except RunError as err:
@@ -128,13 +140,16 @@ def save_ovs_config(sw_name: str, conf: str):
 
         for port in ports:
             # save vlan config
-            p_config = {
+            p_config: dict[str, object | str] = {
                 "name": port,
                 "tag": run_command(f"ovs-vsctl get port {port} tag", check_output=True),
                 "trunks": run_command(f"ovs-vsctl get port {port} trunks", check_output=True),
                 "vlan_mode": run_command(f"ovs-vsctl get port {port} vlan_mode", check_output=True),
             }
-            p_config["trunks"] = p_config["trunks"].replace(" ", "")
+            if isinstance(p_config["trunks"], str):
+                p_config["trunks"] = p_config["trunks"].replace(" ", "")
+            if isinstance(p_config["vlan_mode"], str) and p_config["vlan_mode"] == "[]":
+                p_config["vlan_mode"] = "access"
             
             # save bonding config
             bonding_conf = port_is_bonding(bonds, port)
@@ -149,7 +164,8 @@ def save_ovs_config(sw_name: str, conf: str):
         sys.exit("Unable to save config: {}".format(err))
 
     # remove old file if exist
-    os.path.isfile(conf) and os.remove(conf)
+    if os.path.isfile(conf):
+        os.remove(conf)
 
     with open(conf, "w") as f_hd:
         f_hd.write(json.dumps(config, sort_keys=True, indent=4))
@@ -176,8 +192,11 @@ if __name__ == "__main__":
         sys.exit("Required action : load or save")
 
     if args.action == "load":
+        load_default_ovs_config(args.sw)
+
         if not os.path.isfile(args.conf):
             sys.exit(f"{args.conf} file does not exist")
+
         try:
             load_ovs_config(args.sw, args.conf)
         except Exception as err:
