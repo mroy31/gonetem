@@ -40,22 +40,56 @@ def is_ipv6_autoconf(if_name):
     return False
 
 
+def get_interface_byindex(ndb, target_idx):
+    for k in ndb.interfaces:
+        if_obj = ndb.interfaces[k]
+        if target_idx == if_obj["index"]:
+            return if_obj["ifname"]
+    
+    return None
+
+
+def load_interface_config(ndb, if_name, ip_addrs):
+    try:
+        i = ndb.interfaces[if_name].set('state', 'up').commit()
+    except KeyError:
+        return  # interface not found
+
+    for address in ip_addrs:
+        try:
+            i = i.add_ip(address).commit()
+        except Exception as ex:
+            print("Unable to load IP address {} to interface {} -> {}".format(address, if_name, ex))
+
+
 def load_net_config(f_path):
     with open(f_path) as f_hd:
         net_config = json.load(f_hd)
-        with NDB(sources=[{'target': 'localhost'}]) as ndb:
-            # configure ip addresses
-            for ifname in net_config["interfaces"]:
-                try:
-                    i = ndb.interfaces[ifname].set('state', 'up').commit()
-                except KeyError:
-                    continue  # interface not found
+        if "bondings" not in net_config:
+            net_config["bondings"] = []
 
-                for address in net_config["interfaces"][ifname]:
-                    try:
-                        i = i.add_ip(address).commit()
-                    except Exception as ex:
-                        print("Unable to load IP address {} to interface {} -> {}".format(address, ifname, ex))
+        with NDB(sources=[{'target': 'localhost'}]) as ndb:
+            # load bonding configurations
+            for bond_name in net_config["bondings"]:
+                try:
+                    bond_if = ndb.interfaces.create(ifname=bond_name, kind='bond').commit()
+                except Exception as ex:
+                    print(f"Unable to create bonding interface {bond_name} -> {ex}")
+                    continue
+
+                bond_conf = net_config["bondings"][bond_name]
+                try:
+                    for slave_if in bond_conf["slaves"]:
+                        bond_if.add_port(slave_if).commit()
+                    bond_if.set("bond_mode", bond_conf["mode"]).commit()
+                except Exception as ex:
+                    print(f"Unable to configure bonding {bond_name} -> {ex}")
+                    continue
+                load_interface_config(ndb, bond_name, bond_conf["addresses"])
+
+            # load interface configurations
+            for ifname in net_config["interfaces"]:
+                load_interface_config(ndb, ifname, net_config["interfaces"][ifname])
 
             # configure routes
             for route in net_config["routes"]:
@@ -78,23 +112,41 @@ def save_net_config(f_path, all_if):
     def fmt_addr(addr_conf):
         return f"{addr_conf['address']}/{addr_conf['prefixlen']}"
 
-    net_config = {"interfaces": {}, "routes": []}
-    with NDB(sources=[{'target': 'localhost'}]) as ndb:
-        # record ip addresses
+    net_config = {"interfaces": {}, "routes": [], "bondings": {}}
+    with NDB(sources=[{'target': 'localhost'}]) as ndb: 
+        # record interfaces config
         for k in ndb.interfaces:
             if_obj = ndb.interfaces[k]
             if_name = if_obj["ifname"]
 
+            if if_obj["kind"] == "bond":
+                bond_config = net_config["bondings"].get(if_name, { "slaves": [] })
+                bond_config["mode"] = if_obj["bond_mode"]
+
+                addresses = if_obj.ipaddr
+                bond_config["addresses"] = [
+                    fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
+                ]
+
+                net_config["bondings"][if_name] = bond_config
+                continue
+
             if not all_if and not if_name.startswith("eth"):
                 continue
-            addresses = if_obj.ipaddr
 
+            if if_obj["slave_kind"] == "bond":
+                master = get_interface_byindex(ndb, if_obj["master"])
+                if master is not None:
+                    bond_config = net_config["bondings"].get(master, { "slaves": [] })
+                    bond_config["slaves"].append(if_name)
+                    net_config["bondings"][master] = bond_config
+
+            addresses = if_obj.ipaddr
             net_config["interfaces"][if_name] = [
                 fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
             ]
 
         # record route
-        net_config["routes"] = []
         for route in ndb.routes:
             if route["gateway"] is None or route["gateway"].startswith("fe80"):
                 continue
@@ -109,8 +161,9 @@ def save_net_config(f_path, all_if):
                 "family": route["family"],
             })
 
-    # remove old file if exist
-    os.path.isfile(f_path) and os.remove(f_path)
+    # remove old file if it exists
+    if os.path.isfile(f_path):
+        os.remove(f_path)
 
     with open(f_path, "w") as f_hd:
         f_hd.write(json.dumps(net_config, sort_keys=True, indent=4))
