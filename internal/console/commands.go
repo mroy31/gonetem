@@ -233,6 +233,7 @@ var connectCmd = &cobra.Command{
 			prjName := prompt.Input(
 				prompt.WithPrefix("Select project: "),
 				prompt.WithCompleter(NewConnectCompleter(projects).Complete),
+				prompt.WithShowCompletionAtStart(),
 			)
 			//
 			prjName = strings.TrimSpace(prjName)
