@@ -38,7 +38,7 @@ func (c *PromptCompleter) Complete(d prompt.Document) ([]prompt.Suggest, istring
 
 	if len(args) == 2 {
 		switch args[0] {
-		case "console", "start", "stop", "restart", "shell":
+		case "console", "start", "stop", "restart", "shell", "viewConfig":
 			suggestions := make([]prompt.Suggest, 0)
 			for _, n := range c.prt.nodes {
 				if !strings.HasPrefix(n.Name, args[1]) {
@@ -100,4 +100,28 @@ func ConfirmComplete(d prompt.Document) ([]prompt.Suggest, istrings.RuneNumber, 
 			Text: "no",
 		},
 	}, w, true), startIndex, endIndex
+}
+
+type ViewConfigCompleter struct {
+	configFiles *proto.ConfigFilesResponse
+}
+
+func (c *ViewConfigCompleter) Complete(d prompt.Document) ([]prompt.Suggest, istrings.RuneNumber, istrings.RuneNumber) {
+	endIndex := d.CurrentRuneIndex()
+	w := d.GetWordBeforeCursor()
+
+	suggestions := []prompt.Suggest{}
+	for _, prj := range c.configFiles.GetFiles() {
+		suggestions = append(suggestions, prompt.Suggest{
+			Text:        prj.GetName(),
+			Description: "",
+		})
+	}
+
+	startIndex := endIndex - istrings.RuneCountInString(w)
+	return prompt.FilterHasPrefix(suggestions, w, true), startIndex, endIndex
+}
+
+func NewViewConfigCompleter(configFiles *proto.ConfigFilesResponse) *ViewConfigCompleter {
+	return &ViewConfigCompleter{configFiles}
 }

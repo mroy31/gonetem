@@ -153,3 +153,16 @@ Usage:
   stop <node_name>
   # stop all the nodes
   stop all
+
+viewConfig
+----------
+Display the configuration file of a node. If several configuration
+files are available, a prompt will appear to select one of them.
+
+Usage:
+
+.. code-block:: bash
+
+  viewConfig <node_name>
+
+

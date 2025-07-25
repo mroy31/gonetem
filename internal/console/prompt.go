@@ -17,6 +17,7 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/docker/docker/pkg/system"
+	"github.com/elk-language/go-prompt"
 	"github.com/fatih/color"
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/options"
@@ -260,6 +261,14 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run: func(p *NetemPrompt, cmdArgs []string) {
 			p.execWithClient(cmdArgs, p.Status)
+		},
+	}
+	p.commands["viewConfig"] = &NetemCommand{
+		Desc:  "Display the current configuration of a node",
+		Usage: "viewConfig <node_name>",
+		Args:  []string{`^\w+$`},
+		Run: func(p *NetemPrompt, cmdArgs []string) {
+			p.execWithClient(cmdArgs, p.ViewNodeConfiguration)
 		},
 	}
 }
@@ -928,6 +937,37 @@ func (p *NetemPrompt) Run(client proto.NetemClient, cmdArgs []string) {
 	}
 
 	mpBar.Wait()
+}
+
+func (p *NetemPrompt) ViewNodeConfiguration(client proto.NetemClient, cmdArgs []string) {
+	response, err := client.NodeReadConfigFiles(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+	if err != nil {
+		RedPrintf("Unable to to read configuration files: %v\n", err)
+		return
+	}
+
+	if len(response.Files) == 1 {
+		configFile := response.Files[0]
+		fmt.Println("#####  " + configFile.Name + "  #####")
+		fmt.Printf("\n%s\n", configFile.Data)
+		return
+	}
+
+	configName := prompt.Input(
+		prompt.WithPrefix("Select configuration file: "),
+		prompt.WithCompleter(NewViewConfigCompleter(response).Complete),
+		prompt.WithShowCompletionAtStart(),
+	)
+	configName = strings.TrimSpace(configName)
+
+	for _, configFile := range response.Files {
+		if configFile.Name == configName {
+			fmt.Println("#####  " + configFile.Name + "  #####")
+			fmt.Printf("\n%s\n", configFile.Data)
+			return
+		}
+	}
+	fmt.Printf(color.YellowString("Configuration file %s not found\n"), configName)
 }
 
 func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
