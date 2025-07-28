@@ -66,9 +66,29 @@ def load_net_config(f_path):
     with open(f_path) as f_hd:
         net_config = json.load(f_hd)
         if "bondings" not in net_config:
-            net_config["bondings"] = []
+            net_config["bondings"] = {}
+        if "vlans" not in net_config:
+            net_config["vlans"] = {}
 
         with NDB(sources=[{'target': 'localhost'}]) as ndb:
+            # load vlan configurations
+            for vlan_name in net_config["vlans"]:
+                vlan_conf = net_config["vlans"][vlan_name]
+                try:
+                    ndb.interfaces.create(
+                       ifname=vlan_name,       
+                       kind='vlan',            
+                       link=vlan_conf["link"],
+                       vlan_id=vlan_conf["vlan_id"]
+                    ).commit()
+                except Exception as ex:
+                    print(f"Unable to create vlan interface {vlan_name} -> {ex}")
+                    continue
+
+            # load interface configurations
+            for ifname in net_config["interfaces"]:
+                load_interface_config(ndb, ifname, net_config["interfaces"][ifname])
+
             # load bonding configurations
             for bond_name in net_config["bondings"]:
                 try:
@@ -80,16 +100,13 @@ def load_net_config(f_path):
                 bond_conf = net_config["bondings"][bond_name]
                 try:
                     for slave_if in bond_conf["slaves"]:
+                        ndb.interfaces[slave_if].set('state', 'down').commit()
                         bond_if.add_port(slave_if).commit()
                     bond_if.set("bond_mode", bond_conf["mode"]).commit()
                 except Exception as ex:
                     print(f"Unable to configure bonding {bond_name} -> {ex}")
                     continue
                 load_interface_config(ndb, bond_name, bond_conf["addresses"])
-
-            # load interface configurations
-            for ifname in net_config["interfaces"]:
-                load_interface_config(ndb, ifname, net_config["interfaces"][ifname])
 
             # configure routes
             for route in net_config["routes"]:
@@ -112,7 +129,7 @@ def save_net_config(f_path, all_if):
     def fmt_addr(addr_conf):
         return f"{addr_conf['address']}/{addr_conf['prefixlen']}"
 
-    net_config = {"interfaces": {}, "routes": [], "bondings": {}}
+    net_config = {"interfaces": {}, "routes": [], "bondings": {}, "vlans": {}}
     with NDB(sources=[{'target': 'localhost'}]) as ndb: 
         # record interfaces config
         for k in ndb.interfaces:
@@ -131,8 +148,11 @@ def save_net_config(f_path, all_if):
                 net_config["bondings"][if_name] = bond_config
                 continue
 
-            if not all_if and not if_name.startswith("eth"):
-                continue
+            if if_obj["kind"] == "vlan":
+                net_config["vlans"][if_name] = {
+                    "link": if_obj["link"],
+                    "vlan_id": if_obj["vlan_id"]
+                }
 
             if if_obj["slave_kind"] == "bond":
                 master = get_interface_byindex(ndb, if_obj["master"])
@@ -140,6 +160,9 @@ def save_net_config(f_path, all_if):
                     bond_config = net_config["bondings"].get(master, { "slaves": [] })
                     bond_config["slaves"].append(if_name)
                     net_config["bondings"][master] = bond_config
+
+            if not all_if and not if_name.startswith("eth"):
+                continue
 
             addresses = if_obj.ipaddr
             net_config["interfaces"][if_name] = [
