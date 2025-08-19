@@ -184,11 +184,16 @@ message ProjectCloseMsg {
 // Request messages
 
 message LinkConfig {
+    message QoSConfig {
+        float loss = 3;
+        int32 delay = 4;
+        int32 jitter = 5;
+    }
+
     string peer1 = 1;
     string peer2 = 2;
-    float loss = 3;
-    int32 delay = 4;
-    int32 jitter = 5;
+    QoSConfig peer1qos = 3;
+    QoSConfig peer2qos = 4;
 }
 
 message LinkRequest {

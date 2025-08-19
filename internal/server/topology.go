@@ -15,6 +15,7 @@ import (
 	"github.com/mroy31/gonetem/internal/ovs"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/sirupsen/logrus"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
@@ -89,14 +90,60 @@ func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-type LinkConfig struct {
-	Peer1  string
-	Peer2  string
+type QoSConfig struct {
 	Loss   float64 `yaml:",omitempty"` // percent
 	Delay  int     `yaml:",omitempty"` // ms
 	Jitter int     `yaml:",omitempty"` // ms
 	Rate   int     `yaml:",omitempty"` // kbps
 	Buffer float64 `yaml:",omitempty"` // BDP scale factor
+}
+
+type LinkConfig struct {
+	Peer1    string
+	Peer2    string
+	Loss     float64 `yaml:",omitempty"` // percent
+	Delay    int     `yaml:",omitempty"` // ms
+	Jitter   int     `yaml:",omitempty"` // ms
+	Rate     int     `yaml:",omitempty"` // kbps
+	Buffer   float64 `yaml:",omitempty"` // BDP scale factor
+	Peer1QoS QoSConfig
+	Peer2QoS QoSConfig
+}
+
+func (l *LinkConfig) GetPeer1QoS() QoSConfig {
+	if l.Peer1QoS.Loss > 0 ||
+		l.Peer1QoS.Delay > 0 ||
+		l.Peer1QoS.Jitter > 0 ||
+		l.Peer1QoS.Rate > 0 ||
+		l.Peer1QoS.Buffer > 0 {
+		return l.Peer1QoS
+	}
+
+	return QoSConfig{
+		Loss:   l.Loss,
+		Delay:  l.Delay,
+		Jitter: l.Jitter,
+		Rate:   l.Rate,
+		Buffer: l.Buffer,
+	}
+}
+
+func (l *LinkConfig) GetPeer2QoS() QoSConfig {
+	if l.Peer2QoS.Loss > 0 ||
+		l.Peer2QoS.Delay > 0 ||
+		l.Peer2QoS.Jitter > 0 ||
+		l.Peer2QoS.Rate > 0 ||
+		l.Peer2QoS.Buffer > 0 {
+		return l.Peer2QoS
+	}
+
+	return QoSConfig{
+		Loss:   l.Loss,
+		Delay:  l.Delay,
+		Jitter: l.Jitter,
+		Rate:   l.Rate,
+		Buffer: l.Buffer,
+	}
 }
 
 type BridgeConfig struct {
@@ -116,11 +163,72 @@ type NetemLinkPeer struct {
 }
 
 type NetemLink struct {
-	Peer1    NetemLinkPeer
-	Peer2    NetemLinkPeer
-	Config   LinkConfig
-	HasNetem bool
-	HasTbf   bool
+	Peer1         NetemLinkPeer
+	Peer2         NetemLinkPeer
+	Config        LinkConfig
+	HasPeer1Netem bool
+	HasPeer2Netem bool
+	HasPeer1Tbf   bool
+	HasPeer2Tbf   bool
+}
+
+func (l *NetemLink) IsNetemRequired(q QoSConfig) bool {
+	return q.Delay > 0 || q.Loss > 0 || q.Jitter > 0
+}
+
+func (l *NetemLink) SetPeer1TBF(ifName string, ns netns.NsHandle) error {
+	peerQoS := l.Config.GetPeer1QoS()
+
+	// create tbf qdisc if necessary
+	if peerQoS.Rate > 0 {
+		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer); err != nil {
+			return err
+		}
+		l.HasPeer1Tbf = true
+	}
+
+	return nil
+}
+
+func (l *NetemLink) SetPeer2TBF(ifName string, ns netns.NsHandle) error {
+	peerQoS := l.Config.GetPeer2QoS()
+
+	// create tbf qdisc if necessary
+	if peerQoS.Rate > 0 {
+		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer); err != nil {
+			return err
+		}
+		l.HasPeer2Tbf = true
+	}
+
+	return nil
+}
+
+func (l *NetemLink) SetPeer1Netem(ifName string, ns netns.NsHandle) error {
+	peerQoS := l.Config.GetPeer1QoS()
+
+	// create netem qdisc if necessary
+	if l.IsNetemRequired(peerQoS) {
+		if err := link.Netem(ifName, ns, peerQoS.Delay, peerQoS.Jitter, peerQoS.Loss, l.HasPeer1Netem); err != nil {
+			return err
+		}
+		l.HasPeer1Netem = true
+	}
+
+	return nil
+}
+
+func (l *NetemLink) SetPeer2Netem(ifName string, ns netns.NsHandle) error {
+	peerQoS := l.Config.GetPeer2QoS()
+
+	if l.IsNetemRequired(peerQoS) {
+		if err := link.Netem(ifName, ns, peerQoS.Delay, peerQoS.Jitter, peerQoS.Loss, l.HasPeer2Netem); err != nil {
+			return err
+		}
+		l.HasPeer2Netem = true
+	}
+
+	return nil
 }
 
 type NetemBridge struct {
@@ -272,9 +380,11 @@ func (t *NetemTopologyManager) Load() error {
 				Node:    t.GetNode(peer2[0]),
 				IfIndex: peer2Idx,
 			},
-			HasNetem: false,
-			HasTbf:   false,
-			Config:   lConfig,
+			HasPeer1Netem: false,
+			HasPeer2Netem: false,
+			HasPeer1Tbf:   false,
+			HasPeer2Tbf:   false,
+			Config:        lConfig,
 		}
 	}
 
@@ -513,26 +623,22 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 
 	// create netem qdisc if necessary
-	if l.Config.Delay > 0 || l.Config.Loss > 0 {
-		if err := link.Netem(peer1IfName, peer1Netns, l.Config.Delay, l.Config.Jitter, l.Config.Loss, false); err != nil {
-			return err
-		}
-		if err := link.Netem(peer2IfName, peer2Netns, l.Config.Delay, l.Config.Jitter, l.Config.Loss, false); err != nil {
-			return err
-		}
-		l.HasNetem = true
+	if err := l.SetPeer1Netem(peer1IfName, peer1Netns); err != nil {
+		return err
 	}
-	// create tbf qdisc if necessary
-	if l.Config.Rate > 0 {
-		if err := link.CreateTbf(peer1IfName, peer1Netns, l.Config.Delay+l.Config.Jitter, l.Config.Rate, l.Config.Buffer); err != nil {
-			return err
-		}
-		if err := link.CreateTbf(peer2IfName, peer2Netns, l.Config.Delay+l.Config.Jitter, l.Config.Rate, l.Config.Buffer); err != nil {
-			return err
-		}
-		l.HasTbf = true
+	if err := l.SetPeer2Netem(peer2IfName, peer2Netns); err != nil {
+		return err
 	}
 
+	// create tbf qdisc if necessary
+	if err := l.SetPeer1TBF(peer1IfName, peer1Netns); err != nil {
+		return err
+	}
+	if err := l.SetPeer1TBF(peer2IfName, peer2Netns); err != nil {
+		return err
+	}
+
+	// attach interfaces to nodes
 	if err := l.Peer1.Node.AddInterface(peer1IfName, l.Peer1.IfIndex, peer1Netns); err != nil {
 		return err
 	}
@@ -601,9 +707,11 @@ func (t *NetemTopologyManager) LinkAdd(linkCfg LinkConfig, sync bool) error {
 			Node:    t.GetNode(peer2[0]),
 			IfIndex: peer2Idx,
 		},
-		HasNetem: false,
-		HasTbf:   false,
-		Config:   linkCfg,
+		HasPeer1Netem: false,
+		HasPeer2Netem: false,
+		HasPeer1Tbf:   false,
+		HasPeer2Tbf:   false,
+		Config:        linkCfg,
 	}
 	if err := t.setupLink(link); err != nil {
 		return err
@@ -658,20 +766,22 @@ func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
 	}
 	defer peer2Netns.Close()
 
-	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
-	peer2IfName := l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex)
-	if err := link.Netem(peer1IfName, peer1Netns, linkCfg.Delay, linkCfg.Jitter, linkCfg.Loss, l.HasNetem); err != nil {
-		return err
-	}
-	if err := link.Netem(peer2IfName, peer2Netns, linkCfg.Delay, linkCfg.Jitter, linkCfg.Loss, l.HasNetem); err != nil {
-		return err
-	}
-	l.HasNetem = true
-
 	// update config
 	l.Config.Delay = linkCfg.Delay
 	l.Config.Jitter = linkCfg.Jitter
 	l.Config.Loss = linkCfg.Loss
+	l.Config.Peer1QoS = linkCfg.Peer1QoS
+	l.Config.Peer2QoS = linkCfg.Peer2QoS
+
+	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
+	peer2IfName := l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex)
+	// create/update netem qdisc if necessary
+	if err := l.SetPeer1Netem(peer1IfName, peer1Netns); err != nil {
+		return err
+	}
+	if err := l.SetPeer2Netem(peer2IfName, peer2Netns); err != nil {
+		return err
+	}
 
 	if sync {
 		return t.SynchroniseTopology()

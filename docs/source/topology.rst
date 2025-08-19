@@ -141,14 +141,16 @@ definition requires the following parameters:
 
   * ``peer1`` (string, required): left connection of the link, following the format ``<node_name>.<if_number>``
   * ``peer2`` (string, required): right connection of the link, following the format ``<node_name>.<if_number>``
-  * ``delay`` (int, optional): delay on the link in ms
-  * ``jitter`` (int, optional): jitter on the link in ms
-  * ``loss`` (float, optional): loss on the link in percent (between 0.0 and 100.0)
-  * ``rate`` (int, optional): link rate in kbits per second
-  * ``buffer`` (float, optional): buffer size (equivalent to ``limit`` param in the ``tc`` command). The value has to be set in BDP (Bandwith Delay Product) scale factor (1.0 per default).
+  * ``delay`` (int, optional): bidirectionnal delay on the link in ms
+  * ``jitter`` (int, optional): bidirectionnal jitter on the link in ms
+  * ``loss`` (float, optional): bidirectionnal loss on the link in percent (between 0.0 and 100.0)
+  * ``rate`` (int, optional): bidirectionnal link rate in kbits per second
+  * ``buffer`` (float, optional): bidirectionnal buffer size (equivalent to ``limit`` param in the ``tc`` command). The value has to be set in BDP (Bandwith Delay Product) scale factor (1.0 per default).
+  * ``peer1qos``: optional section to configure link QoS in the direction peer1 --> peer2. This section accept the same parameters than global configuration (ie. delay/jitter/loss/rate/buffer)
+  * ``peer2qos``: optional section to configure link QoS in the direction peer2 --> peer1. This section accept the same parameters than global configuration (ie. delay/jitter/loss/rate/buffer)
 
-Example of links
-""""""""""""""""
+Example of links with same QoS in the two directions
+""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 .. code-block:: yaml
 
@@ -168,6 +170,33 @@ Example of links
         delay: 100 # ms
         jitter: 10 # ms
         rate: 1024 # 1Mbps
+
+Example of links with different QoS according to the direction
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+.. code-block:: yaml
+
+    nodes:
+      host:
+        type: docker.host
+      sw:
+        type: ovs
+      R1:
+        type: docker.router
+    links:
+      - peer1: host.0
+        peer2: sw.0
+      - peer1: R1.0
+        peer2: sw.1
+        peer1qos:
+          delay: 100 # ms
+          jitter: 10 # ms
+          rate: 1024 # 1Mbps
+        peer2qos:
+          delay: 200 # ms
+          jitter: 20 # ms
+          rate: 2048 # 2Mbps
+
 
 Bridges
 -------

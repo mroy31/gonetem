@@ -19,6 +19,24 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+func getLinkConfigFromRequest(request *proto.LinkRequest) LinkConfig {
+	rLink := request.GetLink()
+	return LinkConfig{
+		Peer1: rLink.GetPeer1(),
+		Peer2: rLink.GetPeer2(),
+		Peer1QoS: QoSConfig{
+			Loss:   float64(rLink.Peer1Qos.Loss),
+			Delay:  int(rLink.Peer1Qos.Delay),
+			Jitter: int(rLink.Peer1Qos.Jitter),
+		},
+		Peer2QoS: QoSConfig{
+			Loss:   float64(rLink.Peer2Qos.Loss),
+			Delay:  int(rLink.Peer2Qos.Delay),
+			Jitter: int(rLink.Peer2Qos.Jitter),
+		},
+	}
+}
+
 type netemServer struct {
 	proto.UnimplementedNetemServer
 }
@@ -326,15 +344,7 @@ func (s *netemServer) LinkUpdate(ctx context.Context, request *proto.LinkRequest
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
 
-	rLink := request.GetLink()
-	linkConfig := LinkConfig{
-		Peer1:  rLink.GetPeer1(),
-		Peer2:  rLink.GetPeer2(),
-		Loss:   float64(rLink.GetLoss()),
-		Delay:  int(rLink.GetDelay()),
-		Jitter: int(rLink.GetJitter()),
-	}
-
+	linkConfig := getLinkConfigFromRequest(request)
 	if err := project.Topology.LinkUpdate(linkConfig, request.GetSync()); err != nil {
 		return nil, err
 	}
@@ -350,15 +360,7 @@ func (s *netemServer) LinkAdd(ctx context.Context, request *proto.LinkRequest) (
 		return nil, &ProjectNotFoundError{request.GetPrjId()}
 	}
 
-	rLink := request.GetLink()
-	linkConfig := LinkConfig{
-		Peer1:  rLink.GetPeer1(),
-		Peer2:  rLink.GetPeer2(),
-		Loss:   float64(rLink.GetLoss()),
-		Delay:  int(rLink.GetDelay()),
-		Jitter: int(rLink.GetJitter()),
-	}
-
+	linkConfig := getLinkConfigFromRequest(request)
 	if err := project.Topology.LinkAdd(linkConfig, request.GetSync()); err != nil {
 		return nil, err
 	}
@@ -376,11 +378,8 @@ func (s *netemServer) LinkDel(ctx context.Context, request *proto.LinkRequest) (
 
 	rLink := request.GetLink()
 	linkConfig := LinkConfig{
-		Peer1:  rLink.GetPeer1(),
-		Peer2:  rLink.GetPeer2(),
-		Loss:   float64(rLink.GetLoss()),
-		Delay:  int(rLink.GetDelay()),
-		Jitter: int(rLink.GetJitter()),
+		Peer1: rLink.GetPeer1(),
+		Peer2: rLink.GetPeer2(),
 	}
 
 	if err := project.Topology.LinkDel(linkConfig, request.GetSync()); err != nil {
