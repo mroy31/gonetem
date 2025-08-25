@@ -38,19 +38,19 @@ func TestOptions_ImageId(t *testing.T) {
 	}{
 		{
 			imgType:    IMG_HOST,
-			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Host.Image, IMG_VERSION),
+			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Host.Image, VERSION),
 		},
 		{
 			imgType:    IMG_SERVER,
-			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Server.Image, IMG_VERSION),
+			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Server.Image, VERSION),
 		},
 		{
 			imgType:    IMG_ROUTER,
-			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Router.Image, IMG_VERSION),
+			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.Nodes.Router.Image, VERSION),
 		},
 		{
 			imgType:    IMG_OVS,
-			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.OvsImage, IMG_VERSION),
+			expectedID: fmt.Sprintf("%s:%s", ServerConfig.Docker.OvsImage, VERSION),
 		},
 	}
 	for _, test := range tests {

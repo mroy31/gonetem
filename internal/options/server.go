@@ -13,7 +13,6 @@ import (
 
 const (
 	VERSION               = "0.4.1"
-	IMG_VERSION           = "0.2.0"
 	NETEM_ID              = "ntm"
 	SERVER_CONFIG_FILE    = "/etc/gonetem/config.yaml"
 	MINIMUM_SERVER_CONFIG = `
@@ -214,7 +213,7 @@ func GetDockerImageId(image string) string {
 	hasTagRE := regexp.MustCompile(`^\S+:[\w\.]+$`)
 
 	if !hasTagRE.MatchString(image) {
-		image = fmt.Sprintf("%s:%s", image, IMG_VERSION)
+		image = fmt.Sprintf("%s:%s", image, VERSION)
 	}
 
 	return image
