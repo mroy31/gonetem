@@ -32,6 +32,7 @@ type INetemNode interface {
 	GetNetns() (netns.NsHandle, error)
 	GetInterfaceName(ifIndex int) string
 	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
+	AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error
 	LoadConfig(confPath string, timeout int) ([]string, error)
 	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
 	GetConsoleCmd(shell bool) ([]string, error)

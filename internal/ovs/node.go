@@ -164,6 +164,10 @@ func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) er
 	return nil
 }
 
+func (o *OvsNode) AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
+	return fmt.Errorf("unable to attach ovs switch to management network")
+}
+
 func (o *OvsNode) GetInterfacesState() map[string]link.IfState {
 	ifStates := make(map[string]link.IfState, 0)
 	for ifName, state := range o.Interfaces {

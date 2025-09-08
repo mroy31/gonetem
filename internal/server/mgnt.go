@@ -1,0 +1,51 @@
+package server
+
+import (
+	"fmt"
+
+	"github.com/mroy31/gonetem/internal/link"
+	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
+)
+
+type MgntNetwork struct {
+	NetId     string
+	IPAddress string
+	Instance  *netlink.Bridge
+	NetNs     netns.NsHandle
+}
+
+func (mNet *MgntNetwork) Create() error {
+	var err error
+
+	mNet.Instance, err = link.CreateBridge(mNet.NetId, mNet.NetNs)
+	if err != nil {
+		return fmt.Errorf("unable to create management bridge %s: %v", mNet.NetId, err)
+	}
+
+	if err := link.IpAddressAdd(mNet.NetId, mNet.NetNs, mNet.IPAddress); err != nil {
+		return fmt.Errorf("unable to assign IP address %s to mgnt network: %v", mNet.IPAddress, err)
+	}
+
+	return nil
+}
+
+func (mNet *MgntNetwork) AttachInterface(ifName string) error {
+	if mNet.Instance == nil {
+		return fmt.Errorf("mgnt network is not created")
+	}
+
+	if err := link.AttachToBridge(mNet.Instance, ifName, mNet.NetNs); err != nil {
+		return fmt.Errorf("unable to attach %s to mgnt network: %v", ifName, err)
+	}
+
+	return nil
+}
+
+func (mNet *MgntNetwork) Close() error {
+	if mNet.Instance != nil {
+		return link.DeleteLink(mNet.NetId, mNet.NetNs)
+	}
+
+	return nil
+}

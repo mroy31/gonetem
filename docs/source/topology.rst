@@ -86,6 +86,19 @@ This parameter take a list of object with the following attributes :
 - *group (int)*: VRFRP group id
 - *address (string)*: VRRP IPv4 address
 
+Connection to the management network
+""""""""""""""""""""""""""""""""""""
+
+Gonetem offers the possibility to create a network dedicated to the docker nodes management. 
+This network allows to access docker nodes from the host OS throught a bridge.
+To connect to this network, you need to use the parameter ``mgnt``, that contains the following sub-parameters:
+
+- *enable (bool)*: set to yes to connect the node to management network
+- *address (string)*: IPv4 address used to access to this node 
+
+See section dedicated to *management network configuration* for futher details.
+
+
 Example of docker node
 """"""""""""""""""""""
 
@@ -103,6 +116,9 @@ Example of docker node
         - interface: 0
           group: 1
           address: 192.168.1.252/24
+        mgnt:
+          enable: yes
+          address: 192.168.0.1/24
 
 Extra : init script
 """""""""""""""""""
@@ -211,12 +227,49 @@ A bridge takes 2 arguments:
 
 Example
 ```````
-.. code-block:: ini
+.. code-block:: yaml
 
     bridges:
       my_br:
         host: eth0
         interfaces: [R1.0, host.0]
+
+
+Management network configuration
+--------------------------------
+
+You can add a dedicated management network in the topology definition. 
+It allows you to SSH or otherwise access nodes directly from the host OS throught a dedicated bridge. 
+
+To activate this feature, you have to:
+
+  1. Declare the parameter ``mgntnet`` with the following options:
+    
+    - *enable (bool)*: set to yes to activate management network
+    - *address (string)*: IPv4 address on the host side used to access nodes
+  
+  2. Connect nodes to the management network, thanks to the parameter ``mgnt`` in the node configuration.
+
+Make sure the specified IP addresses are in the same subnet and do not conflict with other networks on your system.
+
+Example
+```````
+.. code-block:: yaml
+
+    nodes:
+      host1:
+        type: docker.host
+        mgnt:
+          enable: yes
+          address: 192.168.0.1/24
+      host2:
+        type: docker.host
+        mgnt:
+          enable: yes
+          address: 192.168.0.2/24
+    mgntnet:
+      enable: yes
+      address: 192.168.0.254/24
 
 
 Full example

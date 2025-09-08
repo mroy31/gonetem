@@ -266,3 +266,28 @@ func MoveInterfacesNetns(ifNames map[string]IfState, current netns.NsHandle, tar
 
 	return nil
 }
+
+func IpAddressAdd(ifName string, namespace netns.NsHandle, IPAddress string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := netns.Set(namespace); err != nil {
+		return fmt.Errorf("error when switching netns: %v", err)
+	}
+
+	link, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("unable get link %s: %v", ifName, err)
+	}
+
+	addr, err := netlink.ParseAddr(IPAddress)
+	if err != nil {
+		return fmt.Errorf("unable to parse IP address %s: %v", IPAddress, err)
+	}
+
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		return fmt.Errorf("unable to add IP address %s to link %s: %v", IPAddress, ifName, err)
+	}
+
+	return nil
+}

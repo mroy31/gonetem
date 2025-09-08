@@ -36,6 +36,11 @@ type VrrpOptions struct {
 	Address   string
 }
 
+type MgntOptions struct {
+	Enable  bool   `yaml:",omitempty" default:"false"`
+	Address string `yaml:",omitempty"`
+}
+
 type NodeConfig struct {
 	Type    string
 	IPv6    bool          `yaml:",omitempty" default:"true"`
@@ -45,6 +50,7 @@ type NodeConfig struct {
 	Volumes []string      `yaml:",omitempty"`
 	Image   string        `yaml:",omitempty"`
 	Launch  bool          `default:"true"`
+	Mgnt    MgntOptions   `yaml:",omitempty"`
 }
 
 type RunCloseProgressCode int
@@ -151,10 +157,16 @@ type BridgeConfig struct {
 	Interfaces []string `yaml:",omitempty"`
 }
 
+type MgntNetworkConfig struct {
+	Enable  bool   `yaml:",omitempty" default:"false"`
+	Address string `yaml:",omitempty"`
+}
+
 type NetemTopology struct {
 	Nodes   map[string]NodeConfig   `yaml:",omitempty"`
 	Links   []LinkConfig            `yaml:",omitempty"`
 	Bridges map[string]BridgeConfig `yaml:",omitempty"`
+	Mgntnet MgntNetworkConfig       `yaml:",omitempty"`
 }
 
 type NetemLinkPeer struct {
@@ -253,6 +265,7 @@ type NetemTopologyManager struct {
 	ovsInstance *ovs.OvsProjectInstance
 	links       []*NetemLink
 	bridges     []*NetemBridge
+	mgntNet     *MgntNetwork
 	running     bool
 	logger      *logrus.Entry
 }
@@ -417,6 +430,16 @@ func (t *NetemTopologyManager) Load() error {
 		bIdx++
 	}
 
+	// create mgnt network if necessary
+	t.mgntNet = nil
+	if topology.Mgntnet.Enable {
+		t.mgntNet = &MgntNetwork{
+			NetId:     fmt.Sprintf("%s.mgnt", t.prjID),
+			IPAddress: topology.Mgntnet.Address,
+			NetNs:     link.GetRootNetns(),
+		}
+	}
+
 	return nil
 }
 
@@ -465,6 +488,13 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 		return nodeMessages, err
 	}
 
+	// 2 - optionnal - create mgnt network
+	if t.mgntNet != nil {
+		if err := t.mgntNet.Create(); err != nil {
+			return nodeMessages, err
+		}
+	}
+
 	// 2 - start all required nodes
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
@@ -477,6 +507,10 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 
 			if node.LaunchAtStartup {
 				err = node.Instance.Start()
+			}
+
+			if err == nil && node.Config.Mgnt.Enable {
+				err = t.setupMgntLink(&node)
 			}
 
 			if progressCh != nil {
@@ -593,6 +627,46 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		}
 		peer.Node.AddInterface(peerIfName, peer.IfIndex, peerNetns)
 	}
+
+	return nil
+}
+
+func (t *NetemTopologyManager) setupMgntLink(node *NetemNode) error {
+	if t.mgntNet == nil {
+		return nil
+	}
+
+	rootNs := link.GetRootNetns()
+	defer rootNs.Close()
+
+	peerNetns, err := node.Instance.GetNetns()
+	if err != nil {
+		return err
+	}
+	defer peerNetns.Close()
+
+	mgntIfname := fmt.Sprintf("%s%s%s.m", options.NETEM_ID, t.prjID, node.Instance.GetShortName())
+	peerIfname := fmt.Sprintf("%s%s.m", t.prjID, node.Instance.GetShortName())
+	veth, err := link.CreateVethLink(
+		mgntIfname, rootNs,
+		peerIfname, peerNetns,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"unable to create mgnt link for node %s: %v",
+			node.Instance.GetName(), err,
+		)
+	}
+
+	// set interface up
+	if err := link.SetInterfaceState(veth.Name, rootNs, link.IFSTATE_UP); err != nil {
+		return err
+	}
+
+	if err := t.mgntNet.AttachInterface(veth.Name); err != nil {
+		return err
+	}
+	node.Instance.AddMgntInterface(peerIfname, peerNetns, node.Config.Mgnt.Address)
 
 	return nil
 }
@@ -996,6 +1070,14 @@ func (t *NetemTopologyManager) Close(progressCh chan TopologyRunCloseProgressT) 
 		t.logger.Warnf("Error when closing ovswitch instance: %v", err)
 	}
 	t.ovsInstance = nil
+
+	// close mgnt network
+	if t.mgntNet != nil {
+		if err := t.mgntNet.Close(); err != nil {
+			t.logger.Warnf("Error when closing mgnt network: %v", err)
+		}
+		t.mgntNet = nil
+	}
 
 	return nil
 }

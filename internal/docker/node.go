@@ -189,7 +189,26 @@ func (n *DockerNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle)
 	return nil
 }
 
+func (n *DockerNode) AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
+	targetIfName := "mgnt"
+	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
+		return err
+	}
+
+	n.Interfaces[targetIfName] = link.IFSTATE_UP
+	// Set IP address
+	if err := link.IpAddressAdd(targetIfName, ns, IPAddress); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (n *DockerNode) PrepareInterface(ifName string) {
+	if !strings.HasPrefix(ifName, "eth") {
+		return // not applicable to mgnt interface
+	}
+
 	client, err := NewDockerClient()
 	if err != nil {
 		return
