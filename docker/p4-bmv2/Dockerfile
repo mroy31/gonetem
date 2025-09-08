@@ -135,6 +135,9 @@ ENV RUN_DEPS libboost-program-options1.74.0 \
     ethtool \
     procps \
     psmisc \
+    net-tools \
+    iproute2 \
+    iptables \
     vim
 COPY --from=libyang /output/usr/local /usr/local/
 COPY --from=sysrepo /output/usr/local /usr/local/
