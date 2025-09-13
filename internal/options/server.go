@@ -138,6 +138,18 @@ docker:
       - destSuffix: bind-etc.tgz
         source: /etc/bind
         label: Bind-Data
+    p4sw:
+      type: p4sw
+      image: mroy31/gonetem-bmv2
+      logOutput: true
+      commands:
+        console: /usr/local/bin/simple_switch_CLI
+        shell: /bin/bash
+        loadConfig:
+        - command: /usr/local/bin/launch-sw.py
+          checkFiles: []  
+        saveConfig:
+      configurationFiles:
   extraNodes: []
   ovsImage: mroy31/gonetem-ovs
 `
@@ -179,6 +191,7 @@ type NetemServerConfig struct {
 			Router DockerNodeConfig
 			Host   DockerNodeConfig
 			Server DockerNodeConfig
+			P4sw   DockerNodeConfig
 		}
 		ExtraNodes []DockerNodeConfig
 		OvsImage   string

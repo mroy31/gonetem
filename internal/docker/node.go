@@ -691,6 +691,8 @@ func getDockerConfigFromType(nType string) (*options.DockerNodeConfig, error) {
 		return &options.ServerConfig.Docker.Nodes.Host, nil
 	case "server":
 		return &options.ServerConfig.Docker.Nodes.Server, nil
+	case "p4sw":
+		return &options.ServerConfig.Docker.Nodes.P4sw, nil
 	default:
 		for _, nConfig := range options.ServerConfig.Docker.ExtraNodes {
 			if nConfig.Type == nType {

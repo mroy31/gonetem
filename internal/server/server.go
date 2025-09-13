@@ -97,6 +97,7 @@ func (s *netemServer) ServerPullImages(empty *empty.Empty, stream proto.Netem_Se
 		options.ServerConfig.Docker.Nodes.Router.Image,
 		options.ServerConfig.Docker.Nodes.Host.Image,
 		options.ServerConfig.Docker.Nodes.Server.Image,
+		options.ServerConfig.Docker.Nodes.P4sw.Image,
 		options.ServerConfig.Docker.OvsImage,
 	}
 

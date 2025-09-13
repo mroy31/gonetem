@@ -29,6 +29,8 @@ After the installation, the configuration of gonetem-server is done with the fil
           image: mroy31/gonetem-host
         server:
           image: mroy31/gonetem-server
+        p4sw:
+          image: mroy31/gonetem-bmv2
       extraNodes: []
 
 Description of available options:

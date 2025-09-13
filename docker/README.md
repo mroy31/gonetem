@@ -6,6 +6,7 @@ This folder contains source for docker images used for pynetem:
 - mroy31/gonetem-host
 - mroy31/gonetem-server
 - mroy31/gonetem-frr
+- mroy31/gonetem-bmv2
 - mroy31/gonetem-ovs
 
 ## Build

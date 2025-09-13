@@ -13,4 +13,6 @@ docker:
       image: mroy31/gonetem-host
     server:
       image: mroy31/gonetem-server
+    p4sw:
+      image: mroy31/gonetem-bmv2
   extraNodes: []

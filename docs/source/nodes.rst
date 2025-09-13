@@ -7,11 +7,12 @@ Docker nodes configuration
 Pre-configured nodes
 ---------------------
 
-By default, 3 kind of docker nodes have been pre-configured in gonetem
+By default, 4 kind of docker nodes have been pre-configured in gonetem
 
 - `router` to emulate a router thanks to FRR
 - `host` to emulate a simple machine
 - `server` to emulate a server machine with DHCP/TFTP/HTTP/DNS server
+- `p4sw` to emulate a P4 switch based on the bmv2 implementation
 
 These 3 nodes has a default configuration that can be modified in the ``docker.nodes``
 section of server configuration file. By default, this section looks like this:
@@ -26,6 +27,8 @@ section of server configuration file. By default, this section looks like this:
           image: mroy31/gonetem-host
         server:
           image: mroy31/gonetem-server
+        p4sw:
+          image: mroy31/gonetem-bmv2
 
 
 with only docker image set in the configuration. However, many other options 
