@@ -44,6 +44,7 @@ Before using gonetem, you need to pull from docker hub images used by default by
 * mroy31/gonetem-host -> tp emulate host
 * mroy31/gonetem-server -> to emulate server
 * mroy31/gonetem-ovs -> to emulate switch with Openvswitch
+* mroy31/gonetem-bmv2 -> to emulate P4 switch thanks to bmv2 implementation
 
 To do that, you can use the following command:
 
