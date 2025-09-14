@@ -4,15 +4,18 @@ import (
 	"fmt"
 
 	"github.com/mroy31/gonetem/internal/link"
+	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
 
 type MgntNetwork struct {
-	NetId     string
-	IPAddress string
-	Instance  *netlink.Bridge
-	NetNs     netns.NsHandle
+	NetId      string
+	IPAddress  string
+	Instance   *netlink.Bridge
+	NetNs      netns.NsHandle
+	Interfaces []string
+	Logger     *logrus.Entry
 }
 
 func (mNet *MgntNetwork) Create() error {
@@ -38,11 +41,19 @@ func (mNet *MgntNetwork) AttachInterface(ifName string) error {
 	if err := link.AttachToBridge(mNet.Instance, ifName, mNet.NetNs); err != nil {
 		return fmt.Errorf("unable to attach %s to mgnt network: %v", ifName, err)
 	}
+	mNet.Interfaces = append(mNet.Interfaces, ifName)
 
 	return nil
 }
 
 func (mNet *MgntNetwork) Close() error {
+	for _, ifName := range mNet.Interfaces {
+		if err := link.DeleteLink(ifName, mNet.NetNs); err != nil {
+			mNet.Logger.Warnf("Error when deleting link %s: %v", ifName, err)
+		}
+	}
+	mNet.Interfaces = make([]string, 0)
+
 	if mNet.Instance != nil {
 		return link.DeleteLink(mNet.NetId, mNet.NetNs)
 	}

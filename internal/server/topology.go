@@ -437,6 +437,7 @@ func (t *NetemTopologyManager) Load() error {
 			NetId:     fmt.Sprintf("%s.mgnt", t.prjID),
 			IPAddress: topology.Mgntnet.Address,
 			NetNs:     link.GetRootNetns(),
+			Logger:    t.logger,
 		}
 	}
 
