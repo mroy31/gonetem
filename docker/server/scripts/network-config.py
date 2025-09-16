@@ -40,6 +40,24 @@ def is_ipv6_autoconf(if_name):
     return False
 
 
+def is_interface_exists(ndb, if_name):
+    for k in ndb.interfaces:
+        if_obj = ndb.interfaces[k]
+        if if_name == if_obj["ifname"]:
+            return True
+
+    return False
+
+
+def is_interface_exists_by_idx(ndb, if_idx):
+    for k in ndb.interfaces:
+        if_obj = ndb.interfaces[k]
+        if if_idx == if_obj["index"]:
+            return True
+
+    return False
+
+
 def get_interface_byindex(ndb, target_idx):
     for k in ndb.interfaces:
         if_obj = ndb.interfaces[k]
@@ -49,7 +67,7 @@ def get_interface_byindex(ndb, target_idx):
     return None
 
 
-def load_interface_config(ndb, if_name, ip_addrs):
+def load_interface_addrs(ndb, if_name, ip_addrs):
     try:
         i = ndb.interfaces[if_name].set('state', 'up').commit()
     except KeyError:
@@ -62,6 +80,55 @@ def load_interface_config(ndb, if_name, ip_addrs):
             print("Unable to load IP address {} to interface {} -> {}".format(address, if_name, ex))
 
 
+def create_interfaces(ndb, net_config):
+    # create bonding interfaces
+    for bond_name in net_config["bondings"]:
+        bond_conf = net_config["bondings"][bond_name]
+
+        try:
+            bond_if = ndb.interfaces.create(
+                ifname=bond_name,
+                kind='bond', 
+                bond_mode=bond_conf["mode"]).commit()
+        except Exception as ex:
+            print(f"Unable to create bonding interface {bond_name} -> {ex}")
+            continue
+
+        try:
+            for slave_if in bond_conf["slaves"]:
+                if not is_interface_exists(ndb, slave_if):
+                    print(f"Interface {slave_if} does not exist")
+                    continue
+                ndb.interfaces[slave_if].set('state', 'down').commit()
+                bond_if.add_port(slave_if).commit()
+        except Exception as ex:
+            print(f"Unable to configure bonding {bond_name} -> {ex}")
+            continue
+
+    # create vlan configurations
+    for vlan_name in net_config["vlans"]:
+        vlan_conf = net_config["vlans"][vlan_name]
+
+        vlan_link = vlan_conf["link"]
+        if type(vlan_conf["link"]) is int:
+            vlan_link = get_interface_byindex(ndb, vlan_conf["link"])
+
+        if vlan_link is None or not is_interface_exists(ndb, vlan_link):
+            print("Interface " + str(vlan_conf["link"]) + " does not exist")
+            continue
+
+        try:
+            ndb.interfaces.create(
+                ifname=vlan_name,       
+                kind='vlan',            
+                link=vlan_link,
+                vlan_id=vlan_conf["vlan_id"]
+            ).commit()
+        except Exception as ex:
+            print(f"Unable to create vlan interface {vlan_name} -> {ex}")
+            continue
+
+
 def load_net_config(f_path):
     with open(f_path) as f_hd:
         net_config = json.load(f_hd)
@@ -71,42 +138,23 @@ def load_net_config(f_path):
             net_config["vlans"] = {}
 
         with NDB(sources=[{'target': 'localhost'}]) as ndb:
-            # load vlan configurations
+            create_interfaces(ndb, net_config)
+
+            # load bonding IP addresses
+            for bond_name in net_config["bondings"]:
+                bond_conf = net_config["bondings"][bond_name]
+                load_interface_addrs(ndb, bond_name, bond_conf["addresses"])
+
+            # load VLAN IP addresses
             for vlan_name in net_config["vlans"]:
                 vlan_conf = net_config["vlans"][vlan_name]
-                try:
-                    ndb.interfaces.create(
-                       ifname=vlan_name,       
-                       kind='vlan',            
-                       link=vlan_conf["link"],
-                       vlan_id=vlan_conf["vlan_id"]
-                    ).commit()
-                except Exception as ex:
-                    print(f"Unable to create vlan interface {vlan_name} -> {ex}")
+                if "addresses" not in vlan_conf:
                     continue
+                load_interface_addrs(ndb, vlan_name, vlan_conf["addresses"])
 
-            # load interface configurations
+            # load other interface addresses
             for ifname in net_config["interfaces"]:
-                load_interface_config(ndb, ifname, net_config["interfaces"][ifname])
-
-            # load bonding configurations
-            for bond_name in net_config["bondings"]:
-                try:
-                    bond_if = ndb.interfaces.create(ifname=bond_name, kind='bond').commit()
-                except Exception as ex:
-                    print(f"Unable to create bonding interface {bond_name} -> {ex}")
-                    continue
-
-                bond_conf = net_config["bondings"][bond_name]
-                try:
-                    for slave_if in bond_conf["slaves"]:
-                        ndb.interfaces[slave_if].set('state', 'down').commit()
-                        bond_if.add_port(slave_if).commit()
-                    bond_if.set("bond_mode", bond_conf["mode"]).commit()
-                except Exception as ex:
-                    print(f"Unable to configure bonding {bond_name} -> {ex}")
-                    continue
-                load_interface_config(ndb, bond_name, bond_conf["addresses"])
+                load_interface_addrs(ndb, ifname, net_config["interfaces"][ifname])
 
             # configure routes
             for route in net_config["routes"]:
@@ -149,9 +197,13 @@ def save_net_config(f_path, all_if):
                 continue
 
             if if_obj["kind"] == "vlan":
+                addresses = if_obj.ipaddr
                 net_config["vlans"][if_name] = {
-                    "link": if_obj["link"],
-                    "vlan_id": if_obj["vlan_id"]
+                    "link": get_interface_byindex(ndb, if_obj["link"]),
+                    "vlan_id": if_obj["vlan_id"],
+                    "addresses": [
+                        fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
+                    ]
                 }
 
             if if_obj["slave_kind"] == "bond":

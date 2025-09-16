@@ -18,7 +18,7 @@ RUN apt-get update -y && \
     apt-get install -y python3 python3-pyroute2 less nano vim tcpdump \
 	    iputils-ping iputils-arping iputils-tracepath net-tools file \
 	    telnet man traceroute hping3 iptables links htop ntp git wget at \
-	    snmp iperf3 build-essential curl tftp-hpa isc-dhcp-client ethtool \
+	    snmp iperf3 curl tftp-hpa isc-dhcp-client ethtool \
 		bind9-dnsutils python3-scapy python3-netifaces iperf \
 		&& rm -rf /var/lib/apt/lists/*
 
