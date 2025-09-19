@@ -4,9 +4,36 @@ import subprocess
 import argparse
 import shlex
 import logging
-import signal
+import os
+import errno
+import sys
 from pyroute2 import NDB
-from daemonize import Daemonize
+
+
+def daemonize():
+    # See http://www.erlenstar.demon.co.uk/unix/faq_toc.html#TOC16
+    if os.fork():  # launch child and...
+        os._exit(0)  # kill off parent
+    os.setsid()
+    if os.fork():  # launch child and...
+        os._exit(0)  # kill off parent again.
+    os.umask(0o77)
+    null = os.open('/dev/null', os.O_RDWR)
+    for i in range(3):
+        try:
+            os.dup2(null, i)
+        except OSError as e:
+            if e.errno != errno.EBADF:
+                raise
+    os.close(null)
+
+
+def removePID(pidfile):
+    if os.path.isfile(pidfile):
+        try: os.remove(pidfile)
+        except OSError as e:
+            if e.errno == errno.EACCES or e.errno == errno.EPERM:
+                sys.exit(f"Unable to remove pid file : {str(e)}")
 
 
 def get_interface_list():
@@ -33,6 +60,10 @@ if __name__ == "__main__":
         help="Log file")
     args = parser.parse_args()
 
+    # daemonize
+    removePID(args.pid)
+    daemonize()
+
     # init logger
     LEVEL = logging.INFO
 
@@ -44,22 +75,19 @@ if __name__ == "__main__":
     logger.addHandler(fh)
     keep_fds = [fh.stream.fileno()]
 
-    def launch_ss(): 
-        interfaces = get_interface_list()
-        cmd = "/usr/local/bin/simple_switch_grpc"
-        for idx, ifname in enumerate(interfaces):
-            cmd += f" -i {idx}@{ifname}"
-        cmd += " /models/default.json"
+    interfaces = get_interface_list()
+    cmd = "/usr/local/bin/simple_switch_grpc"
+    for idx, ifname in enumerate(interfaces):
+        cmd += f" -i {idx}@{ifname}"
+    cmd += " /models/default.json"
 
-        logger.info(f"Running command: {cmd}")
+    logger.info(f"Running command: {cmd}")
+    subprocess.run(
+        shlex.split(cmd),
+        stdout=fh.stream.fileno(),
+        stderr=subprocess.STDOUT)
 
-        with subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
-            for line in proc.stdout:
-                logger.info(line.decode("utf-8"))
 
-
-    daemon = Daemonize(app="simple_switch", pid=args.pid, action=launch_ss, keep_fds=keep_fds)
-    daemon.start()
 
 
 

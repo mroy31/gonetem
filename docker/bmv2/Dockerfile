@@ -1,4 +1,4 @@
-FROM debian:bookworm as base-builder
+FROM debian:bookworm AS base-builder
 
 ARG MAKEFLAGS=-j4
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,7 +50,7 @@ RUN apt-get update \
 WORKDIR /
 
 # Build libyang
-FROM base-builder as libyang
+FROM base-builder AS libyang
 RUN git clone https://github.com/CESNET/libyang.git \
   && cd libyang \
   && git checkout 13b20f9
@@ -60,7 +60,7 @@ RUN mkdir build && cd build \
   && make DESTDIR=/output install
 
 # Build sysrepo
-FROM base-builder as sysrepo
+FROM base-builder AS sysrepo
 COPY --from=libyang /output/usr/local /usr/local/
 RUN ldconfig  
 RUN git clone https://github.com/sysrepo/sysrepo.git \
@@ -76,7 +76,7 @@ RUN mkdir build \
   && make DESTDIR=/output install
 
 # Build PI
-FROM base-builder as PI
+FROM base-builder AS pi
 COPY --from=libyang /output/usr/local /usr/local/
 COPY --from=sysrepo /output/usr/local /usr/local/
 RUN ldconfig  
@@ -91,10 +91,10 @@ RUN ./autogen.sh && \
     make DESTDIR=/output install-strip
 
 # Build bmv2 with PI and grpc support
-FROM base-builder as bmv2
+FROM base-builder AS bmv2
 COPY --from=libyang /output/usr/local /usr/local/
 COPY --from=sysrepo /output/usr/local /usr/local/
-COPY --from=PI /output/usr/local /usr/local/
+COPY --from=pi /output/usr/local /usr/local/
 RUN ldconfig  
 RUN git clone https://github.com/p4lang/behavioral-model.git \
   && cd behavioral-model \
@@ -127,7 +127,6 @@ ENV RUN_DEPS libboost-program-options1.74.0 \
     python3 \
     python-is-python3 \
     python3-pyroute2 \
-    python3-daemonize \
     python3-six \
     python3-thrift \
     tcpdump \
