@@ -87,6 +87,12 @@ func (s *netemServer) ServerCleanContainers(ctx context.Context, empty *empty.Em
 		}
 	}
 
+	if err := g.Wait(); err != nil {
+		return &proto.AckResponse{
+			Status: &proto.Status{Code: proto.StatusCode_ERROR},
+		}, err
+	}
+
 	return &proto.AckResponse{
 		Status: &proto.Status{Code: proto.StatusCode_OK},
 	}, nil
