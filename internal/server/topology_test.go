@@ -167,11 +167,18 @@ func TestTopology_UpdateLink(t *testing.T) {
 			}
 
 			if err := topology.LinkUpdate(LinkConfig{
-				Peer1:  tt.peer1,
-				Peer2:  tt.peer2,
-				Delay:  tt.delay,
-				Jitter: tt.jitter,
-				Loss:   tt.loss,
+				Peer1: tt.peer1,
+				Peer2: tt.peer2,
+				Peer1QoS: QoSConfig{
+					Delay:  tt.delay,
+					Jitter: tt.jitter,
+					Loss:   tt.loss,
+				},
+				Peer2QoS: QoSConfig{
+					Delay:  tt.delay,
+					Jitter: tt.jitter,
+					Loss:   tt.loss,
+				},
 			}, true); err != nil && !tt.expectedError {
 				t.Errorf("LinkUpdate returns an unexpected error: %v", err)
 				return

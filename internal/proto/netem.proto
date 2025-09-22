@@ -188,6 +188,8 @@ message LinkConfig {
         float loss = 3;
         int32 delay = 4;
         int32 jitter = 5;
+        int32 rate = 6;
+        float buffer = 7;
     }
 
     string peer1 = 1;

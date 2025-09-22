@@ -193,7 +193,7 @@ func (l *NetemLink) SetPeer1TBF(ifName string, ns netns.NsHandle) error {
 
 	// create tbf qdisc if necessary
 	if peerQoS.Rate > 0 {
-		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer); err != nil {
+		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer, l.HasPeer1Tbf); err != nil {
 			return err
 		}
 		l.HasPeer1Tbf = true
@@ -207,7 +207,7 @@ func (l *NetemLink) SetPeer2TBF(ifName string, ns netns.NsHandle) error {
 
 	// create tbf qdisc if necessary
 	if peerQoS.Rate > 0 {
-		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer); err != nil {
+		if err := link.CreateTbf(ifName, ns, peerQoS.Delay+l.Config.Jitter, peerQoS.Rate, peerQoS.Buffer, l.HasPeer2Tbf); err != nil {
 			return err
 		}
 		l.HasPeer2Tbf = true
@@ -709,7 +709,7 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	if err := l.SetPeer1TBF(peer1IfName, peer1Netns); err != nil {
 		return err
 	}
-	if err := l.SetPeer1TBF(peer2IfName, peer2Netns); err != nil {
+	if err := l.SetPeer2TBF(peer2IfName, peer2Netns); err != nil {
 		return err
 	}
 
@@ -842,19 +842,25 @@ func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
 	defer peer2Netns.Close()
 
 	// update config
-	l.Config.Delay = linkCfg.Delay
-	l.Config.Jitter = linkCfg.Jitter
-	l.Config.Loss = linkCfg.Loss
 	l.Config.Peer1QoS = linkCfg.Peer1QoS
 	l.Config.Peer2QoS = linkCfg.Peer2QoS
 
 	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
 	peer2IfName := l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex)
+
 	// create/update netem qdisc if necessary
 	if err := l.SetPeer1Netem(peer1IfName, peer1Netns); err != nil {
 		return err
 	}
 	if err := l.SetPeer2Netem(peer2IfName, peer2Netns); err != nil {
+		return err
+	}
+
+	// create tbf qdisc if necessary
+	if err := l.SetPeer1TBF(peer1IfName, peer1Netns); err != nil {
+		return err
+	}
+	if err := l.SetPeer2TBF(peer2IfName, peer2Netns); err != nil {
 		return err
 	}
 

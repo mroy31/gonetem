@@ -94,7 +94,7 @@ func Netem(ifname string, namespace netns.NsHandle, delay int, jitter int, loss 
 	return nil
 }
 
-func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFactor float64) error {
+func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFactor float64, change bool) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -147,9 +147,16 @@ func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFact
 		},
 	}
 
-	// tc qdisc add dev ifname root netem ...
-	if err := rtnl.Qdisc().Add(&qdisc); err != nil {
-		return fmt.Errorf("could not assign qdisc tbf to %s: %v", ifname, err)
+	if !change {
+		// tc qdisc add dev ifname root netem ...
+		if err := rtnl.Qdisc().Add(&qdisc); err != nil {
+			return fmt.Errorf("could not assign qdisc tbf to %s: %v", ifname, err)
+		}
+	} else {
+		// tc qdisc change dev ifname root netem ...
+		if err := rtnl.Qdisc().Change(&qdisc); err != nil {
+			return fmt.Errorf("could not change qdisc tbf to %s: %v", ifname, err)
+		}
 	}
 
 	return nil
