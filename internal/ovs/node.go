@@ -147,24 +147,23 @@ func (o *OvsNode) Stop() error {
 	return nil
 }
 
-func (o *OvsNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error {
-	targetIfName := o.GetInterfaceName(ifIndex)
-	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
-		return err
-	}
-
+func (o *OvsNode) AttachInterface(ifName string, ifIndex int, configure bool) error {
 	if o.Running {
-		if err := o.OvsInstance.AddPort(o.GetBridgeName(), targetIfName); err != nil {
+		if err := o.OvsInstance.AddPort(o.GetBridgeName(), ifName); err != nil {
 			return err
 		}
 	}
 
-	o.Interfaces[targetIfName] = link.IFSTATE_UP
+	o.Interfaces[ifName] = link.IFSTATE_UP
 
 	return nil
 }
 
-func (o *OvsNode) AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
+func (n *OvsNode) ConfigureInterfaces() error {
+	return nil
+}
+
+func (o *OvsNode) AttachMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
 	return fmt.Errorf("unable to attach ovs switch to management network")
 }
 

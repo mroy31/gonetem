@@ -40,13 +40,18 @@ type DockerNodeStatus struct {
 	Running bool
 }
 
+type DockerInterface struct {
+	Configured bool
+	State      link.IfState
+}
+
 type DockerNode struct {
 	PrjID          string
 	ID             string
 	Name           string
 	ShortName      string
 	Config         *options.DockerNodeConfig
-	Interfaces     map[string]link.IfState
+	Interfaces     map[string]*DockerInterface
 	LocalNetnsName string
 	Running        bool
 	ConfigLoaded   bool
@@ -175,45 +180,10 @@ func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 	return fmt.Sprintf("eth%d", ifIndex)
 }
 
-func (n *DockerNode) AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error {
-	targetIfName := n.GetInterfaceName(ifIndex)
-	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
-		return err
-	}
-
-	n.Interfaces[targetIfName] = link.IFSTATE_UP
-	if n.Running {
-		n.PrepareInterface(targetIfName)
-	}
-
-	return nil
-}
-
-func (n *DockerNode) AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
-	targetIfName := "mgnt"
-	if err := link.RenameLink(ifName, targetIfName, ns); err != nil {
-		return err
-	}
-
-	n.Interfaces[targetIfName] = link.IFSTATE_UP
-	// Set IP address
-	if err := link.IpAddressAdd(targetIfName, ns, IPAddress); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (n *DockerNode) PrepareInterface(ifName string) {
+func (n *DockerNode) prepareInterface(client *DockerClient, ifName string) {
 	if !strings.HasPrefix(ifName, "eth") {
 		return // not applicable to mgnt interface
 	}
-
-	client, err := NewDockerClient()
-	if err != nil {
-		return
-	}
-	defer client.Close()
 
 	// disable tcp offloading
 	cmd := []string{"ethtool", "-K", ifName, "tx", "off"}
@@ -228,6 +198,62 @@ func (n *DockerNode) PrepareInterface(ifName string) {
 			n.Logger.Warnf("Unable to enable MPLS on %s", ifName)
 		}
 	}
+}
+
+func (n *DockerNode) AttachInterface(ifName string, ifIndex int, configure bool) error {
+	n.Interfaces[ifName] = &DockerInterface{
+		Configured: false,
+		State:      link.IFSTATE_UP,
+	}
+
+	if configure && n.Running {
+		client, err := NewDockerClient()
+		if err != nil {
+			return nil
+		}
+		defer client.Close()
+
+		n.prepareInterface(client, ifName)
+		n.Interfaces[ifName].Configured = true
+	}
+
+	return nil
+}
+
+func (n *DockerNode) ConfigureInterfaces() error {
+	if !n.Running {
+		return nil
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return nil
+	}
+	defer client.Close()
+
+	for ifName, st := range n.Interfaces {
+		if st.Configured {
+			continue
+		}
+
+		n.prepareInterface(client, ifName)
+		n.Interfaces[ifName].Configured = true
+	}
+
+	return nil
+}
+
+func (n *DockerNode) AttachMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error {
+	n.Interfaces[ifName] = &DockerInterface{
+		Configured: true,
+		State:      link.IFSTATE_UP,
+	}
+	// Set IP address
+	if err := link.IpAddressAdd(ifName, ns, IPAddress); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
@@ -315,13 +341,14 @@ func (n *DockerNode) Start() error {
 		}
 		defer targetNS.Close()
 
-		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
+		ifStates := n.GetInterfacesState()
+		if err := link.MoveInterfacesNetns(ifStates, currentNS, targetNS); err != nil {
 			return fmt.Errorf("unable to attach interfaces: %v", err)
 		}
 
 		// Configure interfaces
 		for ifName := range n.Interfaces {
-			n.PrepareInterface(ifName)
+			n.prepareInterface(client, ifName)
 		}
 	}
 
@@ -351,7 +378,8 @@ func (n *DockerNode) Stop() error {
 		}
 		defer targetNS.Close()
 
-		if err := link.MoveInterfacesNetns(n.Interfaces, currentNS, targetNS); err != nil {
+		ifStates := n.GetInterfacesState()
+		if err := link.MoveInterfacesNetns(ifStates, currentNS, targetNS); err != nil {
 			return fmt.Errorf("unable to attach interfaces: %v", err)
 		}
 
@@ -625,13 +653,19 @@ func (n *DockerNode) CopyTo(source, dest string) error {
 }
 
 func (n *DockerNode) GetInterfacesState() map[string]link.IfState {
-	return n.Interfaces
+	ifStates := make(map[string]link.IfState)
+
+	for ifName, st := range n.Interfaces {
+		ifStates[ifName] = st.State
+	}
+
+	return ifStates
 }
 
 func (n *DockerNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 	for ifName, st := range n.Interfaces {
 		if ifName == n.GetInterfaceName(ifIndex) {
-			if state != st {
+			if state != st.State {
 				ns, err := n.GetNetns()
 				if err != nil {
 					return err
@@ -641,7 +675,10 @@ func (n *DockerNode) SetInterfaceState(ifIndex int, state link.IfState) error {
 				if err := link.SetInterfaceState(n.GetInterfaceName(ifIndex), ns, state); err != nil {
 					return err
 				}
-				n.Interfaces[ifName] = state
+				n.Interfaces[ifName] = &DockerInterface{
+					Configured: st.Configured,
+					State:      state,
+				}
 				return nil
 			}
 			return nil
@@ -673,7 +710,7 @@ func (n *DockerNode) Close() error {
 
 		// clean attributes
 		n.ConfigLoaded = false
-		n.Interfaces = make(map[string]link.IfState)
+		n.Interfaces = make(map[string]*DockerInterface)
 		if n.LocalNetnsName != "" {
 			link.DeleteNetns(n.LocalNetnsName)
 			n.LocalNetnsName = ""
@@ -719,7 +756,7 @@ func NewDockerNode(prjID string, nType string, dockerOpts DockerNodeOptions) (*D
 		Vrfs:       dockerOpts.Vrfs,
 		Vrrps:      dockerOpts.Vrrps,
 		Volumes:    dockerOpts.Volumes,
-		Interfaces: make(map[string]link.IfState),
+		Interfaces: make(map[string]*DockerInterface),
 		Logger: logrus.WithFields(logrus.Fields{
 			"project": prjID,
 			"node":    dockerOpts.Name,

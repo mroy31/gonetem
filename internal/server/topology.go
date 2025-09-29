@@ -30,72 +30,6 @@ var (
 	mutex = &sync.Mutex{}
 )
 
-type VrrpOptions struct {
-	Interface int
-	Group     int
-	Address   string
-}
-
-type MgntOptions struct {
-	Enable  bool   `yaml:",omitempty" default:"false"`
-	Address string `yaml:",omitempty"`
-}
-
-type NodeConfig struct {
-	Type    string
-	IPv6    bool          `yaml:",omitempty" default:"true"`
-	Mpls    bool          `yaml:",omitempty" default:"false"`
-	Vrfs    []string      `yaml:",omitempty"`
-	Vrrps   []VrrpOptions `yaml:",omitempty"`
-	Volumes []string      `yaml:",omitempty"`
-	Image   string        `yaml:",omitempty"`
-	Launch  bool          `default:"true"`
-	Mgnt    MgntOptions   `yaml:",omitempty"`
-}
-
-type RunCloseProgressCode int
-type SaveProgressCode int
-type CloseProgressCode int
-
-const (
-	NODE_COUNT      RunCloseProgressCode = 1
-	BRIDGE_COUNT    RunCloseProgressCode = 2
-	LINK_COUNT      RunCloseProgressCode = 3
-	LOAD_TOPO       RunCloseProgressCode = 4
-	START_NODE      RunCloseProgressCode = 5
-	SETUP_LINK      RunCloseProgressCode = 6
-	START_BRIDGE    RunCloseProgressCode = 7
-	LOADCONFIG_NODE RunCloseProgressCode = 8
-	CLOSE_NODE      RunCloseProgressCode = 9
-	CLOSE_BRIDGE    RunCloseProgressCode = 10
-)
-
-type TopologyRunCloseProgressT struct {
-	Code  RunCloseProgressCode
-	Value int
-}
-
-const (
-	NODE_SAVE_COUNT SaveProgressCode = 1
-	NODE_SAVE       SaveProgressCode = 2
-)
-
-type TopologySaveProgressT struct {
-	Code  SaveProgressCode
-	Value int
-}
-
-func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	defaults.Set(n)
-
-	type plain NodeConfig
-	if err := unmarshal((*plain)(n)); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 type QoSConfig struct {
 	Loss   float64 `yaml:",omitempty"` // percent
 	Delay  int     `yaml:",omitempty"` // ms
@@ -160,6 +94,71 @@ type BridgeConfig struct {
 type MgntNetworkConfig struct {
 	Enable  bool   `yaml:",omitempty" default:"false"`
 	Address string `yaml:",omitempty"`
+}
+type VrrpOptions struct {
+	Interface int
+	Group     int
+	Address   string
+}
+
+type MgntOptions struct {
+	Enable  bool   `yaml:",omitempty" default:"false"`
+	Address string `yaml:",omitempty"`
+}
+
+type NodeConfig struct {
+	Type    string
+	IPv6    bool          `yaml:",omitempty" default:"true"`
+	Mpls    bool          `yaml:",omitempty" default:"false"`
+	Vrfs    []string      `yaml:",omitempty"`
+	Vrrps   []VrrpOptions `yaml:",omitempty"`
+	Volumes []string      `yaml:",omitempty"`
+	Image   string        `yaml:",omitempty"`
+	Launch  bool          `default:"true"`
+	Mgnt    MgntOptions   `yaml:",omitempty"`
+}
+
+func (n *NodeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	defaults.Set(n)
+
+	type plain NodeConfig
+	if err := unmarshal((*plain)(n)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type RunCloseProgressCode int
+type SaveProgressCode int
+type CloseProgressCode int
+
+const (
+	NODE_COUNT      RunCloseProgressCode = 1
+	BRIDGE_COUNT    RunCloseProgressCode = 3
+	LINK_COUNT      RunCloseProgressCode = 4
+	LOAD_TOPO       RunCloseProgressCode = 5
+	START_NODE      RunCloseProgressCode = 6
+	SETUP_LINK      RunCloseProgressCode = 7
+	START_BRIDGE    RunCloseProgressCode = 8
+	LOADCONFIG_NODE RunCloseProgressCode = 10
+	CLOSE_NODE      RunCloseProgressCode = 11
+	CLOSE_BRIDGE    RunCloseProgressCode = 12
+)
+
+type TopologyRunCloseProgressT struct {
+	Code  RunCloseProgressCode
+	Value int
+}
+
+const (
+	NODE_SAVE_COUNT SaveProgressCode = 1
+	NODE_SAVE       SaveProgressCode = 2
+)
+
+type TopologySaveProgressT struct {
+	Code  SaveProgressCode
+	Value int
 }
 
 type NetemTopology struct {
@@ -286,8 +285,9 @@ func (t *NetemTopologyManager) Check() error {
 
 func (t *NetemTopologyManager) SynchroniseTopology() error {
 	topo := &NetemTopology{
-		Nodes: make(map[string]NodeConfig),
-		Links: make([]LinkConfig, 0),
+		Nodes:   make(map[string]NodeConfig),
+		Links:   make([]LinkConfig, 0),
+		Bridges: make(map[string]BridgeConfig),
 	}
 
 	for _, node := range t.nodes {
@@ -296,6 +296,17 @@ func (t *NetemTopologyManager) SynchroniseTopology() error {
 
 	for _, link := range t.links {
 		topo.Links = append(topo.Links, link.Config)
+	}
+
+	for _, bridge := range t.bridges {
+		topo.Bridges[bridge.Name] = bridge.Config
+	}
+
+	if t.mgntNet != nil {
+		topo.Mgntnet = MgntNetworkConfig{
+			Enable:  true,
+			Address: t.mgntNet.IPAddress,
+		}
 	}
 
 	data, err := yaml.Marshal(topo)
@@ -469,6 +480,7 @@ func (t *NetemTopologyManager) Reload(progressCh chan TopologyRunCloseProgressT)
 func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([]*proto.TopologyRunMsg_NodeMessages, error) {
 	t.logger.Debug("Topo/Run")
 	if progressCh != nil {
+
 		progressCh <- TopologyRunCloseProgressT{Code: NODE_COUNT, Value: len(t.nodes)}
 		progressCh <- TopologyRunCloseProgressT{Code: BRIDGE_COUNT, Value: len(t.bridges)}
 		progressCh <- TopologyRunCloseProgressT{Code: LINK_COUNT, Value: len(t.links)}
@@ -496,7 +508,7 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 		}
 	}
 
-	// 2 - start all required nodes
+	// 3 - start all required nodes
 	g := new(errgroup.Group)
 	g.SetLimit(maxConcurrentNodeTask)
 
@@ -527,7 +539,7 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 	// 3 - create links
 	t.logger.Debug("Topo/Run: setup links")
 	for _, l := range t.links {
-		if err := t.setupLink(l); err != nil {
+		if err := t.setupLink(l, false); err != nil {
 			return nodeMessages, err
 		}
 
@@ -558,22 +570,25 @@ func (t *NetemTopologyManager) Run(progressCh chan TopologyRunCloseProgressT) ([
 	timeout := options.ServerConfig.Docker.Timeoutop
 	configPath := path.Join(t.path, configDir)
 	for _, node := range t.nodes {
-		node := node
 		g.Go(func() error {
 			var messages []string
 			var err error = nil
 
-			if node.LaunchAtStartup {
+			if node.Instance.IsRunning() {
+				if err = node.Instance.ConfigureInterfaces(); err != nil {
+					return err
+				}
+
 				messages, err = node.Instance.LoadConfig(configPath, timeout)
 				nodeMessages = append(nodeMessages, &proto.TopologyRunMsg_NodeMessages{
 					Name:     node.Instance.GetName(),
 					Messages: messages,
 				})
 			}
-
 			if progressCh != nil {
 				progressCh <- TopologyRunCloseProgressT{Code: LOADCONFIG_NODE}
 			}
+
 			return err
 		})
 	}
@@ -603,7 +618,6 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		if err != nil {
 			return err
 		}
-		defer peerNetns.Close()
 
 		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, peer.Node.GetShortName(), peer.IfIndex)
 		peerIfName := fmt.Sprintf("%s%s%d.%s", options.NETEM_ID, t.prjID, peer.IfIndex, peer.Node.GetShortName())
@@ -626,7 +640,7 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		if err := link.AttachToBridge(brId, veth.Name, rootNs); err != nil {
 			return err
 		}
-		peer.Node.AddInterface(peerIfName, peer.IfIndex, peerNetns)
+		peer.Node.AttachInterface(peerIfName, peer.IfIndex, false)
 	}
 
 	return nil
@@ -644,10 +658,9 @@ func (t *NetemTopologyManager) setupMgntLink(node *NetemNode) error {
 	if err != nil {
 		return err
 	}
-	defer peerNetns.Close()
 
 	mgntIfname := fmt.Sprintf("%s%s%s.m", options.NETEM_ID, t.prjID, node.Instance.GetShortName())
-	peerIfname := fmt.Sprintf("%s%s.m", t.prjID, node.Instance.GetShortName())
+	peerIfname := "mgnt"
 	veth, err := link.CreateVethLink(
 		mgntIfname, rootNs,
 		peerIfname, peerNetns,
@@ -667,12 +680,12 @@ func (t *NetemTopologyManager) setupMgntLink(node *NetemNode) error {
 	if err := t.mgntNet.AttachInterface(veth.Name); err != nil {
 		return err
 	}
-	node.Instance.AddMgntInterface(peerIfname, peerNetns, node.Config.Mgnt.Address)
+	node.Instance.AttachMgntInterface(peerIfname, peerNetns, node.Config.Mgnt.Address)
 
 	return nil
 }
 
-func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
+func (t *NetemTopologyManager) setupLink(l *NetemLink, configure bool) error {
 	peer1Netns, err := l.Peer1.Node.GetNetns()
 	if err != nil {
 		return err
@@ -685,8 +698,8 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 	defer peer2Netns.Close()
 
-	peer1IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer1.Node.GetShortName(), l.Peer1.IfIndex)
-	peer2IfName := fmt.Sprintf("%s%s.%d", t.prjID, l.Peer2.Node.GetShortName(), l.Peer2.IfIndex)
+	peer1IfName := l.Peer1.Node.GetInterfaceName(l.Peer1.IfIndex)
+	peer2IfName := l.Peer2.Node.GetInterfaceName(l.Peer2.IfIndex)
 	_, err = link.CreateVethLink(peer1IfName, peer1Netns, peer2IfName, peer2Netns)
 	if err != nil {
 		return fmt.Errorf(
@@ -714,10 +727,10 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink) error {
 	}
 
 	// attach interfaces to nodes
-	if err := l.Peer1.Node.AddInterface(peer1IfName, l.Peer1.IfIndex, peer1Netns); err != nil {
+	if err := l.Peer1.Node.AttachInterface(peer1IfName, l.Peer1.IfIndex, configure); err != nil {
 		return err
 	}
-	if err := l.Peer2.Node.AddInterface(peer2IfName, l.Peer2.IfIndex, peer2Netns); err != nil {
+	if err := l.Peer2.Node.AttachInterface(peer2IfName, l.Peer2.IfIndex, configure); err != nil {
 		return err
 	}
 
@@ -788,7 +801,7 @@ func (t *NetemTopologyManager) LinkAdd(linkCfg LinkConfig, sync bool) error {
 		HasPeer2Tbf:   false,
 		Config:        linkCfg,
 	}
-	if err := t.setupLink(link); err != nil {
+	if err := t.setupLink(link, true); err != nil {
 		return err
 	}
 
@@ -833,13 +846,11 @@ func (t *NetemTopologyManager) LinkUpdate(linkCfg LinkConfig, sync bool) error {
 	if err != nil {
 		return err
 	}
-	defer peer1Netns.Close()
 
 	peer2Netns, err := l.Peer2.Node.GetNetns()
 	if err != nil {
 		return err
 	}
-	defer peer2Netns.Close()
 
 	// update config
 	l.Config.Peer1QoS = linkCfg.Peer1QoS

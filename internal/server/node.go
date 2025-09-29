@@ -21,31 +21,6 @@ var (
 	}
 )
 
-type INetemNode interface {
-	GetName() string
-	GetShortName() string
-	GetType() string
-	GetFullType() string
-	IsRunning() bool
-	Start() error
-	Stop() error
-	GetNetns() (netns.NsHandle, error)
-	GetInterfaceName(ifIndex int) string
-	AddInterface(ifName string, ifIndex int, ns netns.NsHandle) error
-	AddMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error
-	LoadConfig(confPath string, timeout int) ([]string, error)
-	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
-	GetConsoleCmd(shell bool) ([]string, error)
-	Capture(ifIndex int, out io.Writer) error
-	CopyFrom(srcPath, destPath string) error
-	CopyTo(srcPath, destPath string) error
-	ReadConfigFiles(confDir string, timeout int) (map[string][]byte, error)
-	Save(dstPath string, timeout int) error
-	GetInterfacesState() map[string]link.IfState
-	SetInterfaceState(ifIndex int, state link.IfState) error
-	Close() error
-}
-
 type NodeNotFoundError struct {
 	prjId string
 	name  string
@@ -101,6 +76,32 @@ func (nIdGen *NodeIdentifierGenerator) Close() {
 	defer nIdGen.lock.Unlock()
 
 	nIdGen.usedIds = make([]string, 0)
+}
+
+type INetemNode interface {
+	GetName() string
+	GetShortName() string
+	GetType() string
+	GetFullType() string
+	IsRunning() bool
+	Start() error
+	Stop() error
+	GetNetns() (netns.NsHandle, error)
+	GetInterfaceName(ifIndex int) string
+	AttachMgntInterface(ifName string, ns netns.NsHandle, IPAddress string) error
+	AttachInterface(ifName string, ifIndex int, configure bool) error
+	ConfigureInterfaces() error
+	LoadConfig(confPath string, timeout int) ([]string, error)
+	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
+	GetConsoleCmd(shell bool) ([]string, error)
+	Capture(ifIndex int, out io.Writer) error
+	CopyFrom(srcPath, destPath string) error
+	CopyTo(srcPath, destPath string) error
+	ReadConfigFiles(confDir string, timeout int) (map[string][]byte, error)
+	Save(dstPath string, timeout int) error
+	GetInterfacesState() map[string]link.IfState
+	SetInterfaceState(ifIndex int, state link.IfState) error
+	Close() error
 }
 
 func CreateNode(prjID string, name string, shortName string, config NodeConfig) (INetemNode, error) {

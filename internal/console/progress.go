@@ -40,7 +40,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Start nodes: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Node - Start: %d/%d")),
 				),
 			}
 			bars[1] = ProgressBarT{
@@ -48,7 +48,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarQueueAfter(bars[0].Bar),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Load node configs: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Node - Configuration: %d/%d")),
 				),
 			}
 		}
@@ -59,7 +59,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Link setup: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Link - Create: %d/%d")),
 				),
 			}
 		}
@@ -70,7 +70,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Bridge start: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, "Bridge - Create: %d/%d")),
 				),
 			}
 		}
