@@ -1,9 +1,7 @@
 package console
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
@@ -20,7 +18,6 @@ func NewClient(server string) (*NetemConsoleClient, error) {
 	var creds = insecure.NewCredentials()
 	var opts []grpc.DialOption
 
-	opts = append(opts, grpc.WithBlock())
 	if options.ConsoleConfig.Tls.Enabled {
 		var err error
 
@@ -31,10 +28,7 @@ func NewClient(server string) (*NetemConsoleClient, error) {
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx, server, opts...)
+	conn, err := grpc.NewClient(server, opts...)
 	if err != nil {
 		return nil, err
 	}

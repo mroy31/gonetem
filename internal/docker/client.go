@@ -13,6 +13,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/moby/term"
@@ -21,7 +22,7 @@ import (
 )
 
 type NetemContainerList struct {
-	Container types.Container
+	Container container.Summary
 	Name      string
 }
 
@@ -34,7 +35,7 @@ func (c *DockerClient) Close() error {
 }
 
 func (c *DockerClient) IsImagePresent(ctx context.Context, imgName string) (bool, error) {
-	list, err := c.cli.ImageList(ctx, types.ImageListOptions{All: true})
+	list, err := c.cli.ImageList(ctx, image.ListOptions{All: true})
 	if err != nil {
 		return false, err
 	}
@@ -50,7 +51,7 @@ func (c *DockerClient) IsImagePresent(ctx context.Context, imgName string) (bool
 }
 
 func (c *DockerClient) ImagePull(ctx context.Context, imgName string) error {
-	out, err := c.cli.ImagePull(ctx, imgName, types.ImagePullOptions{})
+	out, err := c.cli.ImagePull(ctx, imgName, image.PullOptions{})
 	if err != nil {
 		return err
 	}
@@ -63,7 +64,7 @@ func (c *DockerClient) ImagePull(ctx context.Context, imgName string) error {
 func (c *DockerClient) List(ctx context.Context, prefix string) ([]NetemContainerList, error) {
 	result := make([]NetemContainerList, 0)
 
-	list, err := c.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	list, err := c.cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return result, err
 	}
@@ -84,7 +85,7 @@ func (c *DockerClient) List(ctx context.Context, prefix string) ([]NetemContaine
 }
 
 func (c *DockerClient) Get(ctx context.Context, containerId string) (*types.Container, error) {
-	list, err := c.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	list, err := c.cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +144,7 @@ func (c *DockerClient) Create(
 }
 
 func (c *DockerClient) Start(ctx context.Context, containerId string) error {
-	return c.cli.ContainerStart(ctx, containerId, types.ContainerStartOptions{})
+	return c.cli.ContainerStart(ctx, containerId, container.StartOptions{})
 }
 
 func (c *DockerClient) Stop(ctx context.Context, containerId string) error {
@@ -174,7 +175,7 @@ func (c *DockerClient) Rm(ctx context.Context, containerId string) error {
 			return err
 		}
 	}
-	return c.cli.ContainerRemove(ctx, containerId, types.ContainerRemoveOptions{})
+	return c.cli.ContainerRemove(ctx, containerId, container.RemoveOptions{})
 }
 
 func (c *DockerClient) Pid(ctx context.Context, containerId string) (int, error) {
@@ -281,11 +282,11 @@ func (c *DockerClient) CopyTo(ctx context.Context, containerId, source, dest str
 
 	return c.cli.CopyToContainer(
 		context.Background(), containerId, dstPath,
-		pReader, types.CopyToContainerOptions{})
+		pReader, container.CopyToContainerOptions{})
 }
 
 func (c *DockerClient) ExecWithWorkingDir(ctx context.Context, containerId string, cmd []string, workingDir string) (string, error) {
-	config := types.ExecConfig{
+	config := container.ExecOptions{
 		AttachStderr: true,
 		AttachStdout: true,
 		Cmd:          cmd,
@@ -297,7 +298,7 @@ func (c *DockerClient) ExecWithWorkingDir(ctx context.Context, containerId strin
 		return "", err
 	}
 
-	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{})
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -351,7 +352,7 @@ func (c *DockerClient) Exec(ctx context.Context, containerId string, cmd []strin
 }
 
 func (c *DockerClient) ExecOutStream(ctx context.Context, containerId string, cmd []string, out io.Writer) error {
-	config := types.ExecConfig{
+	config := container.ExecOptions{
 		AttachStderr: false,
 		AttachStdout: true,
 		Cmd:          cmd,
@@ -362,7 +363,7 @@ func (c *DockerClient) ExecOutStream(ctx context.Context, containerId string, cm
 		return err
 	}
 
-	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{})
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{})
 	if err != nil {
 		return err
 	}
@@ -409,7 +410,7 @@ func (c *DockerClient) ExecTty(
 	ttyHeight uint,
 	ttyWidth uint,
 	resizeCh chan term.Winsize) error {
-	config := types.ExecConfig{
+	config := container.ExecOptions{
 		AttachStderr: true,
 		AttachStdout: true,
 		AttachStdin:  true,
@@ -423,7 +424,7 @@ func (c *DockerClient) ExecTty(
 		return err
 	}
 
-	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, types.ExecStartCheck{
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{
 		Tty:         config.Tty,
 		ConsoleSize: config.ConsoleSize,
 	})
@@ -449,7 +450,7 @@ func (c *DockerClient) ExecTty(
 	// resize TTY goroutine
 	go func() {
 		for ws := range resizeCh {
-			if err := c.cli.ContainerExecResize(ctx, execID.ID, types.ResizeOptions{
+			if err := c.cli.ContainerExecResize(ctx, execID.ID, container.ResizeOptions{
 				Height: uint(ws.Height),
 				Width:  uint(ws.Width),
 			}); err != nil {
