@@ -77,4 +77,4 @@ require (
 	gotest.tools/v3 v3.5.2 // indirect
 )
 
-replace github.com/elk-language/go-prompt => ../gomods/go-prompt
+// replace github.com/elk-language/go-prompt => ../gomods/go-prompt
