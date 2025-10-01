@@ -50,6 +50,9 @@ docker:
       image: mroy31/gonetem-frr
       volumes: []
       logOutput: false
+      options:
+        log: false
+        tso: true
       commands:
         console: /usr/bin/vtysh
         shell: /bin/bash
@@ -67,7 +70,9 @@ docker:
       type: host
       image: mroy31/gonetem-host
       volumes: []
-      logOutput: true
+      options:
+        log: true
+        tso: false
       commands:
         console: /bin/bash
         shell: /bin/bash
@@ -95,7 +100,9 @@ docker:
       type: server
       image: mroy31/gonetem-server
       volumes: []
-      logOutput: true
+      options:
+        log: true
+        tso: false
       commands:
         console: /bin/bash
         shell: /bin/bash
@@ -141,7 +148,9 @@ docker:
     p4sw:
       type: p4sw
       image: mroy31/gonetem-bmv2
-      logOutput: true
+      options:
+        log: false
+        tso: true
       commands:
         console: /usr/local/bin/simple_switch_CLI
         shell: /bin/bash
@@ -166,12 +175,16 @@ type DockerConfigCommand struct {
 	CheckFiles []string
 }
 
+type DockerNodeOptions struct {
+	Log bool
+	Tso bool
+}
+
 type DockerNodeConfig struct {
-	Type      string
-	Image     string
-	Volumes   []string
-	LogOutput bool
-	Commands  struct {
+	Type     string
+	Image    string
+	Volumes  []string
+	Commands struct {
 		Console    string
 		Shell      string
 		LoadConfig []DockerConfigCommand
@@ -179,6 +192,7 @@ type DockerNodeConfig struct {
 	}
 	ConfigurationFiles   []DockerConfiguration
 	ConfigurationFolders []DockerConfiguration
+	Options              DockerNodeOptions
 }
 
 type NetemServerConfig struct {

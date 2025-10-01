@@ -181,14 +181,18 @@ func (n *DockerNode) GetInterfaceName(ifIndex int) string {
 }
 
 func (n *DockerNode) prepareInterface(client *DockerClient, ifName string) {
+	var cmd []string
+
 	if !strings.HasPrefix(ifName, "eth") {
 		return // not applicable to mgnt interface
 	}
 
-	// disable tcp offloading
-	cmd := []string{"ethtool", "-K", ifName, "tx", "off"}
-	if _, err := client.Exec(context.Background(), n.ID, cmd); err != nil {
-		n.Logger.Warnf("Unable to disable tcp offloading on %s", ifName)
+	if !n.Config.Options.Tso {
+		// disable tcp offloading
+		cmd = []string{"ethtool", "-K", ifName, "tx", "off"}
+		if _, err := client.Exec(context.Background(), n.ID, cmd); err != nil {
+			n.Logger.Warnf("Unable to disable tcp offloading on %s", ifName)
+		}
 	}
 
 	// enable MPLS forwarding
@@ -504,7 +508,7 @@ func (n *DockerNode) LoadConfig(confPath string, timeout int) ([]string, error) 
 			output = strings.Trim(output, " ")
 			if err != nil {
 				return messages, fmt.Errorf("node %s - unable to exec load config cmd %s - %v", n.Name, loadConfigCmd.Command, err)
-			} else if output != "" && output != "\n" && n.Config.LogOutput {
+			} else if output != "" && output != "\n" && n.Config.Options.Log {
 				messages = append(messages, output)
 			}
 		}

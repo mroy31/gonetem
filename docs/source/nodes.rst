@@ -43,7 +43,9 @@ the full configuration for the node ``host``:
           type: host
           image: mroy31/gonetem-host
           volumes: []
-          logOutput: true
+          options:
+            log: true
+            tso: false
           commands:
             console: /bin/bash
             shell: /bin/bash
@@ -73,7 +75,11 @@ List of parameters:
 - ``type`` (string): type of node (used in the topology file to declare a docker node)
 - ``image`` (string): docker image used to launch the container
 - ``volumes`` (string list): Allow to bind host path in container filesystem (like -v option in ``docker run```). The syntax is ``/host/path:/container/path`` and can be completed in the topology definition.
-- ``logOutput`` (boolean): show output messages of loadConfig commands
+- ``options``
+
+  - ``log`` (boolean): show output messages of loadConfig commands
+  - ``tso`` (boolean): set to false to disable TSO (TCP Segmentation Offload) on interfaces node
+
 - ``commands``: list of commands needed by gonetem to manage the node
 
   - ``console``: command used by gonetem when a console is launch
@@ -101,7 +107,9 @@ the integrated nodes in gonetem. Example:
       - type: myhost
         image: mydocker-img
         volumes: []
-        logOutput: false
+        options:
+          log: false
+          tso: true
         commands:
           console: /bin/myconsole
           shell: /bin/bash
@@ -140,7 +148,9 @@ To do that:
       extraNodes:
       - type: vyos
         image: gonetem-vyos:1.4
-        logOutput: false
+        options:
+          log: false
+          tso: true
         commands:
           console: su - vyos
           shell: /bin/bash
