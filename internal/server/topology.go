@@ -726,6 +726,14 @@ func (t *NetemTopologyManager) setupLink(l *NetemLink, configure bool) error {
 		return err
 	}
 
+	// set interface up
+	if err := link.SetInterfaceState(peer1IfName, peer1Netns, link.IFSTATE_UP); err != nil {
+		return err
+	}
+	if err := link.SetInterfaceState(peer2IfName, peer2Netns, link.IFSTATE_UP); err != nil {
+		return err
+	}
+
 	// attach interfaces to nodes
 	if err := l.Peer1.Node.AttachInterface(peer1IfName, l.Peer1.IfIndex, configure); err != nil {
 		return err
