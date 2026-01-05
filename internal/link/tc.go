@@ -118,7 +118,8 @@ func CreateTbf(ifname string, namespace netns.NsHandle, delay, rate int, bufFact
 	}()
 
 	linklayerEthernet := uint8(1)
-	tbfBurst := uint32(rate * 4) // rate (in bps) / 250 HZ
+	// burst has to specified in bytes
+	tbfBurst := uint32(rate * 4 / 8.0) // rate (in bps) / 250 HZ
 	// limit (as rate) has to specified in bytes
 	limit := uint32(bufFactor * float64(rate) * float64(delay) / 8.0) // rate * latency * BDPFactor
 
