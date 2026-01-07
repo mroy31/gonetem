@@ -19,25 +19,55 @@
 import sys
 import json
 import os.path
-import subprocess
 import ipaddress
 from optparse import OptionParser
 from pyroute2 import NDB
+import socket
+from pyroute2.netlink.rtnl import ifaddrmsg
+
+IFA_F_TEMPORARY = ifaddrmsg.IFA_F_TEMPORARY
+IFA_F_MANAGETEMPADDR = ifaddrmsg.IFA_F_MANAGETEMPADDR
+IFA_F_PERMANENT = ifaddrmsg.IFA_F_PERMANENT
 
 
-def is_ipv6_autoconf(if_name):
-    proc_prefix = "/proc/sys/net/ipv6/conf/"
-    ret = subprocess.run(["cat", proc_prefix + "all/autoconf"], capture_output=True)
-    if ret.output == "1":
-        return True
+def get_addr_kind(addr):
+    f =  addr.flags
 
-    ret = subprocess.run(
-        ["cat", proc_prefix + if_name + "/autoconf"], capture_output=True
-    )
-    if ret.output == "1":
-        return True
+    if (
+        f & IFA_F_TEMPORARY
+        or f & IFA_F_MANAGETEMPADDR
+    ):
+        return "SLAAC"
 
-    return False
+    if f & IFA_F_PERMANENT:
+        return "PERMANENT"
+
+    return "DYNAMIC"
+
+
+def record_addr(addr):
+    if (
+        addr.family == socket.AF_INET6
+        and addr.scope == 0
+    ):
+        return {
+                "address": f"{addr.address}/{addr.prefixlen}",
+                "version": 6,
+                "kind": get_addr_kind(addr)
+            }
+
+    if (
+        addr.family == socket.AF_INET
+        and addr.scope == 0
+    ):
+        return {
+                "address": f"{addr.address}/{addr.prefixlen}",
+                "version": 4,
+                "kind": get_addr_kind(addr)
+            }
+
+    return None
+
 
 
 def is_interface_exists(ndb, if_name):
@@ -73,11 +103,18 @@ def load_interface_addrs(ndb, if_name, ip_addrs):
     except KeyError:
         return  # interface not found
 
-    for address in ip_addrs:
-        try:
-            i = i.add_ip(address).commit()
-        except Exception as ex:
-            print("Unable to load IP address {} to interface {} -> {}".format(address, if_name, ex))
+    for addr_obj in ip_addrs:
+        address = addr_obj
+        is_permanent = True
+        if type(addr_obj) is dict:
+            address = addr_obj["address"]
+            is_permanent = addr_obj["kind"] == "PERMANENT"
+
+        if is_permanent:
+            try:
+                i = i.add_ip(address).commit()
+            except Exception as ex:
+                print("Unable to load IP address {} to interface {} -> {}".format(address, if_name, ex))
 
 
 def create_interfaces(ndb, net_config):
@@ -166,19 +203,14 @@ def load_net_config(f_path):
 
 
 def save_net_config(f_path, all_if):
-    def is_recordable(addr):
-        ip_address = ipaddress.ip_address(addr)
-        if ip_address.version == 6:
-            if addr.startswith("fe80"):
-                return False
-
-        return True
-
-    def fmt_addr(addr_conf):
-        return f"{addr_conf['address']}/{addr_conf['prefixlen']}"
-
     net_config = {"interfaces": {}, "routes": [], "bondings": {}, "vlans": {}}
     with NDB(sources=[{'target': 'localhost'}]) as ndb: 
+        def format_addresses(if_obj):
+            return list(filter(
+                lambda a: a is not None,
+                [record_addr(a) for a in if_obj.ipaddr]
+            ))
+
         # record interfaces config
         for k in ndb.interfaces:
             if_obj = ndb.interfaces[k]
@@ -188,22 +220,15 @@ def save_net_config(f_path, all_if):
                 bond_config = net_config["bondings"].get(if_name, { "slaves": [] })
                 bond_config["mode"] = if_obj["bond_mode"]
 
-                addresses = if_obj.ipaddr
-                bond_config["addresses"] = [
-                    fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
-                ]
-
+                bond_config["addresses"] = format_addresses(if_obj)
                 net_config["bondings"][if_name] = bond_config
                 continue
 
             if if_obj["kind"] == "vlan":
-                addresses = if_obj.ipaddr
                 net_config["vlans"][if_name] = {
                     "link": get_interface_byindex(ndb, if_obj["link"]),
                     "vlan_id": if_obj["vlan_id"],
-                    "addresses": [
-                        fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
-                    ]
+                    "addresses": format_addresses(if_obj)
                 }
 
             if if_obj["slave_kind"] == "bond":
@@ -216,10 +241,7 @@ def save_net_config(f_path, all_if):
             if not all_if and not if_name.startswith("eth"):
                 continue
 
-            addresses = if_obj.ipaddr
-            net_config["interfaces"][if_name] = [
-                fmt_addr(addresses[a]) for a in addresses if is_recordable(addresses[a]["address"])
-            ]
+            net_config["interfaces"][if_name] = format_addresses(if_obj)
 
         # record route
         for route in ndb.routes:
