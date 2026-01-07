@@ -23,7 +23,7 @@ RUN apt-get update -y && \
 	iputils-ping iputils-arping iputils-tracepath net-tools file \
 	telnet man traceroute hping3 iptables links lighttpd htop \
 	ntp snmp isc-dhcp-server tftpd-hpa iproute2 iperf3 ethtool iperf \
-	git isc-dhcp-relay bind9 bind9-dnsutils && rm -rf /var/lib/apt/lists/*
+	git isc-dhcp-relay bind9 bind9-dnsutils pure-ftpd && rm -rf /var/lib/apt/lists/*
 
 COPY ./scripts/iinit.py /usr/bin/
 RUN chmod +x /usr/bin/iinit.py
