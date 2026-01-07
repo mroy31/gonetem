@@ -676,6 +676,9 @@ func (t *NetemTopologyManager) setupMgntLink(node *NetemNode) error {
 	if err := link.SetInterfaceState(veth.Name, rootNs, link.IFSTATE_UP); err != nil {
 		return err
 	}
+	if err := link.SetInterfaceState(veth.PeerName, peerNetns, link.IFSTATE_UP); err != nil {
+		return err
+	}
 
 	if err := t.mgntNet.AttachInterface(veth.Name); err != nil {
 		return err
