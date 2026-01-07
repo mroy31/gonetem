@@ -252,6 +252,12 @@ func (n *DockerNode) AttachMgntInterface(ifName string, ns netns.NsHandle, IPAdd
 		Configured: true,
 		State:      link.IFSTATE_UP,
 	}
+
+	// set interface up
+	if err := link.SetInterfaceState(ifName, ns, link.IFSTATE_UP); err != nil {
+		return err
+	}
+
 	// Set IP address
 	if err := link.IpAddressAdd(ifName, ns, IPAddress); err != nil {
 		return err
