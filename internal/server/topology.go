@@ -620,7 +620,7 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		}
 
 		ifName := fmt.Sprintf("%s%s%s.%d", options.NETEM_ID, t.prjID, peer.Node.GetShortName(), peer.IfIndex)
-		peerIfName := fmt.Sprintf("%s%s%d.%s", options.NETEM_ID, t.prjID, peer.IfIndex, peer.Node.GetShortName())
+		peerIfName := peer.Node.GetInterfaceName(peer.IfIndex)
 		veth, err := link.CreateVethLink(
 			ifName, rootNs,
 			peerIfName, peerNetns,
@@ -640,7 +640,10 @@ func (t *NetemTopologyManager) setupBridge(br *NetemBridge) error {
 		if err := link.AttachToBridge(brId, veth.Name, rootNs); err != nil {
 			return err
 		}
-		peer.Node.AttachInterface(peerIfName, peer.IfIndex, false)
+
+		if err := peer.Node.AttachInterface(peerIfName, peer.IfIndex, false); err != nil {
+			return err
+		}
 	}
 
 	return nil
