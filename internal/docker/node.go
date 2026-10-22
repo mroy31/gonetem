@@ -162,7 +162,7 @@ func (n *DockerNode) GetLocalNetns() (netns.NsHandle, error) {
 		if err != nil {
 			n.LocalNetnsName = ""
 			return netns.NsHandle(0),
-				fmt.Errorf("error when creating node netns '%s': %v", n.LocalNetnsName, err)
+				fmt.Errorf("error when creating node netns '%s': %v", fmt.Sprintf("%s%s", n.PrjID, n.Name), err)
 		}
 
 		return ns, nil
@@ -266,13 +266,17 @@ func (n *DockerNode) Capture(ifIndex int, out io.Writer) error {
 		return errors.New("not running")
 	}
 
+	ifName := n.GetInterfaceName(ifIndex)
+	if n.Interfaces[ifName].State == link.IFSTATE_DOWN {
+		return fmt.Errorf("interface %s is down", ifName)
+	}
+
 	client, err := NewDockerClient()
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	ifName := n.GetInterfaceName(ifIndex)
 	cmd := []string{"tcpdump", "-w", "-", "-s", "0", "-U", "-i", ifName}
 	return client.ExecOutStream(context.Background(), n.ID, cmd, out)
 }

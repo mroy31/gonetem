@@ -2,11 +2,38 @@ package console
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
+)
+
+// progressBarWidth is the size of the bar rendered by progressText.
+const progressBarWidth = 50
+
+// progressText renders a simple text progress bar to display inside the
+// TUI prompt, where mpb bars cannot be used as they write directly to the
+// terminal owned by bubbletea.
+func progressText(label string, current, total int) string {
+	if total <= 0 {
+		return label + " ..."
+	}
+
+	width := progressBarWidth
+	filled := min(width, current*width/total)
+	return fmt.Sprintf("%s [%s%s] %d/%d", label,
+		strings.Repeat("█", filled), strings.Repeat("░", width-filled), current, total)
+}
+
+// Labels of the topology run phases, displayed as they progress by both
+// the mpb bars and the TUI text bars.
+const (
+	runLabelNodeStart    = "Node - Start"
+	runLabelNodeConfig   = "Node - Configuration"
+	runLabelLinkCreate   = "Link - Create"
+	runLabelBridgeCreate = "Bridge - Create"
 )
 
 type ProgressBarT struct {
@@ -40,7 +67,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Node - Start: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, runLabelNodeStart+": %d/%d")),
 				),
 			}
 			bars[1] = ProgressBarT{
@@ -48,7 +75,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarQueueAfter(bars[0].Bar),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Node - Configuration: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, runLabelNodeConfig+": %d/%d")),
 				),
 			}
 		}
@@ -59,7 +86,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Link - Create: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, runLabelLinkCreate+": %d/%d")),
 				),
 			}
 		}
@@ -70,7 +97,7 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 				Total: int(msg.Total),
 				Bar: mpBar.AddBar(int64(msg.Total),
 					mpb.BarRemoveOnComplete(),
-					mpb.PrependDecorators(decor.Counters(0, "Bridge - Create: %d/%d")),
+					mpb.PrependDecorators(decor.Counters(0, runLabelBridgeCreate+": %d/%d")),
 				),
 			}
 		}
@@ -91,14 +118,110 @@ func ProgressRunHandleMsg(mpBar *mpb.Progress, bars []ProgressBarT, msg *proto.T
 		ProgressForceComplete(bars)
 		mpBar.Wait()
 
-		for _, nMessages := range msg.NodeMessages {
-			if len(nMessages.Messages) > 0 {
-				fmt.Println(color.YellowString(nMessages.Name + ":"))
-				for _, msg := range nMessages.Messages {
-					fmt.Println(color.YellowString("  - " + msg))
-				}
+		fmt.Print(nodeMessagesOutput(msg))
+	}
+}
+
+// nodeMessagesOutput renders the per-node warnings reported while running a
+// topology, shared by the mpb and TUI display paths.
+func nodeMessagesOutput(msg *proto.TopologyRunMsg) string {
+	var output strings.Builder
+	for _, nMessages := range msg.GetNodeMessages() {
+		if len(nMessages.GetMessages()) == 0 {
+			continue
+		}
+		fmt.Fprintln(&output, color.YellowString(nMessages.GetName()+":"))
+		for _, msg := range nMessages.GetMessages() {
+			if msg != "" {
+				fmt.Fprintln(&output, color.YellowString("  - "+msg))
 			}
 		}
+	}
+	return output.String()
+}
+
+// runProgress tracks the phase counters of the topology run stream and
+// renders them as text progress bars for the TUI prompt, where mpb bars
+// cannot be used. Like the mpb bars removed on completion, a phase is only
+// displayed between its announcement and its end.
+type runProgress struct {
+	counters []*runProgressCounter
+}
+
+type runProgressCounter struct {
+	label   string
+	current int
+	total   int
+}
+
+func newRunProgress() *runProgress {
+	return &runProgress{counters: []*runProgressCounter{
+		{label: runLabelNodeStart},
+		{label: runLabelNodeConfig},
+		{label: runLabelLinkCreate},
+		{label: runLabelBridgeCreate},
+	}}
+}
+
+// handle applies a stream message to the counters and returns the progress
+// text to display: the running phases, one per line, empty when none is.
+func (r *runProgress) handle(msg *proto.TopologyRunMsg) string {
+	switch msg.GetCode() {
+	case proto.TopologyRunMsg_NODE_COUNT:
+		r.setTotal(runLabelNodeStart, int(msg.GetTotal()))
+		r.setTotal(runLabelNodeConfig, int(msg.GetTotal()))
+	case proto.TopologyRunMsg_LINK_COUNT:
+		r.setTotal(runLabelLinkCreate, int(msg.GetTotal()))
+	case proto.TopologyRunMsg_BRIDGE_COUNT:
+		r.setTotal(runLabelBridgeCreate, int(msg.GetTotal()))
+	case proto.TopologyRunMsg_NODE_START:
+		r.increment(runLabelNodeStart)
+	case proto.TopologyRunMsg_NODE_LOADCONFIG:
+		r.increment(runLabelNodeConfig)
+	case proto.TopologyRunMsg_LINK_SETUP:
+		r.increment(runLabelLinkCreate)
+	case proto.TopologyRunMsg_BRIDGE_START:
+		r.increment(runLabelBridgeCreate)
+	case proto.TopologyRunMsg_NODE_MESSAGES:
+		r.forceComplete()
+	}
+
+	lines := make([]string, 0, len(r.counters))
+	for _, counter := range r.counters {
+		if counter.total > 0 && counter.current < counter.total {
+			lines = append(lines, progressText(counter.label+":", counter.current, counter.total))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (r *runProgress) counter(label string) *runProgressCounter {
+	for _, counter := range r.counters {
+		if counter.label == label {
+			return counter
+		}
+	}
+	return nil
+}
+
+func (r *runProgress) setTotal(label string, total int) {
+	if counter := r.counter(label); counter != nil && total > 0 {
+		counter.total = total
+	}
+}
+
+func (r *runProgress) increment(label string) {
+	// increments of a phase not announced yet by its *_COUNT message are
+	// ignored, as the corresponding mpb bar would not exist either
+	if counter := r.counter(label); counter != nil && counter.total > 0 {
+		counter.current++
+	}
+}
+
+// forceComplete ends all phases, as ProgressForceComplete does for the bars.
+func (r *runProgress) forceComplete() {
+	for _, counter := range r.counters {
+		counter.current = counter.total
 	}
 }
 

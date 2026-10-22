@@ -3,6 +3,7 @@ package console
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -13,18 +14,17 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/briandowns/spinner"
+	tea "charm.land/bubbletea/v2"
 	"github.com/docker/docker/pkg/system"
-	"github.com/elk-language/go-prompt"
 	"github.com/fatih/color"
 	"github.com/google/shlex"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 )
 
 type copyDirection int
@@ -36,13 +36,25 @@ const (
 )
 
 var (
-	RedPrintf     = color.New(color.FgRed).PrintfFunc()
-	MagentaPrintf = color.New(color.FgMagenta).PrintfFunc()
+	RedPrintf = color.New(color.FgRed).PrintfFunc()
 )
 
 func Fatal(msg string, a ...interface{}) {
 	RedPrintf(msg+"\n", a...)
 	os.Exit(1)
+}
+
+// ackError converts the acknowledgement of a server command into an error:
+// transport errors are wrapped with the action, errors reported by the
+// server itself are passed through as-is.
+func ackError(action string, ack *proto.AckResponse, err error) error {
+	if err != nil {
+		return fmt.Errorf("Unable to %s: %v", action, err)
+	}
+	if ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
+		return errors.New(ack.GetStatus().GetError())
+	}
+	return nil
 }
 
 func splitCopyArg(arg string) (container, path string) {
@@ -70,16 +82,76 @@ type NetemCommand struct {
 	Desc  string
 	Usage string
 	Args  []string
-	Run   func(p *NetemPrompt, cmdArgs []string)
+	Run   func(p *NetemPrompt, cmdArgs []string) error
 }
 
 type NetemPrompt struct {
-	server    string
-	prjID     string
-	prjPath   string
-	processes []*exec.Cmd
-	commands  map[string]*NetemCommand
-	nodes     []NetemNode // use by completion
+	server        string
+	prjID         string
+	prjPath       string
+	processes     []*exec.Cmd
+	commands      map[string]*NetemCommand
+	program       *tea.Program
+	done          bool
+	pendingPrompt *inputPromptRequest
+	pendingExec   *pendingEditorRequest
+	pendingOutput []string
+	pendingClear  bool
+	// nodes is used by completion, and refreshed in background by the
+	// asynchronous run command: it must stay locked
+	nodesMu sync.Mutex
+	nodes   []NetemNode
+}
+
+type inputPromptRequest struct {
+	prefix      string
+	completions []Completion
+	submit      func(string)
+}
+
+// pendingEditorRequest asks the TUI to run an external editor with the
+// terminal taken back from bubbletea. finish is called once the editor has
+// exited, with the editor error if any, and must consume the edited file.
+type pendingEditorRequest struct {
+	cmd    *exec.Cmd
+	finish func(editorErr error) error
+}
+
+// clientExec adapts a command needing a server connection into a prompt
+// command, opening the client around its execution.
+func clientExec(execFunc func(client proto.NetemClient, cmdArgs []string) error) func(p *NetemPrompt, cmdArgs []string) error {
+	return func(p *NetemPrompt, cmdArgs []string) error {
+		return p.execWithClient(cmdArgs, execFunc)
+	}
+}
+
+// clientExecRefreshed is a client command after which the node list is
+// refreshed, as the topology changed (run, reload).
+func clientExecRefreshed(execFunc func(client proto.NetemClient, cmdArgs []string) error) func(p *NetemPrompt, cmdArgs []string) error {
+	return func(p *NetemPrompt, cmdArgs []string) error {
+		err := p.execWithClient(cmdArgs, execFunc)
+		p.refreshNodeList()
+		return err
+	}
+}
+
+// clientExecNodeOrAll dispatches a node command to its all-nodes variant
+// when the node name is "all" (start, stop).
+func clientExecNodeOrAll(nodeFunc, allFunc func(client proto.NetemClient, cmdArgs []string) error) func(p *NetemPrompt, cmdArgs []string) error {
+	return func(p *NetemPrompt, cmdArgs []string) error {
+		if cmdArgs[0] == "all" {
+			return p.execWithClient(cmdArgs, allFunc)
+		}
+		return p.execWithClient(cmdArgs, nodeFunc)
+	}
+}
+
+// consoleExec opens one node console, or one per running node with "all".
+func (p *NetemPrompt) consoleExec(client proto.NetemClient, cmdArgs []string, shell bool) error {
+	if cmdArgs[0] == "all" {
+		return p.startConsoleAll(client, shell)
+	}
+	return p.startConsole(client, cmdArgs[0], shell)
 }
 
 func (p *NetemPrompt) RegisterCommands() {
@@ -87,45 +159,39 @@ func (p *NetemPrompt) RegisterCommands() {
 		Desc:  "Capture trafic on an interface",
 		Usage: "capture <node_name>.<if_number>",
 		Args:  []string{`^\w+\.\d+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.Capture(cmdArgs)
-		},
+		Run:   (*NetemPrompt).Capture,
 	}
 	p.commands["check"] = &NetemCommand{
 		Desc:  "Check that the topology file is correct. If not, return found errors",
 		Usage: "check",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Check)
-		},
+		Run:   clientExec(p.Check),
+	}
+	p.commands["clear"] = &NetemCommand{
+		Desc:  "Clear the command and output history displayed above the prompt",
+		Usage: "clear",
+		Args:  []string{},
+		Run:   (*NetemPrompt).Clear,
 	}
 	p.commands["config"] = &NetemCommand{
 		Desc:  "Save the configuration files in the specified folder",
 		Usage: "config <dest_path>",
 		Args:  []string{`^.+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Config)
-		},
+		Run:   clientExec(p.Config),
 	}
 	p.commands["console"] = &NetemCommand{
 		Desc:  "Open a console for a node",
 		Usage: "console <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
-				if cmdArgs[0] == "all" {
-					p.startConsoleAll(client, false)
-				} else {
-					p.startConsole(client, cmdArgs[0], false)
-				}
-			})
-		},
+		Run: clientExec(func(client proto.NetemClient, cmdArgs []string) error {
+			return p.consoleExec(client, cmdArgs, false)
+		}),
 	}
 	p.commands["copy"] = &NetemCommand{
 		Desc:  "Copy a file from/to a node",
 		Usage: "copy sourceFile <node>:destFile",
 		Args:  []string{`^.+$`, `^.+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
+		Run: func(p *NetemPrompt, cmdArgs []string) error {
 			srcNode, srcPath := splitCopyArg(cmdArgs[0])
 			destNode, destPath := splitCopyArg(cmdArgs[1])
 
@@ -139,13 +205,13 @@ func (p *NetemPrompt) RegisterCommands() {
 
 			switch direction {
 			case fromNode:
-				p.CopyFrom(srcNode, srcPath, destPath)
+				return p.CopyFrom(srcNode, srcPath, destPath)
 			case toNode:
-				p.CopyTo(srcPath, destNode, destPath)
+				return p.CopyTo(srcPath, destNode, destPath)
 			case acrossNodes:
-				RedPrintf("copying between containers is not supported\n")
+				return errors.New("copying between containers is not supported")
 			default:
-				RedPrintf("must specify at least one container source\n")
+				return errors.New("must specify at least one container source")
 			}
 		},
 	}
@@ -153,177 +219,129 @@ func (p *NetemPrompt) RegisterCommands() {
 		Desc:  "Edit the topology",
 		Usage: "edit",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Edit)
-		},
+		Run:   clientExec(p.Edit),
 	}
 	p.commands["exec"] = &NetemCommand{
 		Desc:  "Exec a command on a node",
 		Usage: "exec <node_name> <cmd>",
 		Args:  []string{`^\w+$`, `^.+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Exec)
-		},
+		Run:   clientExec(p.Exec),
 	}
 	p.commands["ifState"] = &NetemCommand{
 		Desc:  "Enable/disable a node interface",
 		Usage: "ifState <node_name>.<if_number> up|down",
 		Args:  []string{`^\w+\.\d+$`, `^up|down$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.IfState)
-		},
+		Run:   clientExec(p.IfState),
 	}
 	p.commands["reload"] = &NetemCommand{
 		Desc:  "Reload the project",
 		Usage: "reload",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Reload)
-			// node list needs to be updated for completion
-			p.refreshNodeList()
-		},
+		Run:   clientExecRefreshed(p.Reload),
 	}
 	p.commands["restart"] = &NetemCommand{
 		Desc:  "Restart a node",
 		Usage: "restart <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Restart)
-		},
+		Run:   clientExec(p.Restart),
 	}
 	p.commands["run"] = &NetemCommand{
 		Desc:  "Start the project",
 		Usage: "run",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Run)
-			// node list needs to be updated for completion
-			p.refreshNodeList()
-		},
+		Run:   (*NetemPrompt).Run,
 	}
 	p.commands["save"] = &NetemCommand{
 		Desc:  "Save the project",
 		Usage: "save",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Save)
-		},
+		Run:   (*NetemPrompt).Save,
 	}
 	p.commands["saveAs"] = &NetemCommand{
 		Desc:  "Save the project in a new file",
 		Usage: "saveAs <project_path>/<name>.gnet",
 		Args:  []string{`^.*\.gnet$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.SaveAs)
-		},
+		Run:   (*NetemPrompt).SaveAs,
 	}
 	p.commands["shell"] = &NetemCommand{
 		Desc:  "Open a shell console for a node",
 		Usage: "shell <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, func(client proto.NetemClient, cmdArgs []string) {
-				if cmdArgs[0] == "all" {
-					p.startConsoleAll(client, true)
-				} else {
-					p.startConsole(client, cmdArgs[0], true)
-				}
-			})
-		},
+		Run: clientExec(func(client proto.NetemClient, cmdArgs []string) error {
+			return p.consoleExec(client, cmdArgs, true)
+		}),
 	}
 	p.commands["start"] = &NetemCommand{
 		Desc:  "Start a node",
 		Usage: "start <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			if cmdArgs[0] == "all" {
-				p.execWithClient(cmdArgs, p.StartAll)
-			} else {
-				p.execWithClient(cmdArgs, p.Start)
-			}
-		},
+		Run:   clientExecNodeOrAll(p.Start, p.StartAll),
 	}
 	p.commands["stop"] = &NetemCommand{
 		Desc:  "Stop a node",
 		Usage: "stop <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			if cmdArgs[0] == "all" {
-				p.execWithClient(cmdArgs, p.StopAll)
-			} else {
-				p.execWithClient(cmdArgs, p.Stop)
-			}
-		},
+		Run:   clientExecNodeOrAll(p.Stop, p.StopAll),
 	}
 	p.commands["status"] = &NetemCommand{
 		Desc:  "Display the state of the project",
 		Usage: "status",
 		Args:  []string{},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.Status)
-		},
+		Run:   clientExec(p.Status),
 	}
 	p.commands["viewConfig"] = &NetemCommand{
 		Desc:  "Display the current configuration of a node",
 		Usage: "viewConfig <node_name>",
 		Args:  []string{`^\w+$`},
-		Run: func(p *NetemPrompt, cmdArgs []string) {
-			p.execWithClient(cmdArgs, p.ViewNodeConfiguration)
-		},
+		Run:   clientExec(p.ViewNodeConfiguration),
 	}
 }
 
-func (p *NetemPrompt) Execute(s string) {
+func (p *NetemPrompt) Execute(s string) error {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return
+		return nil
 	}
 
 	if s == "quit" || s == "exit" {
-		err := p.Close()
-		if err != nil {
-			RedPrintf(err.Error() + "\n")
-		}
-
-		os.Exit(0)
+		p.done = true
+		return nil
 	}
 
 	if s == "help" {
+		var output strings.Builder
 		for name, cmd := range p.commands {
-			fmt.Println(color.BlueString(name))
-			fmt.Println("  " + cmd.Desc)
-			fmt.Println("  Usage: " + cmd.Desc)
+			fmt.Fprintln(&output, color.BlueString(name))
+			fmt.Fprintln(&output, "  "+cmd.Desc)
+			fmt.Fprintln(&output, "  Usage: "+cmd.Usage)
 		}
-		return
+		p.queuePromptOutput(output.String())
+		return nil
 	}
 
 	args, err := shlex.Split(s)
 	if err != nil {
-		RedPrintf("Bad command line: %v", err)
-		return
+		return fmt.Errorf("Bad command line: %v", err)
 	}
 
 	cmd, found := p.commands[args[0]]
 	if !found {
-		RedPrintf("Unknown command, enter help for details\n")
-		return
+		return errors.New("Unknown command, enter help for details")
 	}
 
 	// check args
 	if len(args) != len(cmd.Args)+1 {
-		RedPrintf("Wrong number of arguments for '%s'\n\tusage: %s\n", args[0], cmd.Usage)
-		return
+		return fmt.Errorf("Wrong number of arguments for '%s'\n\tusage: %s", args[0], cmd.Usage)
 	}
 	for idx, argRe := range cmd.Args {
 		r, _ := regexp.Compile(argRe)
 		if !r.MatchString(args[idx+1]) {
-			RedPrintf("Wrong format for argument %d\n\tusage: %s\n", idx+1, cmd.Usage)
-			return
+			return fmt.Errorf("Wrong format for argument %d\n\tusage: %s", idx+1, cmd.Usage)
 		}
 	}
 
 	// run the command
-	cmd.Run(p, args[1:])
+	return cmd.Run(p, args[1:])
 }
 
 func (p *NetemPrompt) refreshNodeList() {
@@ -339,7 +357,7 @@ func (p *NetemPrompt) refreshNodeList() {
 		return
 	}
 
-	p.nodes = make([]NetemNode, 0)
+	nodes := make([]NetemNode, 0)
 	for _, node := range status.GetNodes() {
 		nStatus := NetemNode{
 			Name:       node.GetName(),
@@ -349,19 +367,31 @@ func (p *NetemPrompt) refreshNodeList() {
 			nStatus.Interfaces = append(nStatus.Interfaces, ifStatus.Name)
 		}
 
-		p.nodes = append(p.nodes, nStatus)
+		nodes = append(nodes, nStatus)
 	}
+
+	// the list may be replaced by the asynchronous run command while
+	// completions read it from the TUI thread
+	p.nodesMu.Lock()
+	p.nodes = nodes
+	p.nodesMu.Unlock()
 }
 
-func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client proto.NetemClient, cmdArgs []string)) {
+// nodeList returns the current node list for completion.
+func (p *NetemPrompt) nodeList() []NetemNode {
+	p.nodesMu.Lock()
+	defer p.nodesMu.Unlock()
+	return p.nodes
+}
+
+func (p *NetemPrompt) execWithClient(cmdArgs []string, execFunc func(client proto.NetemClient, cmdArgs []string) error) error {
 	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 	defer client.Conn.Close()
 
-	execFunc(client.Client, cmdArgs)
+	return execFunc(client.Client, cmdArgs)
 }
 
 func (p *NetemPrompt) getCancelContext() context.Context {
@@ -382,17 +412,16 @@ func (p *NetemPrompt) getCancelContext() context.Context {
 	return ctx
 }
 
-func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
+func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) error {
 	file, err := os.Create(destPath)
 	if err != nil {
-		RedPrintf("Unable to create/open %s: %v\n", destPath, err)
+		return fmt.Errorf("Unable to create/open %s: %v", destPath, err)
 	}
 	defer file.Close()
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v\n", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 	defer client.Conn.Close()
 
@@ -403,8 +432,7 @@ func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
 		NodePath: srcPath,
 	})
 	if err != nil {
-		RedPrintf("CopyFrom %s:%s returns an error: %v\n", srcNode, srcPath, err)
-		return
+		return fmt.Errorf("CopyFrom %s:%s returns an error: %v", srcNode, srcPath, err)
 	}
 
 	for {
@@ -413,54 +441,48 @@ func (p *NetemPrompt) CopyFrom(srcNode, srcPath, destPath string) {
 			break
 		}
 		if err != nil {
-			RedPrintf("%v\n", err)
-			return
+			return err
 		}
 
 		switch msg.GetCode() {
 		case proto.CopyMsg_DATA:
 			file.Write(msg.GetData())
 		case proto.CopyMsg_ERROR:
-			RedPrintf("CopyFrom %s:%s returns an error: %s\n", srcNode, srcPath, string(msg.GetData()))
+			return fmt.Errorf("CopyFrom %s:%s returns an error: %s", srcNode, srcPath, string(msg.GetData()))
 		}
 	}
+	return nil
 }
 
-func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) {
+func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) error {
 	stat, err := os.Stat(srcPath)
 	if os.IsNotExist(err) {
-		RedPrintf("File %s does not exist\n", srcPath)
-		return
+		return fmt.Errorf("File %s does not exist", srcPath)
 	} else if err != nil {
-		RedPrintf("Unable to stat %s: %v\n", srcPath, err)
-		return
+		return fmt.Errorf("Unable to stat %s: %v", srcPath, err)
 	}
 
 	// check it is a regular file
 	if !stat.Mode().IsRegular() {
-		RedPrintf("%s is not a regular file\n", srcPath)
-		return
+		return fmt.Errorf("%s is not a regular file", srcPath)
 	}
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v\n", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 	defer client.Conn.Close()
 
 	buffer := make([]byte, 1024)
 	file, err := os.Open(srcPath)
 	if err != nil {
-		RedPrintf("Unable to open %s: %v\n", srcPath, err)
-		return
+		return fmt.Errorf("Unable to open %s: %v", srcPath, err)
 	}
 	defer file.Close()
 
 	stream, err := client.Client.NodeCopyTo(context.Background())
 	if err != nil {
-		RedPrintf("CopyTo: %v\n", err)
-		return
+		return fmt.Errorf("CopyTo: %v", err)
 	}
 
 	if err := stream.Send(&proto.CopyMsg{
@@ -469,8 +491,7 @@ func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) {
 		Node:     destNode,
 		NodePath: destPath,
 	}); err != nil {
-		RedPrintf("Unable to init CopyTo: %v\n", err)
-		return
+		return fmt.Errorf("Unable to init CopyTo: %v", err)
 	}
 
 	for {
@@ -487,28 +508,26 @@ func (p *NetemPrompt) CopyTo(srcPath, destNode, destPath string) {
 
 	ack, err := stream.CloseAndRecv()
 	if err != nil {
-		RedPrintf("Error in CopyTo cmd: %v\n", err)
-		return
+		return fmt.Errorf("Error in CopyTo cmd: %v", err)
 	} else if ack.GetStatus().GetCode() == proto.StatusCode_ERROR {
-		RedPrintf("CopyTo returns an error: %s\n", string(ack.Status.Error))
+		return fmt.Errorf("CopyTo returns an error: %s", string(ack.Status.Error))
 	}
+	return nil
 }
 
-func (p *NetemPrompt) Capture(cmdArgs []string) {
+func (p *NetemPrompt) Capture(cmdArgs []string) error {
 	args := strings.Split(cmdArgs[0], ".")
 	ifIndex, _ := strconv.Atoi(args[1])
 
 	// Check wireshark is present
 	wiresharkPath, err := exec.LookPath("wireshark")
 	if err != nil {
-		RedPrintf("wireshark is not installed\n")
-		return
+		return errors.New("wireshark is not installed")
 	}
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to connect to gonetem server: %v", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 
 	stream, err := client.Client.NodeCapture(context.Background(), &proto.NodeInterfaceRequest{
@@ -517,19 +536,19 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 		IfIndex: int32(ifIndex),
 	})
 	if err != nil {
-		RedPrintf("Error when start capturing %v\n", err)
-		return
+		client.Conn.Close()
+		return fmt.Errorf("Error when start capturing %v", err)
 	}
 
 	msg, err := stream.Recv()
 	if err != nil {
-		RedPrintf("Error when start capturing %v\n", err)
-		return
+		client.Conn.Close()
+		return fmt.Errorf("Error when start capturing %v", err)
 	}
 
 	if msg.GetCode() == proto.CaptureSrvMsg_ERROR {
-		RedPrintf("%s\n", string(msg.GetData()))
-		return
+		client.Conn.Close()
+		return fmt.Errorf("%s", string(msg.GetData()))
 	}
 
 	rIn, wIn := io.Pipe()
@@ -541,8 +560,8 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 	cmd.Stdin = rIn
 
 	if err := cmd.Start(); err != nil {
-		RedPrintf("Error when starting wireshark: %v\n", err)
-		return
+		client.Conn.Close()
+		return fmt.Errorf("Error when starting wireshark: %v", err)
 	}
 
 	go func() {
@@ -558,22 +577,28 @@ func (p *NetemPrompt) Capture(cmdArgs []string) {
 			case proto.CaptureSrvMsg_STDOUT:
 				wIn.Write(msg.GetData())
 			case proto.CaptureSrvMsg_ERROR:
+				p.sendPromptError(fmt.Sprintf("Error when capturing, stop wireshark: %s", string(msg.GetData())))
 				cmd.Process.Signal(os.Kill)
 				return
 			}
 		}
 
 	}()
+
+	return nil
 }
 
-func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) sendPromptError(message string) {
+	p.program.Send(promptErrorMsg(message))
+}
+
+func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) error {
 	state, found := map[string]proto.IfState{
 		"up":   proto.IfState_UP,
 		"down": proto.IfState_DOWN,
 	}[cmdArgs[1]]
 	if !found {
-		RedPrintf("State is not valid: up|down expected\n")
-		return
+		return errors.New("State is not valid: up|down expected")
 	}
 
 	ifArgs := strings.Split(cmdArgs[0], ".")
@@ -588,76 +613,68 @@ func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) {
 			State:   state,
 		})
 	if err != nil {
-		RedPrintf("Unable to change interface state: %v\n", err)
+		return fmt.Errorf("Unable to change interface state: %v", err)
 	}
+	return nil
 }
 
-func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.TopologyCheck(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf(err.Error() + "\n")
-	} else {
-		if ack.Status.Code == proto.StatusCode_OK {
-			fmt.Println(color.GreenString("Network is OK"))
-		} else {
-			RedPrintf(ack.Status.Error + "\n")
-		}
+		return err
 	}
+	if err := ackError("check topology", ack, nil); err != nil {
+		return err
+	}
+	p.queuePromptOutput(color.GreenString("Network is OK\n"))
+	return nil
 }
 
-func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) error {
 	dstPath := cmdArgs[0]
 	stat, err := os.Stat(dstPath)
 	if err != nil {
-		RedPrintf("Unable to get stat on dest path '%s'\n\t%v\n", dstPath, err)
-		return
+		return fmt.Errorf("Unable to get stat on dest path '%s'\n\t%v", dstPath, err)
 	} else if !stat.IsDir() {
-		RedPrintf("Dest path '%s' is not a directory\n", dstPath)
-		return
+		return fmt.Errorf("Dest path '%s' is not a directory", dstPath)
 	}
 
 	response, err := client.ProjectGetNodeConfigs(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to get project configuration files: %v\n", err)
-		return
+		return fmt.Errorf("Unable to get project configuration files: %v", err)
 	}
 
 	buffer := bytes.NewBuffer(response.GetData())
 	if err := utils.OpenArchive(dstPath, buffer); err != nil {
-		RedPrintf("Unable to extract configuration files: %v\n", err)
+		return fmt.Errorf("Unable to extract configuration files: %v", err)
 	}
+	return nil
 }
 
-func (p *NetemPrompt) Exec(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Exec(client proto.NetemClient, cmdArgs []string) error {
 	node := cmdArgs[0]
 
 	cmd, err := shlex.Split(cmdArgs[1])
 	if err != nil {
-		RedPrintf(err.Error() + "\n")
-		return
+		return err
 	}
 
-	if err := nodeExec(client, p.prjID, node, cmd); err != nil {
-		RedPrintf(err.Error() + "\n")
-	}
+	return nodeExec(client, p.prjID, node, cmd)
 }
 
-func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) {
+func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) error {
 	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to get project status: %v\n", err)
-		return
+		return fmt.Errorf("Unable to get project status: %v", err)
 	}
 
 	// check project and node status
 	if !response.Running {
-		RedPrintf("Project is not running\n")
-		return
+		return errors.New("Project is not running")
 	}
 	for _, n := range response.GetNodes() {
 		if n.Name == nodeName && !n.Running {
-			RedPrintf("Node is not running\n")
-			return
+			return errors.New("Node is not running")
 		}
 	}
 
@@ -674,312 +691,360 @@ func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, sh
 	var buf bytes.Buffer
 	tmpl, err := template.New("terminal").Parse(options.ConsoleConfig.Terminal)
 	if err != nil {
-		RedPrintf("Unable to parse terminal line in config file: %v", err)
-		return
+		return fmt.Errorf("Unable to parse terminal line in config file: %v", err)
 	}
 	err = tmpl.Execute(&buf, consoleCmd)
 	if err != nil {
-		RedPrintf("Unable to parse terminal line in config file: %v", err)
-		return
+		return fmt.Errorf("Unable to parse terminal line in config file: %v", err)
 	}
 
 	args, err := shlex.Split(buf.String())
 	if err != nil {
-		RedPrintf("Bad command line: %v", err)
-		return
+		return fmt.Errorf("Bad command line: %v", err)
 	}
 
 	// search term command
 	termPath, err := exec.LookPath(args[0])
 	if err != nil {
-		RedPrintf("terminal '%s' is not installed\n", args[0])
-		return
+		return fmt.Errorf("terminal '%s' is not installed", args[0])
 	}
 
 	cmd := exec.Command(termPath, args[1:]...)
 	if err := cmd.Start(); err != nil {
-		RedPrintf("Error when starting console: %v\n", err)
-		return
+		return fmt.Errorf("Error when starting console: %v", err)
 	}
 
 	p.processes = append(p.processes, cmd)
+	return nil
 }
 
-func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) {
+func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) error {
 	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to get project status: %v\n", err)
-		return
+		return fmt.Errorf("Unable to get project status: %v", err)
 	}
 
 	for _, node := range response.GetNodes() {
 		if node.Running {
-			p.startConsole(client, node.GetName(), shell)
+			if err := p.startConsole(client, node.GetName(), shell); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
-func (p *NetemPrompt) save(client proto.NetemClient, dstPath string) {
-	stream, err := client.ProjectSave(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+// save starts the project save in background and reports progress to the
+// prompt model: bubbletea owns the screen and would overwrite the bars
+// rendered by mpb. As the client of the command is closed as soon as the
+// command returns, it opens its own connection kept alive until the save
+// stream is fully consumed.
+func (p *NetemPrompt) save(dstPath string) error {
+	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to save project: %v\n", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 
-	mpBar := mpb.New(mpb.WithWidth(48))
-	bars := make([]ProgressBarT, 1)
+	stream, err := client.Client.ProjectSave(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		client.Conn.Close()
+		return fmt.Errorf("Unable to save project: %v", err)
+	}
 
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			ProgressForceComplete(bars)
-			break
-		} else if err != nil {
-			ProgressAbort(bars, true)
-			RedPrintf("Unable to save project: %v\n", err)
-			return
-		}
+	go func() {
+		defer client.Conn.Close()
+		defer p.program.Send(promptProgressMsg(""))
 
-		switch msg.Code {
-		case proto.ProjectSaveMsg_NODE_COUNT:
-			if msg.GetTotal() > 0 {
-				bars[0] = ProgressBarT{
-					Total: int(msg.Total),
-					Bar: mpBar.AddBar(int64(msg.Total),
-						mpb.BarRemoveOnComplete(),
-						mpb.PrependDecorators(decor.Counters(0, "Save nodes: %d/%d")),
-					),
+		p.program.Send(promptProgressMsg(progressText("Save nodes:", 0, 0)))
+
+		total := 0
+		saved := 0
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				p.program.Send(promptOutputMsg(color.GreenString("Project saved to " + dstPath + "\n")))
+				return
+			} else if err != nil {
+				p.sendPromptError(fmt.Sprintf("Unable to save project: %v", err))
+				return
+			}
+
+			switch msg.Code {
+			case proto.ProjectSaveMsg_NODE_COUNT:
+				total = int(msg.GetTotal())
+				p.program.Send(promptProgressMsg(progressText("Save nodes:", 0, total)))
+
+			case proto.ProjectSaveMsg_NODE_SAVE:
+				saved++
+				p.program.Send(promptProgressMsg(progressText("Save nodes:", saved, total)))
+
+			case proto.ProjectSaveMsg_DATA:
+				if err := os.WriteFile(dstPath, msg.GetData(), 0644); err != nil {
+					p.sendPromptError(fmt.Sprintf("Unable to write saved project to %s: %v", dstPath, err))
+					return
 				}
 			}
-
-		case proto.ProjectSaveMsg_NODE_SAVE:
-			bars[0].Bar.Increment()
-
-		case proto.ProjectSaveMsg_DATA:
-			ProgressForceComplete(bars)
-			if err := os.WriteFile(dstPath, msg.GetData(), 0644); err != nil {
-				RedPrintf("Unable to write saved project to %s: %v\n", dstPath, err)
-			}
 		}
-	}
+	}()
 
-	mpBar.Wait()
+	return nil
 }
 
-func (p *NetemPrompt) Save(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Save(cmdArgs []string) error {
 	if p.prjPath == "" {
-		RedPrintf("Project path is empty, use saveAs command if you connect to running project\n")
-		return
+		return errors.New("Project path is empty, use saveAs command if you connect to running project")
 	}
 
-	p.save(client, p.prjPath)
+	return p.save(p.prjPath)
 }
 
-func (p *NetemPrompt) SaveAs(client proto.NetemClient, cmdArgs []string) {
-	p.save(client, cmdArgs[0])
+func (p *NetemPrompt) SaveAs(cmdArgs []string) error {
+	return p.save(cmdArgs[0])
 }
 
-func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Start(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.NodeStart(p.getCancelContext(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
-	if err != nil {
-		RedPrintf("Unable to start node: %v\n", err)
-	} else {
-		if ack.Status.Code == proto.StatusCode_ERROR {
-			MagentaPrintf(ack.Status.Error + "\n")
-		}
-	}
+	return ackError("start node", ack, err)
 }
 
-func (p *NetemPrompt) StartAll(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) StartAll(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.TopologyStartAll(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-	if err != nil {
-		RedPrintf("Unable to start all nodes: %v\n", err)
-	} else {
-		if ack.Status.Code == proto.StatusCode_ERROR {
-			MagentaPrintf(ack.Status.Error + "\n")
-		}
-	}
+	return ackError("start all nodes", ack, err)
 }
 
-func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Stop(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.NodeStop(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
-	if err != nil {
-		RedPrintf("Unable to stop node: %v\n", err)
-	} else {
-		if ack.Status.Code == proto.StatusCode_ERROR {
-			MagentaPrintf(ack.Status.Error + "\n")
-		}
-	}
+	return ackError("stop node", ack, err)
 }
 
-func (p *NetemPrompt) StopAll(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) StopAll(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.TopologyStopAll(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-	if err != nil {
-		RedPrintf("Unable to stop all nodes: %v\n", err)
-	} else {
-		if ack.Status.Code == proto.StatusCode_ERROR {
-			MagentaPrintf(ack.Status.Error + "\n")
-		}
-	}
+	return ackError("stop all nodes", ack, err)
 }
 
-func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) error {
 	ack, err := client.NodeRestart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
-	if err != nil {
-		RedPrintf("Unable to restart node: %v\n", err)
-	} else {
-		if ack.Status.Code == proto.StatusCode_ERROR {
-			MagentaPrintf(ack.Status.Error + "\n")
-		}
-	}
+	return ackError("restart node", ack, err)
 }
 
-func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) error {
 	response, err := client.ProjectGetStatus(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to get project status: %v\n", err)
-		return
+		return fmt.Errorf("Unable to get project status: %v", err)
 	}
 
-	fmt.Println("Project " + response.GetName())
-	fmt.Println("- Id: " + response.GetId())
-	fmt.Println("- OpenAt: " + response.GetOpenAt())
-	fmt.Print("- State: ")
+	var output strings.Builder
+	fmt.Fprintln(&output, "Project "+response.GetName())
+	fmt.Fprintln(&output, "- Id: "+response.GetId())
+	fmt.Fprintln(&output, "- OpenAt: "+response.GetOpenAt())
+	fmt.Fprint(&output, "- State: ")
 	if response.GetRunning() {
-		fmt.Print(color.GreenString("Running\n"))
+		fmt.Fprintln(&output, color.GreenString("Running"))
 	} else {
-		fmt.Print(color.YellowString("Not Running\n"))
+		fmt.Fprintln(&output, color.YellowString("Not Running"))
 	}
 
 	if len(response.GetNodes()) > 0 {
-		fmt.Println("- Nodes:")
+		fmt.Fprintln(&output, "- Nodes:")
 		for _, nodeInfo := range response.GetNodes() {
-			fmt.Print("   - " + nodeInfo.GetName() + ": ")
+			fmt.Fprint(&output, "   - "+nodeInfo.GetName()+": ")
 			if nodeInfo.GetRunning() {
-				fmt.Print(color.GreenString("Running\n"))
+				fmt.Fprintln(&output, color.GreenString("Running"))
 				for _, i := range nodeInfo.GetInterfaces() {
-					fmt.Print("     - " + i.GetName() + ": ")
+					fmt.Fprint(&output, "     - "+i.GetName()+": ")
 					switch i.GetState() {
 					case proto.IfState_DOWN:
-						fmt.Print(color.MagentaString("Down\n"))
+						fmt.Fprintln(&output, color.MagentaString("Down"))
 					case proto.IfState_UP:
-						fmt.Print(color.GreenString("Up\n"))
+						fmt.Fprintln(&output, color.GreenString("Up"))
 					}
 				}
 			} else {
-				fmt.Print(color.MagentaString("Not Running\n"))
+				fmt.Fprintln(&output, color.MagentaString("Not Running"))
 			}
 		}
 	}
+	p.queuePromptOutput(output.String())
+	return nil
 }
 
-func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) {
+// queuePromptOutput accumulates the command output to display in the TUI
+// transcript, drained by the prompt model once the command returns.
+func (p *NetemPrompt) queuePromptOutput(output string) {
+	p.pendingOutput = append(p.pendingOutput, output)
+}
+
+func (p *NetemPrompt) takePromptOutput() []string {
+	output := p.pendingOutput
+	p.pendingOutput = nil
+	return output
+}
+
+func (p *NetemPrompt) takePendingPrompt() *inputPromptRequest {
+	request := p.pendingPrompt
+	p.pendingPrompt = nil
+	return request
+}
+
+func (p *NetemPrompt) takePendingExec() *pendingEditorRequest {
+	request := p.pendingExec
+	p.pendingExec = nil
+	return request
+}
+
+func (p *NetemPrompt) takePendingClear() bool {
+	pending := p.pendingClear
+	p.pendingClear = false
+	return pending
+}
+
+// Clear asks the TUI to empty the transcript displayed above the prompt.
+func (p *NetemPrompt) Clear(cmdArgs []string) error {
+	p.pendingClear = true
+	return nil
+}
+
+func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) error {
 	// first, check editor exists
 	if _, err := exec.LookPath(options.ConsoleConfig.Editor); err != nil {
-		RedPrintf("Editor set in config, %s, is not found\n", options.ConsoleConfig.Editor)
-		return
+		return fmt.Errorf("Editor set in config, %s, is not found", options.ConsoleConfig.Editor)
 	}
 
 	response, err := client.ReadNetworkFile(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		RedPrintf("Unable to get network file: %v\n", err)
-		return
+		return fmt.Errorf("Unable to get network file: %v", err)
 	}
 	// write temp file for edition
-	tempFilename := path.Join("/tmp", "gonetem-network-"+p.prjID)
-	if err := os.WriteFile(tempFilename, response.GetData(), 0644); err != nil {
-		RedPrintf("Unable to write temp file for edition: %v\n", err)
-		return
+	if err := os.WriteFile(p.tempNetworkFilename(), response.GetData(), 0644); err != nil {
+		return fmt.Errorf("Unable to write temp file for edition: %v", err)
 	}
+
+	// bubbletea owns the terminal (raw mode and alt screen): the editor must
+	// not run inside the event loop. Queue the editor command so the program
+	// can run it with the terminal given back, then upload through finish.
+	p.pendingExec = &pendingEditorRequest{
+		cmd:    exec.Command(options.ConsoleConfig.Editor, p.tempNetworkFilename()),
+		finish: p.uploadEditedNetwork,
+	}
+	return nil
+}
+
+// uploadEditedNetwork reads back the edited topology file and sends it to
+// the server. It runs after the external editor has exited, with its own
+// client connection as the one of the command is already closed.
+func (p *NetemPrompt) uploadEditedNetwork(editorErr error) error {
+	tempFilename := p.tempNetworkFilename()
 	defer os.Remove(tempFilename)
 
-	if err := EditFile(tempFilename, options.ConsoleConfig.Editor); err != nil {
-		RedPrintf("Unable to edit temp file: %v\n", err)
-		return
+	if editorErr != nil {
+		return fmt.Errorf("Unable to edit temp file: %v", editorErr)
 	}
 
 	data, err := os.ReadFile(tempFilename)
 	if err != nil {
-		RedPrintf("Unable to read edited network file: %v\n", err)
-		return
+		return fmt.Errorf("Unable to read edited network file: %v", err)
 	}
 
-	if _, err = client.WriteNetworkFile(context.Background(), &proto.WNetworkRequest{
+	client, err := NewClient(p.server)
+	if err != nil {
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
+	}
+	defer client.Conn.Close()
+
+	if _, err := client.Client.WriteNetworkFile(context.Background(), &proto.WNetworkRequest{
 		Id:   p.prjID,
 		Data: data,
 	}); err != nil {
-		Fatal("Unable to write modified network file on server: %v\n", err)
+		return fmt.Errorf("Unable to write modified network file on server: %v", err)
 	}
+
+	p.queuePromptOutput(color.GreenString("Network file has been updated, reload the project to take it in account\n"))
+	return nil
 }
 
-func (p *NetemPrompt) Run(client proto.NetemClient, cmdArgs []string) {
-	stream, err := client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+func (p *NetemPrompt) tempNetworkFilename() string {
+	return path.Join("/tmp", "gonetem-network-"+p.prjID)
+}
+
+// Run starts the topology in background and reports progress to the prompt
+// model: bubbletea owns the screen and would overwrite the bars rendered by
+// mpb. As the client of the command is closed as soon as the command
+// returns, it opens its own connection kept alive until the run stream is
+// fully consumed.
+func (p *NetemPrompt) Run(cmdArgs []string) error {
+	client, err := NewClient(p.server)
 	if err != nil {
-		RedPrintf("Unable to run the project: %v\n", err)
-		return
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 
-	mpBar := mpb.New(mpb.WithWidth(48))
-	bars := make([]ProgressBarT, 4)
+	stream, err := client.Client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		client.Conn.Close()
+		return fmt.Errorf("Unable to run the project: %v", err)
+	}
 
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			ProgressForceComplete(bars)
-			break
-		} else if err != nil {
-			ProgressAbort(bars, true)
-			RedPrintf("Unable to run topology: %v\n", err)
-			return
+	go func() {
+		defer client.Conn.Close()
+		defer p.program.Send(promptProgressMsg(""))
+		// node list needs to be updated for completion
+		defer p.refreshNodeList()
+
+		progress := newRunProgress()
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				p.sendPromptError(fmt.Sprintf("Unable to run topology: %v", err))
+				return
+			}
+
+			if msg.GetCode() == proto.TopologyRunMsg_NODE_MESSAGES {
+				p.program.Send(promptOutputMsg(nodeMessagesOutput(msg)))
+			}
+			p.program.Send(promptProgressMsg(progress.handle(msg)))
 		}
+	}()
 
-		ProgressRunHandleMsg(mpBar, bars, msg)
-	}
-
-	mpBar.Wait()
+	return nil
 }
 
-func (p *NetemPrompt) ViewNodeConfiguration(client proto.NetemClient, cmdArgs []string) {
+func (p *NetemPrompt) ViewNodeConfiguration(client proto.NetemClient, cmdArgs []string) error {
 	response, err := client.NodeReadConfigFiles(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
 	if err != nil {
-		RedPrintf("Unable to to read configuration files: %v\n", err)
-		return
+		return fmt.Errorf("Unable to to read configuration files: %v", err)
 	}
 
 	if len(response.Files) == 1 {
-		configFile := response.Files[0]
-		fmt.Println("#####  " + configFile.Name + "  #####")
-		fmt.Printf("\n%s\n", configFile.Data)
-		return
+		p.displayConfiguration(response.Files[0])
+		return nil
 	}
 
-	configName := prompt.Input(
-		prompt.WithPrefix("Select configuration file: "),
-		prompt.WithCompleter(NewViewConfigCompleter(response).Complete),
-		prompt.WithShowCompletionAtStart(),
-	)
-	configName = strings.TrimSpace(configName)
-
-	for _, configFile := range response.Files {
-		if configFile.Name == configName {
-			fmt.Println("#####  " + configFile.Name + "  #####")
-			fmt.Printf("\n%s\n", configFile.Data)
-			return
-		}
+	p.pendingPrompt = &inputPromptRequest{
+		prefix:      "Select configuration file: ",
+		completions: ConfigurationCompletions(response),
+		submit: func(configName string) {
+			for _, configFile := range response.Files {
+				if configFile.Name == configName {
+					p.displayConfiguration(configFile)
+					return
+				}
+			}
+			p.queuePromptOutput(color.YellowString("Configuration file %s not found\n", configName))
+		},
 	}
-	fmt.Printf(color.YellowString("Configuration file %s not found\n"), configName)
+	return nil
 }
 
-func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
-	s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-	s.Prefix = "Reload project " + p.prjPath + " : "
-	s.Start()
+func (p *NetemPrompt) displayConfiguration(configFile *proto.ConfigFilesResponse_ConfigFile) {
+	p.queuePromptOutput("#####  " + configFile.Name + "  #####\n")
+	p.queuePromptOutput(fmt.Sprintf("\n%s\n", configFile.Data))
+}
 
+func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) error {
 	stream, err := client.TopologyReload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
 	if err != nil {
-		s.Stop()
-		RedPrintf("Unable to reload the project: %v\n", err)
-		return
+		return fmt.Errorf("Unable to reload the project: %v", err)
 	}
 
 	for {
@@ -987,26 +1052,14 @@ func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			s.Stop()
-			RedPrintf("Unable to run topology: %v\n", err)
-			break
+			return fmt.Errorf("Unable to run topology: %v", err)
 		}
 
-		switch msg.Code {
-		case proto.TopologyRunMsg_NODE_MESSAGES:
-			s.Stop()
-			for _, nMessages := range msg.NodeMessages {
-				if len(nMessages.Messages) > 0 {
-					fmt.Println(color.YellowString(nMessages.Name + ":"))
-					for _, msg := range nMessages.Messages {
-						if msg != "" {
-							fmt.Println(color.YellowString("  - " + msg))
-						}
-					}
-				}
-			}
+		if msg.Code == proto.TopologyRunMsg_NODE_MESSAGES {
+			p.queuePromptOutput(nodeMessagesOutput(msg))
 		}
 	}
+	return nil
 }
 
 func (p *NetemPrompt) Close() error {
@@ -1058,9 +1111,12 @@ func (p *NetemPrompt) Close() error {
 
 func NewNetemPrompt(server, prjID, prjPath string) *NetemPrompt {
 	p := &NetemPrompt{
-		server, prjID, prjPath,
-		make([]*exec.Cmd, 0), make(map[string]*NetemCommand),
-		make([]NetemNode, 0),
+		server:    server,
+		prjID:     prjID,
+		prjPath:   prjPath,
+		processes: make([]*exec.Cmd, 0),
+		commands:  make(map[string]*NetemCommand),
+		nodes:     make([]NetemNode, 0),
 	}
 	p.RegisterCommands()
 	p.refreshNodeList()

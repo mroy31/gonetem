@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/briandowns/spinner"
-	"github.com/elk-language/go-prompt"
-	"github.com/elk-language/go-prompt/completer"
 	"github.com/fatih/color"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
@@ -139,18 +138,41 @@ func NewPrompt(prjName, prjID, prjPath string) {
 	e := NewNetemPrompt(getServerUri(), prjID, prjPath)
 	c := NewPromptCompleter(e)
 
-	fmt.Println("")
-	fmt.Println("Welcome to gonetem console " + options.VERSION)
-	fmt.Println("Please use `exit` to close the project")
-
-	p := prompt.New(
-		e.Execute,
-		prompt.WithCompleter(c.Complete),
-		prompt.WithPrefix(fmt.Sprintf("[%s]> ", prjName)),
-		prompt.WithTitle("gonetem-emulator"),
-		prompt.WithCompletionWordSeparator(completer.FilePathCompletionSeparator),
-	)
-	p.Run()
+	prefix := fmt.Sprintf("[%s]> ", prjName)
+	var model *teaPromptModel
+	model = newTeaPromptModel(prefix, c.Complete, func(line string) (bool, error) {
+		err := e.Execute(line)
+		model.drainOutput()
+		if e.takePendingClear() {
+			model.clearTranscript()
+		}
+		if request := e.takePendingPrompt(); request != nil {
+			model.startSubPrompt(request)
+		}
+		if execRequest := e.takePendingExec(); execRequest != nil {
+			// bubbletea gives the terminal to the editor and restores the
+			// TUI when it exits; finish then uploads the edited topology
+			model.pendingExec = tea.ExecProcess(execRequest.cmd, func(err error) tea.Msg {
+				return editorFinishedMsg{err: err, finish: execRequest.finish}
+			})
+		}
+		return e.done, err
+	})
+	model.takeOutput = e.takePromptOutput
+	model.projectName = prjName
+	model.projectPath = prjPath
+	model.fullscreen = true
+	model.showHeader = true
+	program := tea.NewProgram(model)
+	e.program = program
+	if _, err := program.Run(); err != nil {
+		RedPrintf("Unable to run gonetem console: %v\n", err)
+	}
+	if e.done {
+		if err := e.Close(); err != nil {
+			RedPrintf("%v\n", err)
+		}
+	}
 }
 
 var rootCmd = &cobra.Command{
@@ -175,11 +197,12 @@ var cleanCmd = &cobra.Command{
 	Long:  "Prune containers not used by any project",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		confirm := prompt.Input(
-			prompt.WithPrefix("Are you sure you want prune unused containers ? "),
-			prompt.WithCompleter(ConfirmComplete),
-		)
-		if confirm == "yes" {
+		confirmed, err := RunCleanPrompt()
+		if err != nil {
+			Fatal("Unable to read confirmation: %v", err)
+			return
+		}
+		if confirmed {
 			client, err := NewClient(getServerUri())
 			if err != nil {
 				Fatal("Unable to connect to server identified by uri '%s'\n\t%v", getServerUri(), err)
@@ -230,11 +253,11 @@ var connectCmd = &cobra.Command{
 			fmt.Println(color.YellowString("No project open on the server"))
 		} else {
 			prjID := ""
-			prjName := prompt.Input(
-				prompt.WithPrefix("Select project: "),
-				prompt.WithCompleter(NewConnectCompleter(projects).Complete),
-				prompt.WithShowCompletionAtStart(),
-			)
+			prjName, err := RunConnectPrompt(projects)
+			if err != nil {
+				RedPrintf("Unable to select project: %v\n", err)
+				return
+			}
 			//
 			prjName = strings.TrimSpace(prjName)
 
