@@ -34,23 +34,35 @@ func termResizeTty(stream proto.Netem_NodeExecClient, terminalFd uintptr) error 
 	})
 }
 
-func termMonitorTty(stream proto.Netem_NodeExecClient, terminalFd uintptr) {
+// termMonitorTty forwards the terminal resize and hangup signals to the exec
+// stream, until the returned stop function is called.
+func termMonitorTty(stream proto.Netem_NodeExecClient, terminalFd uintptr) func() {
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGWINCH)
 	signal.Notify(sigchan, syscall.SIGHUP)
+	done := make(chan struct{})
 	go func() {
-		for sig := range sigchan {
-			switch sig {
-			case syscall.SIGWINCH:
-				termResizeTty(stream, terminalFd)
-			case syscall.SIGHUP:
-				// terminal has been closed, send exit to
-				stream.Send(&proto.ExecCltMsg{
-					Code: proto.ExecCltMsg_CLOSE,
-				})
+		for {
+			select {
+			case <-done:
+				return
+			case sig := <-sigchan:
+				switch sig {
+				case syscall.SIGWINCH:
+					termResizeTty(stream, terminalFd)
+				case syscall.SIGHUP:
+					// terminal has been closed, send exit to
+					stream.Send(&proto.ExecCltMsg{
+						Code: proto.ExecCltMsg_CLOSE,
+					})
+				}
 			}
 		}
 	}()
+	return func() {
+		signal.Stop(sigchan)
+		close(done)
+	}
 }
 
 func nodeExec(
@@ -193,7 +205,8 @@ func nodeExec(
 		}
 	}()
 
-	termMonitorTty(stream, terminalFd)
+	stopMonitor := termMonitorTty(stream, terminalFd)
+	defer stopMonitor()
 
 	// wait output to finish
 	err = <-outputDone

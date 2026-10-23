@@ -209,12 +209,6 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run:   clientExec(p.Edit),
 	}
-	p.commands["exec"] = &NetemCommand{
-		Desc:  "Exec a command on a node",
-		Usage: "exec <node_name> <cmd>",
-		Args:  []string{`^\w+$`, `^.+$`},
-		Run:   clientExec(p.Exec),
-	}
 	p.commands["ifState"] = &NetemCommand{
 		Desc:  "Enable/disable a node interface",
 		Usage: "ifState <node_name>.<if_number> up|down",
@@ -643,17 +637,6 @@ func (p *NetemPrompt) Config(client proto.NetemClient, cmdArgs []string) error {
 		return fmt.Errorf("Unable to extract configuration files: %v", err)
 	}
 	return nil
-}
-
-func (p *NetemPrompt) Exec(client proto.NetemClient, cmdArgs []string) error {
-	node := cmdArgs[0]
-
-	cmd, err := shlex.Split(cmdArgs[1])
-	if err != nil {
-		return err
-	}
-
-	return nodeExec(client, p.prjID, node, cmd)
 }
 
 func (p *NetemPrompt) startConsole(client proto.NetemClient, nodeName string, shell bool) error {
