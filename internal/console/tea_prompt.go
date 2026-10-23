@@ -13,6 +13,9 @@ import (
 
 type promptErrorMsg string
 
+// promptProjectPathMsg carries new project path after a saveAs command
+type promptProjectPathMsg string
+
 // promptOutputMsg carries command output produced after the command line
 // was submitted (like the save completion) to display in the transcript.
 type promptOutputMsg string
@@ -140,6 +143,9 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case promptClearMsg:
 		m.clearTranscript()
+		return m, nil
+	case promptProjectPathMsg:
+		m.projectPath = string(msg)
 		return m, nil
 	case promptBusyMsg:
 		m.busy = msg.busy

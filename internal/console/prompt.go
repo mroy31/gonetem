@@ -769,6 +769,14 @@ func (p *NetemPrompt) save(dstPath string) error {
 					p.sendPromptError(fmt.Sprintf("Unable to write saved project to %s: %v", dstPath, err))
 					return
 				}
+
+				// record filepath as new prjPath
+				// useful for saveAs command, like that, user can use save next times
+				if p.prjPath == "" {
+					p.prjPath = dstPath
+					// send msg to model to update TUI
+					p.program.Send(promptProjectPathMsg(dstPath))
+				}
 			}
 		}
 	}()
