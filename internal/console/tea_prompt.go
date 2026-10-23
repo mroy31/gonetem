@@ -570,16 +570,12 @@ func completionTexts(completions []Completion) []string {
 func renderSuggestions(matches []Completion) []string {
 	limit := min(len(matches), 5)
 	lines := make([]string, 0, limit)
-	for i, match := range matches[:limit] {
+	for _, match := range matches[:limit] {
 		line := "  " + match.Text
 		if match.Description != "" {
 			line += "  " + match.Description
 		}
-		fg := "8"
-		if i == 0 {
-			fg = "10"
-		}
-		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color(fg)).Render(line))
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(line))
 	}
 	return lines
 }
