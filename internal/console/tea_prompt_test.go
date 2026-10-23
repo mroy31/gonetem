@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
@@ -270,11 +271,20 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	model = updated.(*teaPromptModel)
 
 	// at the bottom, the tail of the transcript is visible, the head is not
+	// (exact line match: line 1 would otherwise match line 10 or line 19)
+	visible := func(view, line string) bool {
+		for _, text := range strings.Split(view, "\n") {
+			if text == line {
+				return true
+			}
+		}
+		return false
+	}
 	view := model.View().Content
-	if !strings.Contains(view, "output line 30\n") {
+	if !visible(view, "output line 30") {
 		t.Fatalf("tail of the transcript is not visible: %q", view)
 	}
-	if strings.Contains(view, "output line 1\n") {
+	if visible(view, "output line 1") {
 		t.Fatalf("head of the transcript is visible without scrolling: %q", view)
 	}
 
@@ -284,10 +294,10 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 		model = updated.(*teaPromptModel)
 	}
 	view = model.View().Content
-	if !strings.Contains(view, "output line 1\n") {
+	if !visible(view, "output line 1") {
 		t.Fatalf("pgup does not show the head of the transcript: %q", view)
 	}
-	if strings.Contains(view, "output line 30\n") {
+	if visible(view, "output line 30") {
 		t.Fatalf("pgup still shows the bottom of the transcript: %q", view)
 	}
 	if !strings.Contains(view, "lines above") {
@@ -307,7 +317,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 		model = updated.(*teaPromptModel)
 	}
 	view = model.View().Content
-	if !strings.Contains(view, "output line 30\n") {
+	if !visible(view, "output line 30") {
 		t.Fatalf("pgdown does not return to the bottom of the transcript: %q", view)
 	}
 	if strings.Contains(view, "lines above") {
@@ -652,14 +662,21 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 		t.Fatalf("prompt rendered %d lines, want terminal height 12", len(lines))
 	}
 	for _, text := range []string{
-		"Welcome to gonetem console",
 		"Project: demo",
 		"Path: /work/demo.gnet",
+		"History",
 		"[demo]> ",
 	} {
 		if !strings.Contains(view.Content, text) {
 			t.Fatalf("project prompt does not display %q", text)
 		}
+	}
+	// the title is the first line, centered, with the version and project
+	if !strings.Contains(lines[0], "gonetem "+options.VERSION) || !strings.Contains(lines[0], "Project: demo") {
+		t.Fatalf("title does not display gonetem, its version and the project: %q", lines[0])
+	}
+	if strings.Index(lines[0], "gonetem "+options.VERSION) < 5 {
+		t.Fatalf("title is not displayed at the top center: %q", lines[0])
 	}
 	if !strings.Contains(lines[len(lines)-1], "Path: /work/demo.gnet") {
 		t.Fatalf("the project path is not displayed at the bottom of the terminal: %q", lines[len(lines)-1])
@@ -674,12 +691,15 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 	if promptIndex == -1 {
 		t.Fatalf("prompt input line is missing: %q", view.Content)
 	}
+	if promptIndex != promptSuggestionLines+1 {
+		t.Fatalf("prompt is not right below the reserved suggestion zone: line %d", promptIndex)
+	}
 	if !strings.Contains(lines[promptIndex+1], "command failed") {
 		t.Fatalf("the error is not displayed just below the prompt: %q", lines[promptIndex+1])
 	}
 }
 
-func TestPromptAnchorsAboveReservedSuggestionSpace(t *testing.T) {
+func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 	completions := func(string) []Completion {
 		matches := make([]Completion, 0, 10)
 		for i := 1; i <= 10; i++ {
@@ -707,12 +727,12 @@ func TestPromptAnchorsAboveReservedSuggestionSpace(t *testing.T) {
 	}
 
 	before := promptLine(strings.Split(model.View().Content, "\n"))
-	if before == -1 {
-		t.Fatal("prompt input line is missing")
+	if before != promptSuggestionLines+1 {
+		t.Fatalf("prompt is not right below the reserved suggestion zone: line %d", before)
 	}
 
-	// an in-progress command fills the reserved block with suggestions,
-	// without moving the prompt line
+	// an in-progress command fills the reserved zone with suggestions,
+	// above the prompt, without moving the prompt line
 	model.input.SetValue("start ")
 	model.updateCompletions()
 	lines := strings.Split(model.View().Content, "\n")
@@ -720,16 +740,20 @@ func TestPromptAnchorsAboveReservedSuggestionSpace(t *testing.T) {
 	if after != before {
 		t.Fatalf("the prompt moved when suggestions appeared: %d -> %d", before, after)
 	}
-	if !strings.Contains(model.View().Content, "start node1") {
-		t.Fatal("suggestions are not displayed below the prompt")
+	zone := strings.Join(lines[1:after], "\n")
+	if !strings.Contains(zone, "start node1") {
+		t.Fatalf("suggestions are not displayed above the prompt: %q", zone)
 	}
-	// suggestions are truncated to the space left above the path line
-	if len(lines)-1-after != promptReserveLines {
-		t.Fatalf("the prompt is not %d lines before the bottom: %d lines below",
-			promptReserveLines, len(lines)-1-after)
+	// the suggestion zone is fixed: suggestions beyond its space are dropped
+	if strings.Contains(zone, "start node10") {
+		t.Fatalf("suggestions overflow the reserved zone: %q", zone)
 	}
-	if strings.Contains(strings.Join(lines[after+1:], "\n"), "start node10") {
-		t.Fatalf("suggestions overflow the reserved block")
+
+	// the command history is displayed below the prompt, behind its banner
+	below := strings.Join(lines[after+1:], "\n")
+	bannerAt, outputAt := strings.Index(below, "History"), strings.Index(below, "Previous output")
+	if bannerAt == -1 || outputAt == -1 || bannerAt > outputAt {
+		t.Fatalf("the history is not displayed below its banner: %q", below)
 	}
 	if !strings.Contains(lines[len(lines)-1], "Path: /work/demo.gnet") {
 		t.Fatalf("the project path moved off the bottom line: %q", lines[len(lines)-1])
@@ -755,6 +779,7 @@ func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
 	for i, line := range lines {
 		if strings.Contains(line, "[project]> ") {
 			promptIndex = i
+			break
 		}
 	}
 	if promptIndex == -1 || promptIndex+1 >= len(lines) {

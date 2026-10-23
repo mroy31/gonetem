@@ -50,11 +50,9 @@ type editorFinishedMsg struct {
 	finish func(error) error
 }
 
-// promptReserveLines is the number of lines the main prompt keeps free
-// below it, above the bottom of the terminal: room for the command errors
-// and completion suggestions without ever moving the prompt, and the
-// project path on the last line.
-const promptReserveLines = 6
+// promptSuggestionLines is the number of lines reserved for the completion
+// suggestions above the prompt line, so the prompt keeps a fixed position.
+const promptSuggestionLines = 5
 
 type teaPromptModel struct {
 	input       textinput.Model
@@ -95,6 +93,7 @@ type teaPromptModel struct {
 	projectName string
 	projectPath string
 	height      int
+	width       int
 	fullscreen  bool
 	showHeader  bool
 	done        bool
@@ -167,6 +166,7 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
+		m.width = msg.Width
 		return m, nil
 	case tea.MouseWheelMsg:
 		switch msg.Button {
@@ -318,13 +318,14 @@ func (m *teaPromptModel) scrollBy(delta int) {
 // transcriptPageHeight approximates the number of transcript lines visible
 // without scrolling, to scroll by whole pages with pgup/pgdown.
 func (m *teaPromptModel) transcriptPageHeight() int {
-	headerLines := 0
+	footerLines := 0
 	if m.showHeader {
-		headerLines = 4
+		footerLines = 1
 	}
-	// one page of the transcript is what View makes visible: the terminal
-	// minus the header, the prompt line and the block reserved below it
-	return max(1, m.height-headerLines-1-promptReserveLines)
+	// one page is what View makes visible in the history: the terminal minus
+	// the title, the suggestion zone, the prompt line, the history banner
+	// and the footer
+	return max(1, m.height-promptSuggestionLines-4-footerLines)
 }
 
 func (m *teaPromptModel) moveHistory(direction int) bool {
@@ -400,21 +401,24 @@ func (m *teaPromptModel) clearTranscript() {
 }
 
 func (m *teaPromptModel) View() tea.View {
-	header := make([]string, 0, 4)
-	if m.showHeader {
-		bannerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-		titleStyle := lipgloss.NewStyle().Bold(true)
-		header = append(header,
-			bannerStyle.Render("Welcome to gonetem console "+options.VERSION),
-			titleStyle.Render("Project: "+m.projectName),
-			"Please use `exit` to close the project",
-			"",
-		)
+	// the title, centered at the top of the screen: gonetem, its version
+	// and the running project
+	title := "gonetem " + options.VERSION
+	if m.projectName != "" {
+		title += " — Project: " + m.projectName
 	}
+	titleLine := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Render(
+		centerText(title, m.width))
 
-	var suggestions []string
+	// a fixed number of lines is reserved for the completion suggestions,
+	// below the title and above the prompt, so the prompt line always keeps
+	// the same position
+	suggestions := make([]string, 0, promptSuggestionLines)
 	if !m.done && m.showMatches && m.completions != nil && strings.TrimSpace(m.input.Value()) != "" {
 		suggestions = renderSuggestions(m.completions(m.input.Value()))
+	}
+	if !m.done && len(suggestions) < promptSuggestionLines {
+		suggestions = append(suggestions, make([]string, promptSuggestionLines-len(suggestions))...)
 	}
 
 	var inputLines []string
@@ -441,15 +445,7 @@ func (m *teaPromptModel) View() tea.View {
 		}
 	}
 
-	bodySpace := m.height - len(header)
-	if m.height > 0 {
-		bodySpace = max(0, bodySpace)
-	}
-
-	// the prompt is pinned promptReserveLines lines above the bottom of the
-	// terminal: a fixed block below it holds the command errors, the
-	// completion suggestions and the project path on the last line, so the
-	// prompt never moves when suggestions appear or disappear
+	// the project path, displayed on the last line of the terminal
 	footer := ""
 	if m.showHeader && !m.done {
 		path := m.projectPath
@@ -462,15 +458,26 @@ func (m *teaPromptModel) View() tea.View {
 	if footer != "" {
 		footerLines = 1
 	}
-	underPrompt := max(promptReserveLines, len(errorLines)+footerLines)
-	if m.height > 0 {
-		suggestionSpace := max(0, underPrompt-footerLines-len(errorLines))
-		suggestions = suggestions[:min(len(suggestions), suggestionSpace)]
-	}
 
+	// the banner delimiting the command history, displayed below the prompt
+	label := " History "
+	if m.showHeader {
+		label = " History — use `exit` to close the project "
+	}
+	leftDashes, rightDashes := 7, 7
+	if labelWidth := lipgloss.Width(label); m.width > labelWidth+14 {
+		leftDashes = (m.width - labelWidth) / 2
+		rightDashes = m.width - labelWidth - leftDashes
+	}
+	banner := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+		strings.Repeat("─", leftDashes) + label + strings.Repeat("─", rightDashes))
+
+	// the history takes the place left on screen between the prompt area
+	// and the footer
 	transcriptSpace := len(m.transcript)
 	if m.height > 0 {
-		transcriptSpace = max(0, bodySpace-len(inputLines)-len(progressLines)-underPrompt)
+		transcriptSpace = max(0, m.height-1-len(suggestions)-len(inputLines)-len(errorLines)-
+			len(progressLines)-1-footerLines)
 	}
 
 	// window the transcript into the visible space, scrolled by scrollOffset
@@ -494,26 +501,18 @@ func (m *teaPromptModel) View() tea.View {
 	transcriptEnd := max(0, len(m.transcript)-scrollOffset)
 	transcript := m.transcript[max(0, transcriptEnd-transcriptSpace):transcriptEnd]
 
-	lines := make([]string, 0, len(header)+bodySpace)
-	lines = append(lines, header...)
-	lines = append(lines, indicatorLines...)
-	lines = append(lines, transcript...)
-	// keep the prompt anchored above its reserved block: pad the gap
-	// between the transcript and the prompt when the transcript does not
-	// fill the terminal
-	gap := 0
-	if m.height > 0 {
-		gap = max(0, m.height-underPrompt-len(header)-len(indicatorLines)-len(transcript)-
-			len(progressLines)-len(inputLines))
-	}
-	lines = append(lines, make([]string, gap)...)
-	lines = append(lines, progressLines...)
+	lines := make([]string, 0, max(m.height, 13))
+	lines = append(lines, titleLine)
+	lines = append(lines, suggestions...)
 	lines = append(lines, inputLines...)
 	lines = append(lines, errorLines...)
-	lines = append(lines, suggestions...)
+	lines = append(lines, progressLines...)
+	lines = append(lines, banner)
+	lines = append(lines, indicatorLines...)
+	lines = append(lines, transcript...)
 	if m.height > 0 {
-		// pad the block reserved below the prompt, leaving the last line
-		// for the project path when it is displayed
+		// the history area fills the screen, keeping the footer on the last
+		// line of the terminal
 		for len(lines) < m.height-footerLines {
 			lines = append(lines, "")
 		}
@@ -530,6 +529,16 @@ func (m *teaPromptModel) View() tea.View {
 		view.MouseMode = tea.MouseModeCellMotion
 	}
 	return view
+}
+
+// centerText pads the text with spaces so it is displayed centered in a
+// line of the given terminal width; the text is returned unchanged when it
+// does not fit or the terminal width is still unknown.
+func centerText(text string, width int) string {
+	if pad := width - lipgloss.Width(text); pad > 0 {
+		return strings.Repeat(" ", pad/2) + text
+	}
+	return text
 }
 
 // prefixMatcher returns a completion function filtering the given
