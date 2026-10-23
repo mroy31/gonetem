@@ -143,19 +143,10 @@ func NewPrompt(prjName, prjID, prjPath string) {
 	model = newTeaPromptModel(prefix, c.Complete, func(line string) (bool, error) {
 		err := e.Execute(line)
 		model.drainOutput()
-		if e.takePendingClear() {
-			model.clearTranscript()
-		}
 		if request := e.takePendingPrompt(); request != nil {
 			model.startSubPrompt(request)
 		}
-		if execRequest := e.takePendingExec(); execRequest != nil {
-			// bubbletea gives the terminal to the editor and restores the
-			// TUI when it exits; finish then uploads the edited topology
-			model.pendingExec = tea.ExecProcess(execRequest.cmd, func(err error) tea.Msg {
-				return editorFinishedMsg{err: err, finish: execRequest.finish}
-			})
-		}
+		model.pendingCmd = e.takePendingCmd()
 		return e.done, err
 	})
 	model.takeOutput = e.takePromptOutput

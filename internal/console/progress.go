@@ -30,6 +30,8 @@ func progressText(label string, current, total int) string {
 // Labels of the topology run phases, displayed as they progress by both
 // the mpb bars and the TUI text bars.
 const (
+	runLabelNodeClose    = "Node - Close"
+	runLabelBridgeClose  = "Bridge - Close"
 	runLabelNodeStart    = "Node - Start"
 	runLabelNodeConfig   = "Node - Configuration"
 	runLabelLinkCreate   = "Link - Create"
@@ -146,6 +148,11 @@ func nodeMessagesOutput(msg *proto.TopologyRunMsg) string {
 // displayed between its announcement and its end.
 type runProgress struct {
 	counters []*runProgressCounter
+	// closing is true while a reload stream runs its initial close phase:
+	// the NODE_COUNT and BRIDGE_COUNT announcements of this phase come
+	// before any increment, and are followed by the run phase announcing
+	// its own counts.
+	closing bool
 }
 
 type runProgressCounter struct {
@@ -163,17 +170,44 @@ func newRunProgress() *runProgress {
 	}}
 }
 
+// newReloadProgress tracks the additional close phase of the reload
+// stream, which stops the nodes and bridges before the run phase restarts
+// them. The close bars are displayed above the run ones.
+func newReloadProgress() *runProgress {
+	return &runProgress{
+		counters: append([]*runProgressCounter{
+			{label: runLabelNodeClose},
+			{label: runLabelBridgeClose},
+		}, newRunProgress().counters...),
+		closing: true,
+	}
+}
+
 // handle applies a stream message to the counters and returns the progress
 // text to display: the running phases, one per line, empty when none is.
 func (r *runProgress) handle(msg *proto.TopologyRunMsg) string {
 	switch msg.GetCode() {
 	case proto.TopologyRunMsg_NODE_COUNT:
-		r.setTotal(runLabelNodeStart, int(msg.GetTotal()))
-		r.setTotal(runLabelNodeConfig, int(msg.GetTotal()))
+		if r.closing {
+			r.setTotal(runLabelNodeClose, int(msg.GetTotal()))
+		} else {
+			r.setTotal(runLabelNodeStart, int(msg.GetTotal()))
+			r.setTotal(runLabelNodeConfig, int(msg.GetTotal()))
+		}
+	case proto.TopologyRunMsg_BRIDGE_COUNT:
+		if r.closing {
+			r.setTotal(runLabelBridgeClose, int(msg.GetTotal()))
+		} else {
+			r.setTotal(runLabelBridgeCreate, int(msg.GetTotal()))
+		}
 	case proto.TopologyRunMsg_LINK_COUNT:
 		r.setTotal(runLabelLinkCreate, int(msg.GetTotal()))
-	case proto.TopologyRunMsg_BRIDGE_COUNT:
-		r.setTotal(runLabelBridgeCreate, int(msg.GetTotal()))
+	case proto.TopologyRunMsg_NODE_STOP:
+		r.increment(runLabelNodeClose)
+		r.closing = false
+	case proto.TopologyRunMsg_NODE_RM:
+		r.increment(runLabelBridgeClose)
+		r.closing = false
 	case proto.TopologyRunMsg_NODE_START:
 		r.increment(runLabelNodeStart)
 	case proto.TopologyRunMsg_NODE_LOADCONFIG:

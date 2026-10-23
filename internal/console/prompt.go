@@ -94,9 +94,13 @@ type NetemPrompt struct {
 	program       *tea.Program
 	done          bool
 	pendingPrompt *inputPromptRequest
-	pendingExec   *pendingEditorRequest
+	// pendingCmd is a command handed over by the command being executed,
+	// for the bubbletea program to run right after the prompt submission:
+	// the external editor, or a function sending a message back to the
+	// model. It must not be sent directly to the program: commands run
+	// inside the event loop, where a Program.Send would deadlock.
+	pendingCmd    tea.Cmd
 	pendingOutput []string
-	pendingClear  bool
 	// nodes is used by completion, and refreshed in background by the
 	// asynchronous run command: it must stay locked
 	nodesMu sync.Mutex
@@ -109,29 +113,11 @@ type inputPromptRequest struct {
 	submit      func(string)
 }
 
-// pendingEditorRequest asks the TUI to run an external editor with the
-// terminal taken back from bubbletea. finish is called once the editor has
-// exited, with the editor error if any, and must consume the edited file.
-type pendingEditorRequest struct {
-	cmd    *exec.Cmd
-	finish func(editorErr error) error
-}
-
 // clientExec adapts a command needing a server connection into a prompt
 // command, opening the client around its execution.
 func clientExec(execFunc func(client proto.NetemClient, cmdArgs []string) error) func(p *NetemPrompt, cmdArgs []string) error {
 	return func(p *NetemPrompt, cmdArgs []string) error {
 		return p.execWithClient(cmdArgs, execFunc)
-	}
-}
-
-// clientExecRefreshed is a client command after which the node list is
-// refreshed, as the topology changed (run, reload).
-func clientExecRefreshed(execFunc func(client proto.NetemClient, cmdArgs []string) error) func(p *NetemPrompt, cmdArgs []string) error {
-	return func(p *NetemPrompt, cmdArgs []string) error {
-		err := p.execWithClient(cmdArgs, execFunc)
-		p.refreshNodeList()
-		return err
 	}
 }
 
@@ -237,7 +223,7 @@ func (p *NetemPrompt) RegisterCommands() {
 		Desc:  "Reload the project",
 		Usage: "reload",
 		Args:  []string{},
-		Run:   clientExecRefreshed(p.Reload),
+		Run:   (*NetemPrompt).Reload,
 	}
 	p.commands["restart"] = &NetemCommand{
 		Desc:  "Restart a node",
@@ -886,21 +872,17 @@ func (p *NetemPrompt) takePendingPrompt() *inputPromptRequest {
 	return request
 }
 
-func (p *NetemPrompt) takePendingExec() *pendingEditorRequest {
-	request := p.pendingExec
-	p.pendingExec = nil
-	return request
-}
-
-func (p *NetemPrompt) takePendingClear() bool {
-	pending := p.pendingClear
-	p.pendingClear = false
-	return pending
+func (p *NetemPrompt) takePendingCmd() tea.Cmd {
+	cmd := p.pendingCmd
+	p.pendingCmd = nil
+	return cmd
 }
 
 // Clear asks the TUI to empty the transcript displayed above the prompt.
+// As commands run inside the event loop, the request travels as a program
+// command sending a message back to the model.
 func (p *NetemPrompt) Clear(cmdArgs []string) error {
-	p.pendingClear = true
+	p.pendingCmd = func() tea.Msg { return promptClearMsg{} }
 	return nil
 }
 
@@ -920,12 +902,15 @@ func (p *NetemPrompt) Edit(client proto.NetemClient, cmdArgs []string) error {
 	}
 
 	// bubbletea owns the terminal (raw mode and alt screen): the editor must
-	// not run inside the event loop. Queue the editor command so the program
-	// can run it with the terminal given back, then upload through finish.
-	p.pendingExec = &pendingEditorRequest{
-		cmd:    exec.Command(options.ConsoleConfig.Editor, p.tempNetworkFilename()),
-		finish: p.uploadEditedNetwork,
-	}
+	// not run inside the event loop. Hand it over as a program command:
+	// bubbletea gives the terminal to the editor and restores the TUI when
+	// it exits, then the finish message uploads the edited topology.
+	p.pendingCmd = tea.ExecProcess(
+		exec.Command(options.ConsoleConfig.Editor, p.tempNetworkFilename()),
+		func(editorErr error) tea.Msg {
+			return editorFinishedMsg{err: editorErr, finish: p.uploadEditedNetwork}
+		},
+	)
 	return nil
 }
 
@@ -966,36 +951,53 @@ func (p *NetemPrompt) tempNetworkFilename() string {
 	return path.Join("/tmp", "gonetem-network-"+p.prjID)
 }
 
-// Run starts the topology in background and reports progress to the prompt
-// model: bubbletea owns the screen and would overwrite the bars rendered by
-// mpb. As the client of the command is closed as soon as the command
-// returns, it opens its own connection kept alive until the run stream is
-// fully consumed.
-func (p *NetemPrompt) Run(cmdArgs []string) error {
+// topologyRunStream is the receiving side of a topology run or reload stream.
+type topologyRunStream interface {
+	Recv() (*proto.TopologyRunMsg, error)
+}
+
+// streamTopologyProgress consumes a topology stream, run or reload, in
+// background and reports progress to the prompt model: bubbletea owns the
+// screen and would overwrite the bars rendered by mpb. As the client of the
+// command is closed as soon as the command returns, it opens its own
+// connection kept alive until the stream is fully consumed. While the
+// stream runs, the prompt input is frozen and waiting, a message shown
+// above the progress bars.
+func (p *NetemPrompt) streamTopologyProgress(
+	action string,
+	waiting string,
+	open func(client proto.NetemClient) (topologyRunStream, error),
+	progress *runProgress,
+) error {
 	client, err := NewClient(p.server)
 	if err != nil {
 		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
 	}
 
-	stream, err := client.Client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	stream, err := open(client.Client)
 	if err != nil {
 		client.Conn.Close()
-		return fmt.Errorf("Unable to run the project: %v", err)
+		return fmt.Errorf("Unable to %s the project: %v", action, err)
 	}
 
 	go func() {
 		defer client.Conn.Close()
+		defer p.program.Send(promptBusyMsg{})
 		defer p.program.Send(promptProgressMsg(""))
 		// node list needs to be updated for completion
 		defer p.refreshNodeList()
 
-		progress := newRunProgress()
+		// freeze the prompt input for the whole duration of the stream:
+		// both busy transitions come from this goroutine, so they are
+		// always ordered consistently with the progress messages
+		p.program.Send(promptBusyMsg{busy: true, message: waiting})
+
 		for {
 			msg, err := stream.Recv()
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				p.sendPromptError(fmt.Sprintf("Unable to run topology: %v", err))
+				p.sendPromptError(fmt.Sprintf("Unable to %s topology: %v", action, err))
 				return
 			}
 
@@ -1007,6 +1009,15 @@ func (p *NetemPrompt) Run(cmdArgs []string) error {
 	}()
 
 	return nil
+}
+
+// Run starts the topology and reports its progress to the prompt model.
+func (p *NetemPrompt) Run(cmdArgs []string) error {
+	return p.streamTopologyProgress("run", "Running the topology, please wait until it completes...",
+		func(client proto.NetemClient) (topologyRunStream, error) {
+			return client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+		},
+		newRunProgress())
 }
 
 func (p *NetemPrompt) ViewNodeConfiguration(client proto.NetemClient, cmdArgs []string) error {
@@ -1041,25 +1052,14 @@ func (p *NetemPrompt) displayConfiguration(configFile *proto.ConfigFilesResponse
 	p.queuePromptOutput(fmt.Sprintf("\n%s\n", configFile.Data))
 }
 
-func (p *NetemPrompt) Reload(client proto.NetemClient, cmdArgs []string) error {
-	stream, err := client.TopologyReload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-	if err != nil {
-		return fmt.Errorf("Unable to reload the project: %v", err)
-	}
-
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return fmt.Errorf("Unable to run topology: %v", err)
-		}
-
-		if msg.Code == proto.TopologyRunMsg_NODE_MESSAGES {
-			p.queuePromptOutput(nodeMessagesOutput(msg))
-		}
-	}
-	return nil
+// Reload restarts the topology and reports the close phase followed by the
+// run phase progress to the prompt model.
+func (p *NetemPrompt) Reload(cmdArgs []string) error {
+	return p.streamTopologyProgress("reload", "Reloading the project, please wait until it completes...",
+		func(client proto.NetemClient) (topologyRunStream, error) {
+			return client.TopologyReload(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+		},
+		newReloadProgress())
 }
 
 func (p *NetemPrompt) Close() error {

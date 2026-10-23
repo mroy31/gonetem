@@ -22,6 +22,23 @@ type promptOutputMsg string
 // clears the progress display.
 type promptProgressMsg string
 
+// promptClearMsg asks the prompt to empty the transcript, as requested by
+// the clear command. It must be delivered through a command (tea.Cmd)
+// returned by Update: commands run inside the event loop, where a direct
+// Program.Send would block forever on the unbuffered message channel.
+type promptClearMsg struct{}
+
+// promptBusyMsg freezes the prompt input while an asynchronous command
+// (run, reload) is modifying the topology: busy on start, false on
+// completion. message is displayed above the progress bars while the
+// command runs. Both transitions are sent from the background goroutine
+// consuming the command stream, which keeps their order consistent with
+// the progress messages it also sends.
+type promptBusyMsg struct {
+	busy    bool
+	message string
+}
+
 // editorFinishedMsg is sent to the prompt when the external editor spawned
 // by a command (like edit) exits. finish uploads or discards the edited
 // data and may return an error to display below the prompt.
@@ -29,6 +46,12 @@ type editorFinishedMsg struct {
 	err    error
 	finish func(error) error
 }
+
+// promptReserveLines is the number of lines the main prompt keeps free
+// below it, above the bottom of the terminal: room for the command errors
+// and completion suggestions without ever moving the prompt, and the
+// project path on the last line.
+const promptReserveLines = 6
 
 type teaPromptModel struct {
 	input       textinput.Model
@@ -43,10 +66,11 @@ type teaPromptModel struct {
 	// takeOutput drains the command outputs queued while the sub prompt
 	// callback was running
 	takeOutput func() []string
-	// pendingExec is an external command (like the topology editor) set by
-	// the submitted command, to be run by the program with the terminal
-	// taken back from the TUI
-	pendingExec  tea.Cmd
+	// pendingCmd is set by a submitted command to be run by the program
+	// right after: the external topology editor, with the terminal taken
+	// back from the TUI until it exits, or a function sending a message
+	// back to the model like the transcript clear
+	pendingCmd   tea.Cmd
 	history      []string
 	historyIndex int
 	historyDraft string
@@ -58,14 +82,20 @@ type teaPromptModel struct {
 	// bottom of the screen, used to scroll back through a long history
 	scrollOffset int
 	progress     string
-	showMatches  bool
-	projectName  string
-	projectPath  string
-	height       int
-	fullscreen   bool
-	showHeader   bool
-	done         bool
-	result       string
+	// busy is set while an asynchronous command (run, reload) runs: the
+	// input is frozen and only the transcript keeps scrolling
+	busy bool
+	// busyMessage is the text shown above the progress bars while busy,
+	// naming the running command and asking the user to wait
+	busyMessage string
+	showMatches bool
+	projectName string
+	projectPath string
+	height      int
+	fullscreen  bool
+	showHeader  bool
+	done        bool
+	result      string
 }
 
 // newStyledTextInput creates the focused text input shared by all prompt
@@ -108,6 +138,18 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptProgressMsg:
 		m.progress = string(msg)
 		return m, nil
+	case promptClearMsg:
+		m.clearTranscript()
+		return m, nil
+	case promptBusyMsg:
+		m.busy = msg.busy
+		m.busyMessage = msg.message
+		if m.busy {
+			// render the input blurred, without cursor, while frozen
+			m.input.Blur()
+			return m, nil
+		}
+		return m, m.input.Focus()
 	case editorFinishedMsg:
 		if msg.finish != nil {
 			err := msg.finish(msg.err)
@@ -130,16 +172,26 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case tea.KeyPressMsg:
+		if m.busy {
+			// while an asynchronous command runs, the input is frozen:
+			// only scrolling the transcript keeps working
+			switch msg.String() {
+			case "pgup":
+				m.scrollBy(m.transcriptPageHeight())
+			case "pgdown":
+				m.scrollBy(-m.transcriptPageHeight())
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "esc":
 			if m.subPrompt != nil {
 				m.endSubPrompt()
 				return m, nil
 			}
-			if m.onSubmit == nil {
-				m.done = true
-				return m, tea.Quit
-			}
+
+			// clear error
 			m.promptError = ""
 			m.resetInput()
 			return m, nil
@@ -178,12 +230,12 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.history = append(m.history, value)
 				}
 				m.resetInput()
-				// a command may hand over an external program (like the
-				// topology editor) to run with the terminal taken back
-				// from the TUI, and resumed on its exit
-				execCmd := m.pendingExec
-				m.pendingExec = nil
-				return m, execCmd
+				// a command may hand over a program command to run right
+				// after the submission: an external editor taking the
+				// terminal back, or a message back to the model
+				nextCmd := m.pendingCmd
+				m.pendingCmd = nil
+				return m, nextCmd
 			}
 			if value != "" {
 				m.transcript = append(m.transcript, m.input.Prompt+value)
@@ -262,9 +314,11 @@ func (m *teaPromptModel) scrollBy(delta int) {
 func (m *teaPromptModel) transcriptPageHeight() int {
 	headerLines := 0
 	if m.showHeader {
-		headerLines = 5
+		headerLines = 4
 	}
-	return max(1, m.height-headerLines-3)
+	// one page of the transcript is what View makes visible: the terminal
+	// minus the header, the prompt line and the block reserved below it
+	return max(1, m.height-headerLines-1-promptReserveLines)
 }
 
 func (m *teaPromptModel) moveHistory(direction int) bool {
@@ -340,18 +394,13 @@ func (m *teaPromptModel) clearTranscript() {
 }
 
 func (m *teaPromptModel) View() tea.View {
-	header := make([]string, 0, 5)
+	header := make([]string, 0, 4)
 	if m.showHeader {
 		bannerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 		titleStyle := lipgloss.NewStyle().Bold(true)
-		path := m.projectPath
-		if path == "" {
-			path = "Unavailable (attached to a running project)"
-		}
 		header = append(header,
 			bannerStyle.Render("Welcome to gonetem console "+options.VERSION),
 			titleStyle.Render("Project: "+m.projectName),
-			"Path: "+path,
 			"Please use `exit` to close the project",
 			"",
 		)
@@ -368,6 +417,10 @@ func (m *teaPromptModel) View() tea.View {
 	}
 
 	var progressLines []string
+	if !m.done && m.busy && m.busyMessage != "" {
+		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+		progressLines = append(progressLines, style.Render(m.busyMessage))
+	}
 	if !m.done && m.progress != "" {
 		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 		for _, line := range strings.Split(m.progress, "\n") {
@@ -387,14 +440,31 @@ func (m *teaPromptModel) View() tea.View {
 		bodySpace = max(0, bodySpace)
 	}
 
-	linesUnderTranscript := len(inputLines) + len(progressLines) + len(errorLines)
-	if m.height > 0 && len(suggestions)+linesUnderTranscript > bodySpace {
-		suggestionSpace := max(0, bodySpace-linesUnderTranscript)
+	// the prompt is pinned promptReserveLines lines above the bottom of the
+	// terminal: a fixed block below it holds the command errors, the
+	// completion suggestions and the project path on the last line, so the
+	// prompt never moves when suggestions appear or disappear
+	footer := ""
+	if m.showHeader && !m.done {
+		path := m.projectPath
+		if path == "" {
+			path = "Unavailable (attached to a running project)"
+		}
+		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Path: " + path)
+	}
+	footerLines := 0
+	if footer != "" {
+		footerLines = 1
+	}
+	underPrompt := max(promptReserveLines, len(errorLines)+footerLines)
+	if m.height > 0 {
+		suggestionSpace := max(0, underPrompt-footerLines-len(errorLines))
 		suggestions = suggestions[:min(len(suggestions), suggestionSpace)]
 	}
+
 	transcriptSpace := len(m.transcript)
 	if m.height > 0 {
-		transcriptSpace = max(0, bodySpace-linesUnderTranscript-len(suggestions))
+		transcriptSpace = max(0, bodySpace-len(inputLines)-len(progressLines)-underPrompt)
 	}
 
 	// window the transcript into the visible space, scrolled by scrollOffset
@@ -422,14 +492,28 @@ func (m *teaPromptModel) View() tea.View {
 	lines = append(lines, header...)
 	lines = append(lines, indicatorLines...)
 	lines = append(lines, transcript...)
+	// keep the prompt anchored above its reserved block: pad the gap
+	// between the transcript and the prompt when the transcript does not
+	// fill the terminal
+	gap := 0
+	if m.height > 0 {
+		gap = max(0, m.height-underPrompt-len(header)-len(indicatorLines)-len(transcript)-
+			len(progressLines)-len(inputLines))
+	}
+	lines = append(lines, make([]string, gap)...)
 	lines = append(lines, progressLines...)
 	lines = append(lines, inputLines...)
 	lines = append(lines, errorLines...)
 	lines = append(lines, suggestions...)
 	if m.height > 0 {
-		for len(lines) < m.height {
+		// pad the block reserved below the prompt, leaving the last line
+		// for the project path when it is displayed
+		for len(lines) < m.height-footerLines {
 			lines = append(lines, "")
 		}
+	}
+	if footer != "" {
+		lines = append(lines, footer)
 	}
 
 	view := tea.NewView(strings.Join(lines, "\n"))

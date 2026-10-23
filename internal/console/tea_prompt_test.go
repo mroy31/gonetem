@@ -212,6 +212,53 @@ func TestRunProgressRendersOnlyRunningPhases(t *testing.T) {
 	}
 }
 
+func TestRunProgressReloadTracksCloseThenRunPhases(t *testing.T) {
+	progress := newReloadProgress()
+
+	// the reload stream first announces the close phase counts
+	got := progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_COUNT, Total: 2})
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_BRIDGE_COUNT, Total: 1})
+	if !strings.Contains(got, "Node - Close:") || !strings.Contains(got, "Bridge - Close:") {
+		t.Fatalf("close phases not displayed after close counts: %q", got)
+	}
+	if strings.Contains(got, "Node - Start:") {
+		t.Fatalf("run phases displayed during the close phase: %q", got)
+	}
+
+	// the close increments complete and clear the close bars
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_STOP})
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_STOP})
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_RM})
+	if got != "" {
+		t.Fatalf("close phases not completed: %q", got)
+	}
+
+	// the run phase then announces itself and displays its own bars
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_COUNT, Total: 2})
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_BRIDGE_COUNT, Total: 1})
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_LINK_COUNT, Total: 1})
+	if !strings.Contains(got, "Node - Start:") || !strings.Contains(got, "Node - Configuration:") ||
+		!strings.Contains(got, "Link - Create:") || !strings.Contains(got, "Bridge - Create:") {
+		t.Fatalf("run phases not displayed after run counts: %q", got)
+	}
+	if strings.Contains(got, "Close") {
+		t.Fatalf("close phases displayed during the run phase: %q", got)
+	}
+
+	// run increments move the run counters, not the close ones
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_START})
+	halfBar := strings.Repeat("█", progressBarWidth/2) + strings.Repeat("░", progressBarWidth/2)
+	if !strings.Contains(got, "Node - Start: ["+halfBar+"] 1/2") {
+		t.Fatalf("run progress not updated: %q", got)
+	}
+
+	// node messages still force-complete everything
+	got = progress.handle(&proto.TopologyRunMsg{Code: proto.TopologyRunMsg_NODE_MESSAGES})
+	if got != "" {
+		t.Fatalf("progress not cleared after node messages: %q", got)
+	}
+}
+
 func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.fullscreen = true
@@ -231,9 +278,11 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 		t.Fatalf("head of the transcript is visible without scrolling: %q", view)
 	}
 
-	// pgup scrolls back through the older lines
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-	model = updated.(*teaPromptModel)
+	// pgup scrolls back through the older lines, a page at a time
+	for range 3 {
+		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+		model = updated.(*teaPromptModel)
+	}
 	view = model.View().Content
 	if !strings.Contains(view, "output line 1\n") {
 		t.Fatalf("pgup does not show the head of the transcript: %q", view)
@@ -263,6 +312,82 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	}
 	if strings.Contains(view, "lines above") {
 		t.Fatalf("scroll indicator is still visible at the bottom: %q", view)
+	}
+}
+
+func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
+	submitted := false
+	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+		submitted = true
+		return false, nil
+	})
+	model.fullscreen = true
+	for i := 1; i <= 30; i++ {
+		model.transcript = append(model.transcript, fmt.Sprintf("output line %d", i))
+	}
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(*teaPromptModel)
+
+	// the busy state freezes typing and submitting
+	waiting := "Reloading the project, please wait until it completes..."
+	updated, _ = model.Update(promptBusyMsg{busy: true, message: waiting})
+	model = updated.(*teaPromptModel)
+	if !model.busy {
+		t.Fatal("promptBusyMsg did not freeze the prompt")
+	}
+
+	// the waiting message is shown above the progress bars
+	model.Update(promptProgressMsg("Node - Close: [====>    ] 1/4"))
+	view := model.View().Content
+	waitAt, barAt := strings.Index(view, waiting), strings.Index(view, "Node - Close:")
+	if waitAt < 0 {
+		t.Fatalf("waiting message is not displayed while busy: %q", view)
+	}
+	if barAt < 0 || waitAt > barAt {
+		t.Fatalf("waiting message is not above the progress bars: %q", view)
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "reload"})
+	model = updated.(*teaPromptModel)
+	if model.input.Value() != "" {
+		t.Fatalf("typing is not frozen while busy: %q", model.input.Value())
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(*teaPromptModel)
+	if submitted {
+		t.Fatal("enter must not submit a command while busy")
+	}
+
+	// transcript scrolling keeps working, and output keeps arriving
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	model = updated.(*teaPromptModel)
+	if model.scrollOffset == 0 {
+		t.Fatal("pgup must keep scrolling while busy")
+	}
+	updated, _ = model.Update(promptOutputMsg("warning from the running command"))
+	model = updated.(*teaPromptModel)
+	if !strings.Contains(model.transcript[len(model.transcript)-1], "warning from the running command") {
+		t.Fatal("command output is not appended to the transcript while busy")
+	}
+
+	// leaving busy restores typing and submitting, and clears the message
+	updated, _ = model.Update(promptBusyMsg{})
+	model = updated.(*teaPromptModel)
+	if model.busy {
+		t.Fatal("releasing promptBusyMsg did not release the prompt")
+	}
+	if strings.Contains(model.View().Content, waiting) {
+		t.Fatal("waiting message is still displayed after the command completed")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Text: "status"})
+	model = updated.(*teaPromptModel)
+	if model.input.Value() != "status" {
+		t.Fatalf("typing is still frozen after busy: %q", model.input.Value())
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !submitted {
+		t.Fatal("enter did not submit the command after busy released")
 	}
 }
 
@@ -297,7 +422,7 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 		// simulate the edit command handing an external editor over to the TUI
 		if !queued {
 			queued = true
-			model.pendingExec = func() tea.Msg {
+			model.pendingCmd = func() tea.Msg {
 				editorRan = true
 				return nil
 			}
@@ -312,8 +437,8 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("no command returned to run the queued editor")
 	}
-	if model.pendingExec != nil {
-		t.Fatal("pending editor command was not consumed by the submission")
+	if model.pendingCmd != nil {
+		t.Fatal("pending command was not consumed by the submission")
 	}
 	cmd()
 	if !editorRan {
@@ -324,7 +449,7 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(*teaPromptModel)
 	if cmd != nil {
-		t.Fatal("a command was returned while no editor is pending")
+		t.Fatal("a command was returned while no command is pending")
 	}
 }
 
@@ -370,36 +495,49 @@ func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 	}
 }
 
-func TestClearCommandRequestsTranscriptClear(t *testing.T) {
+func TestClearCommandQueuesClearMessage(t *testing.T) {
 	p := &NetemPrompt{commands: make(map[string]*NetemCommand)}
 	p.RegisterCommands()
 
 	if err := p.Execute("clear"); err != nil {
 		t.Fatalf("clear command failed: %v", err)
 	}
-	if !p.takePendingClear() {
-		t.Fatal("clear did not request a transcript clear")
+	cmd := p.takePendingCmd()
+	if cmd == nil {
+		t.Fatal("clear did not queue a transcript clear command")
 	}
-	if p.takePendingClear() {
-		t.Fatal("transcript clear request was not consumed")
+	if _, ok := cmd().(promptClearMsg); !ok {
+		t.Fatal("the queued command does not send a promptClearMsg")
+	}
+	if p.takePendingCmd() != nil {
+		t.Fatal("transcript clear command was not consumed")
 	}
 }
 
 func TestPromptClearTranscriptResetsScroll(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	var model *teaPromptModel
+	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+		// the submit callback forwards the command queued by clear
+		model.pendingCmd = func() tea.Msg { return promptClearMsg{} }
+		return false, nil
+	})
 	model.appendOutput("first output\nsecond output")
 	model.scrollBy(3)
 
-	// the submitted clear line is echoed to the transcript before the
-	// command runs, and is wiped out with the rest by the clear
+	// the submitted clear line is echoed, then the command run by the
+	// program sends the clear message back to the model
 	model.input.SetValue("clear")
-	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(*teaPromptModel)
 	if len(model.transcript) == 0 {
 		t.Fatal("submitted command was not echoed to the transcript")
 	}
+	if cmd == nil {
+		t.Fatal("no command returned to deliver the transcript clear")
+	}
 
-	model.clearTranscript()
+	updated, _ = model.Update(cmd())
+	model = updated.(*teaPromptModel)
 
 	if len(model.transcript) != 0 {
 		t.Fatalf("transcript not cleared: %v", model.transcript)
@@ -523,6 +661,9 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 			t.Fatalf("project prompt does not display %q", text)
 		}
 	}
+	if !strings.Contains(lines[len(lines)-1], "Path: /work/demo.gnet") {
+		t.Fatalf("the project path is not displayed at the bottom of the terminal: %q", lines[len(lines)-1])
+	}
 	promptIndex := -1
 	for i, line := range lines {
 		if strings.Contains(line, "[demo]> ") {
@@ -535,6 +676,63 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 	}
 	if !strings.Contains(lines[promptIndex+1], "command failed") {
 		t.Fatalf("the error is not displayed just below the prompt: %q", lines[promptIndex+1])
+	}
+}
+
+func TestPromptAnchorsAboveReservedSuggestionSpace(t *testing.T) {
+	completions := func(string) []Completion {
+		matches := make([]Completion, 0, 10)
+		for i := 1; i <= 10; i++ {
+			matches = append(matches, Completion{Text: fmt.Sprintf("start node%d", i)})
+		}
+		return matches
+	}
+	model := newTeaPromptModel("[demo]> ", completions, func(string) (bool, error) { return false, nil })
+	model.showHeader = true
+	model.fullscreen = true
+	model.projectName = "demo"
+	model.projectPath = "/work/demo.gnet"
+	model.transcript = []string{"Previous output"}
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(*teaPromptModel)
+
+	promptLine := func(lines []string) int {
+		for i, line := range lines {
+			if strings.Contains(line, "[demo]> ") {
+				return i
+			}
+		}
+		return -1
+	}
+
+	before := promptLine(strings.Split(model.View().Content, "\n"))
+	if before == -1 {
+		t.Fatal("prompt input line is missing")
+	}
+
+	// an in-progress command fills the reserved block with suggestions,
+	// without moving the prompt line
+	model.input.SetValue("start ")
+	model.updateCompletions()
+	lines := strings.Split(model.View().Content, "\n")
+	after := promptLine(lines)
+	if after != before {
+		t.Fatalf("the prompt moved when suggestions appeared: %d -> %d", before, after)
+	}
+	if !strings.Contains(model.View().Content, "start node1") {
+		t.Fatal("suggestions are not displayed below the prompt")
+	}
+	// suggestions are truncated to the space left above the path line
+	if len(lines)-1-after != promptReserveLines {
+		t.Fatalf("the prompt is not %d lines before the bottom: %d lines below",
+			promptReserveLines, len(lines)-1-after)
+	}
+	if strings.Contains(strings.Join(lines[after+1:], "\n"), "start node10") {
+		t.Fatalf("suggestions overflow the reserved block")
+	}
+	if !strings.Contains(lines[len(lines)-1], "Path: /work/demo.gnet") {
+		t.Fatalf("the project path moved off the bottom line: %q", lines[len(lines)-1])
 	}
 }
 

@@ -440,6 +440,14 @@ func toppologyRunProgressGoroutine(
 				stream.Send(&proto.TopologyRunMsg{
 					Code: proto.TopologyRunMsg_NODE_LOADCONFIG,
 				})
+			case CLOSE_NODE:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_NODE_STOP,
+				})
+			case CLOSE_BRIDGE:
+				stream.Send(&proto.TopologyRunMsg{
+					Code: proto.TopologyRunMsg_NODE_RM,
+				})
 			}
 		}
 	}
