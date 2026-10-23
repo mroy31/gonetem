@@ -17,7 +17,6 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/spf13/cobra"
-	"github.com/vbauerster/mpb/v8"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -102,39 +101,13 @@ func OpenProject(prjPath string) (string, string, error) {
 		return name, "", errors.New(response.GetStatus().GetError())
 	}
 
-	prjID := response.GetId()
-	if !disableRun {
-		stream, err := client.Client.TopologyRun(context.Background(), &proto.ProjectRequest{Id: prjID})
-		if err != nil {
-			return name, prjID, err
-		}
-
-		mpBar := mpb.New(mpb.WithWidth(48))
-		bars := make([]ProgressBarT, 4)
-
-		for {
-			msg, err := stream.Recv()
-			if err == io.EOF {
-				ProgressForceComplete(bars)
-				break
-			} else if err != nil {
-				ProgressAbort(bars, true)
-				mpBar.Wait()
-
-				RedPrintf("Unable to run topology: %v\n", err)
-				return name, prjID, err
-			}
-
-			ProgressRunHandleMsg(mpBar, bars, msg)
-		}
-
-		mpBar.Wait()
-	}
-
-	return name, prjID, nil
+	return name, response.GetId(), nil
 }
 
-func NewPrompt(prjName, prjID, prjPath string) {
+// NewPrompt launches the console TUI on an opened project. With runTopology,
+// the topology is started after the TUI owns the screen, so its progress
+// bars and the potential node warnings are displayed by the prompt itself.
+func NewPrompt(prjName, prjID, prjPath string, runTopology bool) {
 	e := NewNetemPrompt(getServerUri(), prjID, prjPath)
 	c := NewPromptCompleter(e)
 
@@ -154,15 +127,26 @@ func NewPrompt(prjName, prjID, prjPath string) {
 	model.projectPath = prjPath
 	model.fullscreen = true
 	model.showHeader = true
+	if runTopology {
+		// start the topology as soon as the program runs, like the run
+		// command: its progress bars freeze the input and the node
+		// warnings are appended to the history below the prompt
+		model.startCmd = func() tea.Msg {
+			if err := e.Run(nil); err != nil {
+				return promptErrorMsg(err.Error())
+			}
+			return nil
+		}
+	}
 	program := tea.NewProgram(model)
 	e.program = program
 	if _, err := program.Run(); err != nil {
 		RedPrintf("Unable to run gonetem console: %v\n", err)
 	}
-	if e.done {
-		if err := e.Close(); err != nil {
-			RedPrintf("%v\n", err)
-		}
+	// the exit command closed the project inside the TUI: the prompt is
+	// gone by then, so it reports its own failures here
+	if e.closeErr != nil {
+		RedPrintf("%v\n", e.closeErr)
 	}
 }
 
@@ -259,7 +243,7 @@ var connectCmd = &cobra.Command{
 				}
 			}
 			if prjID != "" {
-				NewPrompt(prjName, prjID, "")
+				NewPrompt(prjName, prjID, "", false)
 			}
 		}
 	},
@@ -337,7 +321,7 @@ var openCmd = &cobra.Command{
 		}
 
 		if prjID != "" {
-			NewPrompt(prjName, prjID, args[0])
+			NewPrompt(prjName, prjID, args[0], !disableRun)
 		}
 	},
 }

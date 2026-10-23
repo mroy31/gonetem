@@ -24,7 +24,6 @@ import (
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
-	"github.com/vbauerster/mpb/v8"
 )
 
 type copyDirection int
@@ -86,13 +85,16 @@ type NetemCommand struct {
 }
 
 type NetemPrompt struct {
-	server        string
-	prjID         string
-	prjPath       string
-	processes     []*exec.Cmd
-	commands      map[string]*NetemCommand
-	program       *tea.Program
-	done          bool
+	server    string
+	prjID     string
+	prjPath   string
+	processes []*exec.Cmd
+	commands  map[string]*NetemCommand
+	program   *tea.Program
+	done      bool
+	// closeErr is a project close failure that the TUI could not display
+	// before leaving the screen, reported by the caller afterwards
+	closeErr      error
 	pendingPrompt *inputPromptRequest
 	// pendingCmd is a command handed over by the command being executed,
 	// for the bubbletea program to run right after the prompt submission:
@@ -290,7 +292,13 @@ func (p *NetemPrompt) Execute(s string) error {
 	}
 
 	if s == "quit" || s == "exit" {
-		p.done = true
+		// close the project inside the TUI, with its progress bars, and
+		// only leave the screen once the close stream completed: a close
+		// failure is displayed by the caller after the TUI is gone
+		if err := p.Exit(nil); err != nil {
+			p.closeErr = err
+			p.done = true
+		}
 		return nil
 	}
 
@@ -721,10 +729,10 @@ func (p *NetemPrompt) startConsoleAll(client proto.NetemClient, shell bool) erro
 }
 
 // save starts the project save in background and reports progress to the
-// prompt model: bubbletea owns the screen and would overwrite the bars
-// rendered by mpb. As the client of the command is closed as soon as the
-// command returns, it opens its own connection kept alive until the save
-// stream is fully consumed.
+// prompt model: bubbletea owns the screen, so the text bars must go through
+// it. As the client of the command is closed as soon as the command
+// returns, it opens its own connection kept alive until the save stream is
+// fully consumed.
 func (p *NetemPrompt) save(dstPath string) error {
 	client, err := NewClient(p.server)
 	if err != nil {
@@ -966,7 +974,7 @@ type topologyRunStream interface {
 
 // streamTopologyProgress consumes a topology stream, run or reload, in
 // background and reports progress to the prompt model: bubbletea owns the
-// screen and would overwrite the bars rendered by mpb. As the client of the
+// screen, so the text bars must go through it. As the client of the
 // command is closed as soon as the command returns, it opens its own
 // connection kept alive until the stream is fully consumed. While the
 // stream runs, the prompt input is frozen and waiting, a message shown
@@ -1070,8 +1078,10 @@ func (p *NetemPrompt) Reload(cmdArgs []string) error {
 		newReloadProgress())
 }
 
-func (p *NetemPrompt) Close() error {
-	// First, stop all running processes (console, capture...)
+// stopProcesses terminates the processes spawned by the prompt: the
+// attached consoles and the captures, waiting briefly for them before
+// killing. They are then forgotten, so a second call does nothing.
+func (p *NetemPrompt) stopProcesses() {
 	for _, cmd := range p.processes {
 		done := make(chan interface{})
 		go func() {
@@ -1083,36 +1093,59 @@ func (p *NetemPrompt) Close() error {
 		case <-done:
 		}
 	}
+	p.processes = nil
+}
+
+// Exit closes the project and reports its progress to the prompt model,
+// like the run and reload commands: the TUI keeps the screen until the
+// close stream completed and only quits afterwards. The stream is consumed
+// in background over a dedicated connection, and the prompt input is frozen
+// while it runs. A close failure cannot be displayed by the gone prompt: it
+// is kept in closeErr, for the caller of the TUI to report.
+func (p *NetemPrompt) Exit(cmdArgs []string) error {
+	// first, stop all running processes (console, capture...)
+	p.stopProcesses()
 
 	client, err := NewClient(p.server)
 	if err != nil {
-		return fmt.Errorf("unable to connect to server: %v", err)
-	} else {
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
+	}
+
+	stream, err := client.Client.ProjectClose(context.Background(), &proto.ProjectRequest{Id: p.prjID})
+	if err != nil {
+		client.Conn.Close()
+		return fmt.Errorf("Unable to close the project: %v", err)
+	}
+
+	go func() {
 		defer client.Conn.Close()
+		defer p.program.Send(promptBusyMsg{})
+		defer p.program.Send(promptProgressMsg(""))
 
-		stream, err := client.Client.ProjectClose(context.Background(), &proto.ProjectRequest{Id: p.prjID})
-		if err != nil {
-			return fmt.Errorf("unable to close project: %v", err)
-		}
+		// freeze the prompt input for the whole duration of the stream
+		p.program.Send(promptBusyMsg{busy: true,
+			message: "Closing the project, please wait until it completes..."})
 
-		mpBar := mpb.New(mpb.WithWidth(48))
-		bars := make([]ProgressBarT, 4)
-
+		progress := newCloseProgress()
 		for {
 			msg, err := stream.Recv()
 			if err == io.EOF {
-				ProgressForceComplete(bars)
-				break
+				// the project is closed: leave the TUI
+				p.done = true
+				p.program.Send(promptQuitMsg{})
+				return
 			} else if err != nil {
-				ProgressAbort(bars, true)
-				return err
+				// leave the TUI too, but keep the failure for the caller
+				// to display, as the prompt is already gone
+				p.closeErr = fmt.Errorf("Unable to close the project: %v", err)
+				p.done = true
+				p.program.Send(promptQuitMsg{})
+				return
 			}
 
-			ProgressCloseHandleMsg(mpBar, bars, msg)
+			p.program.Send(promptProgressMsg(progress.handle(msg)))
 		}
-
-		mpBar.Wait()
-	}
+	}()
 
 	return nil
 }

@@ -260,6 +260,52 @@ func TestRunProgressReloadTracksCloseThenRunPhases(t *testing.T) {
 	}
 }
 
+func TestCloseProgressTracksNodeAndBridgePhases(t *testing.T) {
+	progress := newCloseProgress()
+
+	// increments of a phase not yet announced are ignored
+	if got := progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_NODE_CLOSE}); got != "" {
+		t.Fatalf("progress before any count = %q, want empty", got)
+	}
+
+	got := progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_NODE_COUNT, Total: 2})
+	got = progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_BRIDGE_COUNT, Total: 1})
+	if !strings.Contains(got, "Node - Close:") || !strings.Contains(got, "Bridge - Close:") {
+		t.Fatalf("close phases not displayed after counts: %q", got)
+	}
+
+	got = progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_NODE_CLOSE})
+	halfBar := strings.Repeat("█", progressBarWidth/2) + strings.Repeat("░", progressBarWidth/2)
+	if !strings.Contains(got, "Node - Close: ["+halfBar+"] 1/2") {
+		t.Fatalf("node close progress not updated: %q", got)
+	}
+
+	// completed phases disappear, and the display empties once all are done
+	got = progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_NODE_CLOSE})
+	got = progress.handle(&proto.ProjectCloseMsg{Code: proto.ProjectCloseMsg_BRIDGE_CLOSE})
+	if got != "" {
+		t.Fatalf("close phases not completed: %q", got)
+	}
+}
+
+func TestPromptQuitsWhenProjectCloseFinished(t *testing.T) {
+	model := newTeaPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+
+	// the exit command keeps the TUI on screen while it closes the project,
+	// only the message sent once its stream completed lets it leave
+	updated, cmd := model.Update(promptQuitMsg{})
+	model = updated.(*teaPromptModel)
+	if !model.done {
+		t.Fatal("the prompt is not done after the quit message")
+	}
+	if cmd == nil {
+		t.Fatal("the quit message does not return a command")
+	}
+	if _, isQuit := cmd().(tea.QuitMsg); !isQuit {
+		t.Fatal("the returned command does not quit the program")
+	}
+}
+
 func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.fullscreen = true
@@ -524,6 +570,40 @@ func TestClearCommandQueuesClearMessage(t *testing.T) {
 	}
 }
 
+func TestPromptRunsStartCmdOnStartup(t *testing.T) {
+	model := newTeaPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+	// like NewPrompt starting the topology of an opened project
+	model.startCmd = func() tea.Msg { return promptErrorMsg("topology start failed") }
+
+	cmd := model.Init()
+	if cmd == nil {
+		t.Fatal("Init does not run the start command")
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("Init does not batch the input focus and the start command: %T", batch)
+	}
+	var startMsg tea.Msg
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		if msg, isStart := c().(promptErrorMsg); isStart {
+			startMsg = msg
+		}
+	}
+	if startMsg == nil {
+		t.Fatal("the start command was not part of the startup batch")
+	}
+
+	// its reported error reaches the prompt like any command error
+	updated, _ := model.Update(startMsg)
+	model = updated.(*teaPromptModel)
+	if !strings.Contains(model.View().Content, "topology start failed") {
+		t.Fatalf("the start error is not displayed: %q", model.View().Content)
+	}
+}
+
 func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 	var model *teaPromptModel
 	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
@@ -757,6 +837,31 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 	}
 	if !strings.Contains(lines[len(lines)-1], "Path: /work/demo.gnet") {
 		t.Fatalf("the project path moved off the bottom line: %q", lines[len(lines)-1])
+	}
+
+	// the progress bars of a running command take the suggestion zone: the
+	// suggestions are not displayed at the same time, and the prompt line
+	// still keeps its position
+	waiting := "Running the topology, please wait until it completes..."
+	updated, _ = model.Update(promptBusyMsg{busy: true, message: waiting})
+	model = updated.(*teaPromptModel)
+	updated, _ = model.Update(promptProgressMsg(
+		"Node - Start: [====>        ] 1/2\nNode - Configuration: [==>          ] 1/4"))
+	model = updated.(*teaPromptModel)
+	lines = strings.Split(model.View().Content, "\n")
+	after = promptLine(lines)
+	if after != before {
+		t.Fatalf("the prompt moved when the progress bars appeared: %d -> %d", before, after)
+	}
+	zone = strings.Join(lines[1:after], "\n")
+	if !strings.Contains(zone, "Node - Start:") || !strings.Contains(zone, "Node - Configuration:") {
+		t.Fatalf("the progress bars are not displayed in the suggestion zone: %q", zone)
+	}
+	if strings.Contains(zone, "start node") {
+		t.Fatalf("suggestions are displayed along with the progress bars: %q", zone)
+	}
+	if waitAt, barAt := strings.Index(zone, waiting), strings.Index(zone, "Node - Start:"); waitAt == -1 || waitAt > barAt {
+		t.Fatalf("the waiting message is not above the progress bars: %q", zone)
 	}
 }
 

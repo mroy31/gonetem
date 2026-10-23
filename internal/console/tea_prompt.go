@@ -32,7 +32,7 @@ type promptProgressMsg string
 type promptClearMsg struct{}
 
 // promptBusyMsg freezes the prompt input while an asynchronous command
-// (run, reload) is modifying the topology: busy on start, false on
+// (run, reload, exit) is modifying the topology: busy on start, false on
 // completion. message is displayed above the progress bars while the
 // command runs. Both transitions are sent from the background goroutine
 // consuming the command stream, which keeps their order consistent with
@@ -42,6 +42,12 @@ type promptBusyMsg struct {
 	message string
 }
 
+// promptQuitMsg asks the prompt to leave the TUI, sent by a final long
+// running command once it completed, like the project close of the exit
+// command. The model marks itself done, so the final frame drops the input,
+// and quits the program.
+type promptQuitMsg struct{}
+
 // editorFinishedMsg is sent to the prompt when the external editor spawned
 // by a command (like edit) exits. finish uploads or discards the edited
 // data and may return an error to display below the prompt.
@@ -50,8 +56,9 @@ type editorFinishedMsg struct {
 	finish func(error) error
 }
 
-// promptSuggestionLines is the number of lines reserved for the completion
-// suggestions above the prompt line, so the prompt keeps a fixed position.
+// promptSuggestionLines is the number of lines reserved above the prompt
+// line, for the completion suggestions or the progress bars of a running
+// command, so the prompt keeps a fixed position.
 const promptSuggestionLines = 5
 
 type teaPromptModel struct {
@@ -67,6 +74,10 @@ type teaPromptModel struct {
 	// takeOutput drains the command outputs queued while the sub prompt
 	// callback was running
 	takeOutput func() []string
+	// startCmd is run once when the program starts, to launch a long
+	// running command that reports its progress to the model, like the
+	// topology start of the open command
+	startCmd tea.Cmd
 	// pendingCmd is set by a submitted command to be run by the program
 	// right after: the external topology editor, with the terminal taken
 	// back from the TUI until it exits, or a function sending a message
@@ -126,7 +137,7 @@ func newTeaPromptModel(prefix string, completions func(string) []Completion, onS
 }
 
 func (m *teaPromptModel) Init() tea.Cmd {
-	return m.input.Focus()
+	return tea.Batch(m.input.Focus(), m.startCmd)
 }
 
 func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -143,6 +154,9 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptClearMsg:
 		m.clearTranscript()
 		return m, nil
+	case promptQuitMsg:
+		m.done = true
+		return m, tea.Quit
 	case promptProjectPathMsg:
 		m.projectPath = string(msg)
 		return m, nil
@@ -410,32 +424,32 @@ func (m *teaPromptModel) View() tea.View {
 	titleLine := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")).Render(
 		centerText(title, m.width))
 
-	// a fixed number of lines is reserved for the completion suggestions,
-	// below the title and above the prompt, so the prompt line always keeps
-	// the same position
-	suggestions := make([]string, 0, promptSuggestionLines)
-	if !m.done && m.showMatches && m.completions != nil && strings.TrimSpace(m.input.Value()) != "" {
-		suggestions = renderSuggestions(m.completions(m.input.Value()))
+	// a fixed number of lines is reserved above the prompt, for the
+	// completion suggestions or, while a command runs, for its waiting
+	// message and progress bars: the two are never displayed at the same
+	// time, so the prompt line always keeps the same position
+	var topLines []string
+	if !m.done && m.busy && m.busyMessage != "" {
+		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
+		topLines = append(topLines, style.Render(m.busyMessage))
 	}
-	if !m.done && len(suggestions) < promptSuggestionLines {
-		suggestions = append(suggestions, make([]string, promptSuggestionLines-len(suggestions))...)
+	if !m.done && m.progress != "" {
+		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+		for _, line := range strings.Split(m.progress, "\n") {
+			topLines = append(topLines, style.Render(line))
+		}
+	}
+	if len(topLines) == 0 && !m.done && m.showMatches && m.completions != nil &&
+		strings.TrimSpace(m.input.Value()) != "" {
+		topLines = renderSuggestions(m.completions(m.input.Value()))
+	}
+	if !m.done && len(topLines) < promptSuggestionLines {
+		topLines = append(topLines, make([]string, promptSuggestionLines-len(topLines))...)
 	}
 
 	var inputLines []string
 	if !m.done {
 		inputLines = append(inputLines, m.input.View())
-	}
-
-	var progressLines []string
-	if !m.done && m.busy && m.busyMessage != "" {
-		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
-		progressLines = append(progressLines, style.Render(m.busyMessage))
-	}
-	if !m.done && m.progress != "" {
-		style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-		for _, line := range strings.Split(m.progress, "\n") {
-			progressLines = append(progressLines, style.Render(line))
-		}
 	}
 
 	var errorLines []string
@@ -476,8 +490,8 @@ func (m *teaPromptModel) View() tea.View {
 	// and the footer
 	transcriptSpace := len(m.transcript)
 	if m.height > 0 {
-		transcriptSpace = max(0, m.height-1-len(suggestions)-len(inputLines)-len(errorLines)-
-			len(progressLines)-1-footerLines)
+		transcriptSpace = max(0, m.height-1-len(topLines)-len(inputLines)-len(errorLines)-
+			1-footerLines)
 	}
 
 	// window the transcript into the visible space, scrolled by scrollOffset
@@ -503,10 +517,9 @@ func (m *teaPromptModel) View() tea.View {
 
 	lines := make([]string, 0, max(m.height, 13))
 	lines = append(lines, titleLine)
-	lines = append(lines, suggestions...)
+	lines = append(lines, topLines...)
 	lines = append(lines, inputLines...)
 	lines = append(lines, errorLines...)
-	lines = append(lines, progressLines...)
 	lines = append(lines, banner)
 	lines = append(lines, indicatorLines...)
 	lines = append(lines, transcript...)
