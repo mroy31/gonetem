@@ -112,8 +112,8 @@ func NewPrompt(prjName, prjID, prjPath string, runTopology bool) {
 	c := NewPromptCompleter(e)
 
 	prefix := fmt.Sprintf("[%s]> ", prjName)
-	var model *teaPromptModel
-	model = newTeaPromptModel(prefix, c.Complete, func(line string) (bool, error) {
+	var model *promptModel
+	model = newPromptModel(prefix, c.Complete, func(line string) (bool, error) {
 		err := e.Execute(line)
 		model.drainOutput()
 		if request := e.takePendingPrompt(); request != nil {

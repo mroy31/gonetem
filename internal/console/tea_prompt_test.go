@@ -7,16 +7,19 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
+	"go.dalton.dog/bubbleup/v2"
 )
 
 func TestPromptErrorDoesNotClearInput(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.input.SetValue("capture router.0")
 
 	updated, _ := model.Update(promptErrorMsg("capture failed"))
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if got := model.input.Value(); got != "capture router.0" {
 		t.Fatalf("input after async error = %q, want it preserved", got)
@@ -31,7 +34,7 @@ func TestPromptSuggestionsAppearAfterInputAndCompleteNodes(t *testing.T) {
 		commands: map[string]*NetemCommand{"start": {}},
 		nodes:    []NetemNode{{Name: "router1"}, {Name: "router2"}},
 	})
-	model := newTeaPromptModel("[project]> ", completer.Complete, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", completer.Complete, func(string) (bool, error) { return false, nil })
 
 	model.updateCompletions()
 	if got := model.input.MatchedSuggestions(); len(got) != 0 {
@@ -61,7 +64,7 @@ func TestPromptSuggestionsAppearAfterInputAndCompleteNodes(t *testing.T) {
 	}
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if got := model.input.Value(); got != "start router1" {
 		t.Fatalf("input after tab completion = %q, want %q", got, "start router1")
 	}
@@ -71,11 +74,11 @@ func TestPromptSuggestionsAppearAfterInputAndCompleteNodes(t *testing.T) {
 }
 
 func TestPromptRetainsSubmittedCommands(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	for _, command := range []string{"status", "help"} {
 		model.input.SetValue(command)
 		updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-		model = updated.(*teaPromptModel)
+		model = updated.(*promptModel)
 	}
 
 	view := model.View().Content
@@ -90,12 +93,12 @@ func TestPromptClearsSuggestionsAfterSubmit(t *testing.T) {
 	completer := func(string) []Completion {
 		return []Completion{{Text: "status"}}
 	}
-	model := newTeaPromptModel("[project]> ", completer, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", completer, func(string) (bool, error) { return false, nil })
 	model.input.SetValue("sta")
 	model.updateCompletions()
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if got := model.input.MatchedSuggestions(); len(got) != 0 {
 		t.Fatalf("suggestions after submit = %v, want none", got)
@@ -106,7 +109,7 @@ func TestPromptClearsSuggestionsAfterSubmit(t *testing.T) {
 }
 
 func TestPromptAppendsCommandOutputToTranscript(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.appendOutput("Project demo\n- State: Running\n")
 
 	view := model.View().Content
@@ -116,26 +119,33 @@ func TestPromptAppendsCommandOutputToTranscript(t *testing.T) {
 }
 
 func TestPromptDisplaysAndClearsProgress(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 
 	updated, _ := model.Update(promptProgressMsg(progressText("Save nodes:", 1, 2)))
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	view := model.View().Content
 	if !strings.Contains(view, "Save nodes:") || !strings.Contains(view, "1/2") {
 		t.Fatalf("prompt view does not display the save progress: %q", view)
 	}
 
-	updated, _ = model.Update(promptOutputMsg("Project saved to /work/demo.gnet"))
-	model = updated.(*teaPromptModel)
+	updated, cmd := model.Update(promptOutputMsg("Project saved to /work/demo.gnet"))
+	model = updated.(*promptModel)
+	// the output is displayed as a transient alert: run the returned
+	// command, as the program does, to activate the alert
+	if cmd == nil {
+		t.Fatal("no alert command returned for the output message")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(*promptModel)
 
 	updated, _ = model.Update(promptProgressMsg(""))
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	view = model.View().Content
 	if strings.Contains(view, "Save nodes:") {
 		t.Fatalf("progress line is still visible after being cleared: %q", view)
 	}
 	if !strings.Contains(view, "Project saved to /work/demo.gnet") {
-		t.Fatalf("async output message is not retained in the transcript: %q", view)
+		t.Fatalf("async output message is not displayed as an alert: %q", view)
 	}
 }
 
@@ -289,12 +299,12 @@ func TestCloseProgressTracksNodeAndBridgePhases(t *testing.T) {
 }
 
 func TestPromptQuitsWhenProjectCloseFinished(t *testing.T) {
-	model := newTeaPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 
 	// the exit command keeps the TUI on screen while it closes the project,
 	// only the message sent once its stream completed lets it leave
 	updated, cmd := model.Update(promptQuitMsg{})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if !model.done {
 		t.Fatal("the prompt is not done after the quit message")
 	}
@@ -307,14 +317,14 @@ func TestPromptQuitsWhenProjectCloseFinished(t *testing.T) {
 }
 
 func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.fullscreen = true
 	for i := 1; i <= 30; i++ {
 		model.transcript = append(model.transcript, fmt.Sprintf("output line %d", i))
 	}
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	// at the bottom, the tail of the transcript is visible, the head is not
 	// (exact line match: line 1 would otherwise match line 10 or line 19)
@@ -337,7 +347,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	// pgup scrolls back through the older lines, a page at a time
 	for range 3 {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-		model = updated.(*teaPromptModel)
+		model = updated.(*promptModel)
 	}
 	view = model.View().Content
 	if !visible(view, "output line 1") {
@@ -352,7 +362,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 
 	// the mouse wheel scrolls by a few lines
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if model.scrollOffset == 0 {
 		t.Fatal("mouse wheel down did not move the scroll offset back to the bottom")
 	}
@@ -360,7 +370,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	// pgdown returns to the bottom
 	for range 3 {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
-		model = updated.(*teaPromptModel)
+		model = updated.(*promptModel)
 	}
 	view = model.View().Content
 	if !visible(view, "output line 30") {
@@ -373,7 +383,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 
 func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 	submitted := false
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) {
 		submitted = true
 		return false, nil
 	})
@@ -383,12 +393,12 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 	}
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	// the busy state freezes typing and submitting
 	waiting := "Reloading the project, please wait until it completes..."
 	updated, _ = model.Update(promptBusyMsg{busy: true, message: waiting})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if !model.busy {
 		t.Fatal("promptBusyMsg did not freeze the prompt")
 	}
@@ -405,31 +415,36 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "reload"})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if model.input.Value() != "" {
 		t.Fatalf("typing is not frozen while busy: %q", model.input.Value())
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if submitted {
 		t.Fatal("enter must not submit a command while busy")
 	}
 
 	// transcript scrolling keeps working, and output keeps arriving
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if model.scrollOffset == 0 {
 		t.Fatal("pgup must keep scrolling while busy")
 	}
-	updated, _ = model.Update(promptOutputMsg("warning from the running command"))
-	model = updated.(*teaPromptModel)
-	if !strings.Contains(model.transcript[len(model.transcript)-1], "warning from the running command") {
-		t.Fatal("command output is not appended to the transcript while busy")
+	updated, cmd := model.Update(promptOutputMsg("warning from the running command"))
+	model = updated.(*promptModel)
+	if cmd == nil {
+		t.Fatal("no alert command returned for the output while busy")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(*promptModel)
+	if !model.alert.HasActiveAlert() {
+		t.Fatal("command output while busy does not display an alert")
 	}
 
 	// leaving busy restores typing and submitting, and clears the message
 	updated, _ = model.Update(promptBusyMsg{})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if model.busy {
 		t.Fatal("releasing promptBusyMsg did not release the prompt")
 	}
@@ -437,7 +452,7 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 		t.Fatal("waiting message is still displayed after the command completed")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Text: "status"})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if model.input.Value() != "status" {
 		t.Fatalf("typing is still frozen after busy: %q", model.input.Value())
 	}
@@ -448,16 +463,16 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 }
 
 func TestPromptNewOutputResetsScrollToBottom(t *testing.T) {
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.fullscreen = true
 	for i := 1; i <= 30; i++ {
 		model.transcript = append(model.transcript, fmt.Sprintf("output line %d", i))
 	}
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	model.appendOutput("fresh command output\n")
 
@@ -473,8 +488,8 @@ func TestPromptNewOutputResetsScrollToBottom(t *testing.T) {
 func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 	editorRan := false
 	queued := false
-	var model *teaPromptModel
-	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+	var model *promptModel
+	model = newPromptModel("[project]> ", nil, func(string) (bool, error) {
 		// simulate the edit command handing an external editor over to the TUI
 		if !queued {
 			queued = true
@@ -488,7 +503,7 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 
 	model.input.SetValue("edit")
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if cmd == nil {
 		t.Fatal("no command returned to run the queued editor")
@@ -503,7 +518,7 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 
 	// next submission without a queued command returns none
 	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if cmd != nil {
 		t.Fatal("a command was returned while no command is pending")
 	}
@@ -511,8 +526,8 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 
 func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 	var queued []string
-	var model *teaPromptModel
-	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	var model *promptModel
+	model = newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.takeOutput = func() []string {
 		output := queued
 		queued = nil
@@ -525,7 +540,7 @@ func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 		queued = append(queued, "Network file has been updated")
 		return nil
 	}})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if !strings.Contains(model.View().Content, "Network file has been updated") {
 		t.Fatalf("editor result is not displayed in the transcript: %q", model.View().Content)
 	}
@@ -534,7 +549,7 @@ func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 	updated, _ = model.Update(editorFinishedMsg{err: nil, finish: func(editorErr error) error {
 		return errors.New("Unable to write modified network file on server")
 	}})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if !strings.Contains(model.View().Content, "Unable to write modified network file on server") {
 		t.Fatalf("finish error is not displayed: %q", model.View().Content)
 	}
@@ -545,7 +560,7 @@ func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 		gotEditorErr = editorErr
 		return nil
 	}})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if gotEditorErr == nil || gotEditorErr.Error() != "editor killed" {
 		t.Fatalf("finish received editor error %v, want %q", gotEditorErr, "editor killed")
 	}
@@ -571,7 +586,7 @@ func TestClearCommandQueuesClearMessage(t *testing.T) {
 }
 
 func TestPromptRunsStartCmdOnStartup(t *testing.T) {
-	model := newTeaPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 	// like NewPrompt starting the topology of an opened project
 	model.startCmd = func() tea.Msg { return promptErrorMsg("topology start failed") }
 
@@ -598,15 +613,15 @@ func TestPromptRunsStartCmdOnStartup(t *testing.T) {
 
 	// its reported error reaches the prompt like any command error
 	updated, _ := model.Update(startMsg)
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if !strings.Contains(model.View().Content, "topology start failed") {
 		t.Fatalf("the start error is not displayed: %q", model.View().Content)
 	}
 }
 
 func TestPromptClearTranscriptResetsScroll(t *testing.T) {
-	var model *teaPromptModel
-	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+	var model *promptModel
+	model = newPromptModel("[project]> ", nil, func(string) (bool, error) {
 		// the submit callback forwards the command queued by clear
 		model.pendingCmd = func() tea.Msg { return promptClearMsg{} }
 		return false, nil
@@ -618,7 +633,7 @@ func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 	// program sends the clear message back to the model
 	model.input.SetValue("clear")
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	if len(model.transcript) == 0 {
 		t.Fatal("submitted command was not echoed to the transcript")
 	}
@@ -627,7 +642,7 @@ func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 	}
 
 	updated, _ = model.Update(cmd())
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if len(model.transcript) != 0 {
 		t.Fatalf("transcript not cleared: %v", model.transcript)
@@ -643,7 +658,7 @@ func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 func TestPromptSubPromptListsFilesAndDisplaysContent(t *testing.T) {
 	var queued []string
 	var selected string
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.takeOutput = func() []string {
 		output := queued
 		queued = nil
@@ -670,7 +685,7 @@ func TestPromptSubPromptListsFilesAndDisplaysContent(t *testing.T) {
 
 	model.input.SetValue("router.frr.conf")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if selected != "router.frr.conf" {
 		t.Fatalf("selected config file = %q, want %q", selected, "router.frr.conf")
@@ -692,7 +707,7 @@ func TestPromptSubPromptListsFilesAndDisplaysContent(t *testing.T) {
 
 func TestPromptSubPromptCancelWithEscapeKeepsMainPrompt(t *testing.T) {
 	submitted := false
-	model := newTeaPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.startSubPrompt(&inputPromptRequest{
 		prefix: "Select configuration file: ",
 		submit: func(string) { submitted = true },
@@ -700,7 +715,7 @@ func TestPromptSubPromptCancelWithEscapeKeepsMainPrompt(t *testing.T) {
 
 	model.input.SetValue("router")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if submitted {
 		t.Fatal("cancelled sub prompt must not submit the answer")
@@ -721,7 +736,7 @@ func TestPromptSubPromptCancelWithEscapeKeepsMainPrompt(t *testing.T) {
 }
 
 func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
-	model := newTeaPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 	model.projectName = "demo"
 	model.projectPath = "/work/demo.gnet"
 	model.showHeader = true
@@ -729,9 +744,9 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 	model.transcript = []string{"Previous output"}
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	updated, _ = model.Update(promptErrorMsg("command failed"))
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	view := model.View()
 	if !view.AltScreen {
@@ -787,7 +802,7 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 		}
 		return matches
 	}
-	model := newTeaPromptModel("[demo]> ", completions, func(string) (bool, error) { return false, nil })
+	model := newPromptModel("[demo]> ", completions, func(string) (bool, error) { return false, nil })
 	model.showHeader = true
 	model.fullscreen = true
 	model.projectName = "demo"
@@ -795,7 +810,7 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 	model.transcript = []string{"Previous output"}
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	promptLine := func(lines []string) int {
 		for i, line := range lines {
@@ -844,10 +859,10 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 	// still keeps its position
 	waiting := "Running the topology, please wait until it completes..."
 	updated, _ = model.Update(promptBusyMsg{busy: true, message: waiting})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	updated, _ = model.Update(promptProgressMsg(
 		"Node - Start: [====>        ] 1/2\nNode - Configuration: [==>          ] 1/4"))
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 	lines = strings.Split(model.View().Content, "\n")
 	after = promptLine(lines)
 	if after != before {
@@ -867,8 +882,8 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 
 func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
 	failing := true
-	var model *teaPromptModel
-	model = newTeaPromptModel("[project]> ", nil, func(string) (bool, error) {
+	var model *promptModel
+	model = newPromptModel("[project]> ", nil, func(string) (bool, error) {
 		if failing {
 			return false, errors.New("node router1 is not running")
 		}
@@ -877,7 +892,7 @@ func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
 
 	model.input.SetValue("start router1")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	lines := strings.Split(model.View().Content, "\n")
 	promptIndex := -1
@@ -896,9 +911,72 @@ func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
 
 	failing = false
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(*teaPromptModel)
+	model = updated.(*promptModel)
 
 	if strings.Contains(model.View().Content, "node router1 is not running") {
 		t.Fatalf("error is still displayed after a new submission: %q", model.View().Content)
+	}
+}
+
+// TestAlertStaysCenteredOverShortBottomLines covers the bottom-center alert
+// over a view whose last lines are the short filler lines and the footer:
+// bubbleup centers each alert row against the content line under it and,
+// when that line is shorter than the centering offset, pastes the row at
+// column 0. View pads every line to the terminal width so the box stays one
+// aligned, centered block.
+func TestAlertStaysCenteredOverShortBottomLines(t *testing.T) {
+	const termWidth = 80
+	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
+	model.fullscreen = true
+	model.showHeader = true
+	model.projectPath = "/work/demo.gnet"
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: termWidth, Height: 12})
+	model = updated.(*promptModel)
+
+	// trigger the alert through its message, as the returned NewAlertCmd
+	// does when the program runs it
+	cmd := model.alert.NewAlertCmd(bubbleup.InfoKey, "command output was saved")
+	updated, _ = model.Update(cmd())
+	model = updated.(*promptModel)
+
+	content := ansi.Strip(model.View().Content)
+	lines := strings.Split(content, "\n")
+
+	// columnAt returns the display column of the first occurrence of char
+	// in line, as border and prefix glyphs are multi-byte runes
+	columnAt := func(line, char string) int {
+		i := strings.Index(line, char)
+		if i < 0 {
+			return -1
+		}
+		return lipgloss.Width(line[:i])
+	}
+
+	var starts []int
+	boxWidth := 0
+	for _, line := range lines {
+		if corner := columnAt(line, "╭"); corner >= 0 {
+			starts = append(starts, corner)
+			boxWidth = columnAt(line, "╮") - corner + 1
+		} else if side := columnAt(line, "│"); side >= 0 {
+			starts = append(starts, side)
+		} else if corner := columnAt(line, "╰"); corner >= 0 {
+			starts = append(starts, corner)
+		}
+	}
+	// a one line message renders top border, body and bottom border rows
+	if len(starts) != 3 {
+		t.Fatalf("the alert rendered %d bordered rows, want 3: %q", len(starts), content)
+	}
+	for _, start := range starts {
+		if start != starts[0] {
+			t.Fatalf("the alert rows are not aligned: %v in %q", starts, lines)
+		}
+	}
+	// centered: left and right margins are as equal as the box width allows
+	if left, right := starts[0], termWidth-starts[0]-boxWidth; left-right > 1 {
+		t.Fatalf("the alert is not centered: left margin %d, right margin %d, box width %d",
+			left, right, boxWidth)
 	}
 }

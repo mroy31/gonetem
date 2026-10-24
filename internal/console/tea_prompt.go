@@ -3,12 +3,15 @@ package console
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
+	"go.dalton.dog/bubbleup/v2"
 )
 
 type promptErrorMsg string
@@ -61,8 +64,9 @@ type editorFinishedMsg struct {
 // command, so the prompt keeps a fixed position.
 const promptSuggestionLines = 5
 
-type teaPromptModel struct {
+type promptModel struct {
 	input       textinput.Model
+	alert       bubbleup.AlertModel
 	prefix      string
 	completions func(string) []Completion
 	onSubmit    func(string) (bool, error)
@@ -125,9 +129,17 @@ func newStyledTextInput(prefix string) textinput.Model {
 	return input
 }
 
-func newTeaPromptModel(prefix string, completions func(string) []Completion, onSubmit func(string) (bool, error)) *teaPromptModel {
-	return &teaPromptModel{
+func newStyledAlert() bubbleup.AlertModel {
+	return bubbleup.NewAlertModel(70, true, 6*time.Second).
+		WithMinWidth(20). // Dynamic width: alerts will size 20-70 chars
+		WithPosition(bubbleup.BottomCenterPosition).
+		WithAllowEscToClose()
+}
+
+func newPromptModel(prefix string, completions func(string) []Completion, onSubmit func(string) (bool, error)) *promptModel {
+	return &promptModel{
 		input:        newStyledTextInput(prefix),
+		alert:        newStyledAlert(),
 		prefix:       prefix,
 		completions:  completions,
 		onSubmit:     onSubmit,
@@ -136,18 +148,18 @@ func newTeaPromptModel(prefix string, completions func(string) []Completion, onS
 	}
 }
 
-func (m *teaPromptModel) Init() tea.Cmd {
-	return tea.Batch(m.input.Focus(), m.startCmd)
+func (m *promptModel) Init() tea.Cmd {
+	return tea.Batch(m.input.Focus(), m.alert.Init(), m.startCmd)
 }
 
-func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case promptErrorMsg:
 		m.promptError = string(msg)
 		return m, nil
 	case promptOutputMsg:
-		m.appendOutput(string(msg))
-		return m, nil
+		alertCmd := m.alert.NewAlertCmd(bubbleup.InfoKey, string(msg))
+		return m, alertCmd
 	case promptProgressMsg:
 		m.progress = string(msg)
 		return m, nil
@@ -291,16 +303,20 @@ func (m *teaPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
+	var outInputCmd tea.Cmd
+	m.input, outInputCmd = m.input.Update(msg)
+
+	outAlert, outAlertCmd := m.alert.Update(msg)
+	m.alert = outAlert.(bubbleup.AlertModel)
+
 	m.updateCompletions()
-	return m, cmd
+	return m, tea.Batch(outInputCmd, outAlertCmd)
 }
 
 // startSubPrompt displays the additional input request of a command in
 // place of the main prompt, with its own prefix and completions, until an
 // answer is submitted or the user cancels it.
-func (m *teaPromptModel) startSubPrompt(request *inputPromptRequest) {
+func (m *promptModel) startSubPrompt(request *inputPromptRequest) {
 	m.subPrompt = request
 	m.savedCompletions = m.completions
 	m.completions = prefixMatcher(request.completions)
@@ -311,7 +327,7 @@ func (m *teaPromptModel) startSubPrompt(request *inputPromptRequest) {
 	m.updateCompletions()
 }
 
-func (m *teaPromptModel) endSubPrompt() {
+func (m *promptModel) endSubPrompt() {
 	m.subPrompt = nil
 	m.completions = m.savedCompletions
 	m.savedCompletions = nil
@@ -322,7 +338,7 @@ func (m *teaPromptModel) endSubPrompt() {
 // scrollBy scrolls the transcript back (positive delta shows older lines) or
 // forward. The offset is kept in [0, len(transcript)] here, and clamped
 // again in View to the number of lines that really overflow the screen.
-func (m *teaPromptModel) scrollBy(delta int) {
+func (m *promptModel) scrollBy(delta int) {
 	m.scrollOffset += delta
 	if m.scrollOffset < 0 {
 		m.scrollOffset = 0
@@ -331,7 +347,7 @@ func (m *teaPromptModel) scrollBy(delta int) {
 
 // transcriptPageHeight approximates the number of transcript lines visible
 // without scrolling, to scroll by whole pages with pgup/pgdown.
-func (m *teaPromptModel) transcriptPageHeight() int {
+func (m *promptModel) transcriptPageHeight() int {
 	footerLines := 0
 	if m.showHeader {
 		footerLines = 1
@@ -342,7 +358,7 @@ func (m *teaPromptModel) transcriptPageHeight() int {
 	return max(1, m.height-promptSuggestionLines-4-footerLines)
 }
 
-func (m *teaPromptModel) moveHistory(direction int) bool {
+func (m *promptModel) moveHistory(direction int) bool {
 	if len(m.history) == 0 {
 		return false
 	}
@@ -370,7 +386,7 @@ func (m *teaPromptModel) moveHistory(direction int) bool {
 
 // resetInput clears the prompt line, its suggestions and the history
 // navigation, ready for the next command or sub prompt.
-func (m *teaPromptModel) resetInput() {
+func (m *promptModel) resetInput() {
 	m.input.Reset()
 	m.input.SetSuggestions(nil)
 	m.historyIndex = -1
@@ -380,7 +396,7 @@ func (m *teaPromptModel) resetInput() {
 
 // drainOutput moves the outputs queued by a command, or by its sub prompt
 // callback, into the transcript.
-func (m *teaPromptModel) drainOutput() {
+func (m *promptModel) drainOutput() {
 	if m.takeOutput == nil {
 		return
 	}
@@ -389,7 +405,7 @@ func (m *teaPromptModel) drainOutput() {
 	}
 }
 
-func (m *teaPromptModel) updateCompletions() {
+func (m *promptModel) updateCompletions() {
 	if m.completions == nil || strings.TrimSpace(m.input.Value()) == "" {
 		m.input.SetSuggestions(nil)
 		return
@@ -397,7 +413,7 @@ func (m *teaPromptModel) updateCompletions() {
 	m.input.SetSuggestions(completionTexts(m.completions(m.input.Value())))
 }
 
-func (m *teaPromptModel) appendOutput(output string) {
+func (m *promptModel) appendOutput(output string) {
 	output = strings.TrimSuffix(output, "\n")
 	if output == "" {
 		return
@@ -409,12 +425,12 @@ func (m *teaPromptModel) appendOutput(output string) {
 
 // clearTranscript empties the transcript and resets scrolling, as requested
 // by the clear command.
-func (m *teaPromptModel) clearTranscript() {
+func (m *promptModel) clearTranscript() {
 	m.transcript = nil
 	m.scrollOffset = 0
 }
 
-func (m *teaPromptModel) View() tea.View {
+func (m *promptModel) View() tea.View {
 	// the title, centered at the top of the screen: gonetem, its version
 	// and the running project
 	title := "gonetem " + options.VERSION
@@ -534,7 +550,16 @@ func (m *teaPromptModel) View() tea.View {
 		lines = append(lines, footer)
 	}
 
-	view := tea.NewView(strings.Join(lines, "\n"))
+	// when an alert is displayed, pad all lines to the terminal width before
+	// the overlay: bubbleup centers each alert row against the content line
+	// below it and, when that line is shorter than the centering offset,
+	// pastes the row at column 0, which tears the alert box apart at center
+	// positions. uniform line widths keep the box whole.
+	if m.alert.HasActiveAlert() && m.width > 0 {
+		lines = padLinesWidth(lines, m.width)
+	}
+	content := strings.Join(lines, "\n")
+	view := tea.NewView(m.alert.Render(content))
 	view.AltScreen = m.fullscreen
 	if m.fullscreen {
 		// capture the mouse wheel to scroll the transcript, instead of the
@@ -542,6 +567,26 @@ func (m *teaPromptModel) View() tea.View {
 		view.MouseMode = tea.MouseModeCellMotion
 	}
 	return view
+}
+
+// padLinesWidth returns a copy of the lines padded with spaces, or
+// truncated when longer, to exactly width cells, preserving their ANSI
+// styling. lines overflowing the terminal are truncated rather than left to
+// wrap, as the fixed-height layout of View already assumes one screen row
+// per line.
+func padLinesWidth(lines []string, width int) []string {
+	padded := make([]string, len(lines))
+	for i, line := range lines {
+		switch pad := width - ansi.StringWidth(line); {
+		case pad > 0:
+			padded[i] = line + strings.Repeat(" ", pad)
+		case pad < 0:
+			padded[i] = ansi.Truncate(line, width, "")
+		default:
+			padded[i] = line
+		}
+	}
+	return padded
 }
 
 // centerText pads the text with spaces so it is displayed centered in a
