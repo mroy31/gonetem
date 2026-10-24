@@ -17,12 +17,15 @@ import (
 
 type promptErrorMsg string
 
+// promptAlertMsg carries message to be displayed as an alert
+// it can be async command output or errors
+type promptAlertMsg struct {
+	alertType string
+	alertMsg  string
+}
+
 // promptProjectPathMsg carries new project path after a saveAs command
 type promptProjectPathMsg string
-
-// promptOutputMsg carries command output produced after the command line
-// was submitted (like the save completion) to display in the transcript.
-type promptOutputMsg string
 
 // promptProgressMsg carries a transient progress line displayed by the
 // prompt while a long running command is in progress. An empty message
@@ -102,7 +105,7 @@ type promptModel struct {
 	// transcriptToBottom is set when new output, a submission or a clear
 	// asks the transcript view to snap back to its last line
 	transcriptToBottom bool
-	progress     string
+	progress           string
 	// busy is set while an asynchronous command (run, reload) runs: the
 	// input is frozen and only the transcript keeps scrolling
 	busy bool
@@ -170,8 +173,8 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case promptErrorMsg:
 		m.promptError = string(msg)
 		return m, nil
-	case promptOutputMsg:
-		alertCmd := m.alert.NewAlertCmd(bubbleup.InfoKey, string(msg))
+	case promptAlertMsg:
+		alertCmd := m.alert.NewAlertCmd(msg.alertType, string(msg.alertMsg))
 		return m, alertCmd
 	case promptProgressMsg:
 		m.progress = string(msg)

@@ -24,6 +24,7 @@ import (
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
+	"go.dalton.dog/bubbleup/v2"
 )
 
 type copyDirection int
@@ -739,7 +740,10 @@ func (p *NetemPrompt) save(dstPath string) error {
 		for {
 			msg, err := stream.Recv()
 			if err == io.EOF {
-				p.program.Send(promptOutputMsg(color.GreenString("Project saved to " + dstPath + "\n")))
+				p.program.Send(promptAlertMsg{
+					alertType: bubbleup.InfoKey,
+					alertMsg:  "Project saved to " + dstPath,
+				})
 				return
 			} else if err != nil {
 				p.sendPromptError(fmt.Sprintf("Unable to save project: %v", err))
@@ -1001,7 +1005,10 @@ func (p *NetemPrompt) streamTopologyProgress(
 			}
 
 			if msg.GetCode() == proto.TopologyRunMsg_NODE_MESSAGES {
-				p.program.Send(promptOutputMsg(nodeMessagesOutput(msg)))
+				p.program.Send(promptAlertMsg{
+					alertType: bubbleup.WarnKey,
+					alertMsg:  nodeMessagesOutput(msg),
+				})
 			}
 			p.program.Send(promptProgressMsg(progress.handle(msg)))
 		}

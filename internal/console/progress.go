@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
@@ -43,10 +42,10 @@ func nodeMessagesOutput(msg *proto.TopologyRunMsg) string {
 		if len(nMessages.GetMessages()) == 0 {
 			continue
 		}
-		fmt.Fprintln(&output, color.YellowString(nMessages.GetName()+":"))
+		fmt.Fprintln(&output, nMessages.GetName()+":")
 		for _, msg := range nMessages.GetMessages() {
 			if msg != "" {
-				fmt.Fprintln(&output, color.YellowString("  - "+msg))
+				fmt.Fprintln(&output, "  - "+msg)
 			}
 		}
 	}

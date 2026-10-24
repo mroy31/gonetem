@@ -128,7 +128,10 @@ func TestPromptDisplaysAndClearsProgress(t *testing.T) {
 		t.Fatalf("prompt view does not display the save progress: %q", view)
 	}
 
-	updated, cmd := model.Update(promptOutputMsg("Project saved to /work/demo.gnet"))
+	updated, cmd := model.Update(promptAlertMsg{
+		alertType: bubbleup.InfoKey,
+		alertMsg:  "Project saved to /work/demo.gnet",
+	})
 	model = updated.(*promptModel)
 	// the output is displayed as a transient alert: run the returned
 	// command, as the program does, to activate the alert
@@ -432,7 +435,10 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 	if model.transcriptVP.YOffset() == 0 {
 		t.Fatal("pgup must keep scrolling while busy")
 	}
-	updated, cmd := model.Update(promptOutputMsg("warning from the running command"))
+	updated, cmd := model.Update(promptAlertMsg{
+		alertType: bubbleup.WarnKey,
+		alertMsg:  "warning from the running command",
+	})
 	model = updated.(*promptModel)
 	if cmd == nil {
 		t.Fatal("no alert command returned for the output while busy")
