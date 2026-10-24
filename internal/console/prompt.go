@@ -578,7 +578,7 @@ func (p *NetemPrompt) Capture(cmdArgs []string) error {
 }
 
 func (p *NetemPrompt) sendPromptError(message string) {
-	p.program.Send(promptErrorMsg(message))
+	p.program.Send(promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: message})
 }
 
 func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) error {

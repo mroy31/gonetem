@@ -17,6 +17,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/mroy31/gonetem/internal/utils"
 	"github.com/spf13/cobra"
+	"go.dalton.dog/bubbleup/v2"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -133,7 +134,7 @@ func NewPrompt(prjName, prjID, prjPath string, runTopology bool) {
 		// warnings are appended to the history below the prompt
 		model.startCmd = func() tea.Msg {
 			if err := e.Run(nil); err != nil {
-				return promptErrorMsg(err.Error())
+				return promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: err.Error()}
 			}
 			return nil
 		}

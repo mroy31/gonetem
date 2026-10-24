@@ -18,14 +18,22 @@ func TestPromptErrorDoesNotClearInput(t *testing.T) {
 	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
 	model.input.SetValue("capture router.0")
 
-	updated, _ := model.Update(promptErrorMsg("capture failed"))
+	updated, cmd := model.Update(promptAlertMsg{
+		alertType: bubbleup.ErrorKey,
+		alertMsg:  "capture failed",
+	})
+	model = updated.(*promptModel)
+	if cmd == nil {
+		t.Fatal("no alert command returned for the asynchronous error")
+	}
+	updated, _ = model.Update(cmd())
 	model = updated.(*promptModel)
 
 	if got := model.input.Value(); got != "capture router.0" {
 		t.Fatalf("input after async error = %q, want it preserved", got)
 	}
 	if !strings.Contains(model.View().Content, "capture failed") {
-		t.Fatal("prompt view does not display the asynchronous error")
+		t.Fatal("prompt view does not display the asynchronous error as an alert")
 	}
 }
 
@@ -532,7 +540,7 @@ func TestPromptRunsQueuedEditorCommandAfterSubmit(t *testing.T) {
 	}
 }
 
-func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
+func TestPromptEditorFinishReportsErrorAsAlert(t *testing.T) {
 	var queued []string
 	var model *promptModel
 	model = newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
@@ -553,13 +561,18 @@ func TestPromptEditorFinishReportsErrorBelowPrompt(t *testing.T) {
 		t.Fatalf("editor result is not displayed in the transcript: %q", model.View().Content)
 	}
 
-	// failing finish: the error is displayed below the prompt
-	updated, _ = model.Update(editorFinishedMsg{err: nil, finish: func(editorErr error) error {
+	// failing finish: the error is displayed as an alert
+	updated, alertCmd := model.Update(editorFinishedMsg{err: nil, finish: func(editorErr error) error {
 		return errors.New("Unable to write modified network file on server")
 	}})
 	model = updated.(*promptModel)
+	if alertCmd == nil {
+		t.Fatal("no alert command returned for the finish error")
+	}
+	updated, _ = model.Update(alertCmd())
+	model = updated.(*promptModel)
 	if !strings.Contains(model.View().Content, "Unable to write modified network file on server") {
-		t.Fatalf("finish error is not displayed: %q", model.View().Content)
+		t.Fatalf("finish error is not displayed as an alert: %q", model.View().Content)
 	}
 
 	// editor error itself is passed to finish
@@ -596,7 +609,9 @@ func TestClearCommandQueuesClearMessage(t *testing.T) {
 func TestPromptRunsStartCmdOnStartup(t *testing.T) {
 	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 	// like NewPrompt starting the topology of an opened project
-	model.startCmd = func() tea.Msg { return promptErrorMsg("topology start failed") }
+	model.startCmd = func() tea.Msg {
+		return promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: "topology start failed"}
+	}
 
 	cmd := model.Init()
 	if cmd == nil {
@@ -611,7 +626,7 @@ func TestPromptRunsStartCmdOnStartup(t *testing.T) {
 		if c == nil {
 			continue
 		}
-		if msg, isStart := c().(promptErrorMsg); isStart {
+		if msg, isStart := c().(promptAlertMsg); isStart {
 			startMsg = msg
 		}
 	}
@@ -619,8 +634,14 @@ func TestPromptRunsStartCmdOnStartup(t *testing.T) {
 		t.Fatal("the start command was not part of the startup batch")
 	}
 
-	// its reported error reaches the prompt like any command error
-	updated, _ := model.Update(startMsg)
+	// its reported error reaches the prompt like any command error, as an
+	// alert activated by the returned command
+	updated, alertCmd := model.Update(startMsg)
+	model = updated.(*promptModel)
+	if alertCmd == nil {
+		t.Fatal("the start error does not return an alert command")
+	}
+	updated, _ = model.Update(alertCmd())
 	model = updated.(*promptModel)
 	if !strings.Contains(model.View().Content, "topology start failed") {
 		t.Fatalf("the start error is not displayed: %q", model.View().Content)
@@ -743,7 +764,7 @@ func TestPromptSubPromptCancelWithEscapeKeepsMainPrompt(t *testing.T) {
 	}
 }
 
-func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
+func TestProjectPromptUsesFullscreenAndErrorAlert(t *testing.T) {
 	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 	model.projectName = "demo"
 	model.projectPath = "/work/demo.gnet"
@@ -753,7 +774,15 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
 	model = updated.(*promptModel)
-	updated, _ = model.Update(promptErrorMsg("command failed"))
+	updated, alertCmd := model.Update(promptAlertMsg{
+		alertType: bubbleup.ErrorKey,
+		alertMsg:  "command failed",
+	})
+	model = updated.(*promptModel)
+	if alertCmd == nil {
+		t.Fatal("no alert command returned for the command error")
+	}
+	updated, _ = model.Update(alertCmd())
 	model = updated.(*promptModel)
 
 	view := model.View()
@@ -797,8 +826,10 @@ func TestProjectPromptUsesFullscreenAndErrorBelowPrompt(t *testing.T) {
 	if promptIndex != promptSuggestionLines+1 {
 		t.Fatalf("prompt is not right below the reserved suggestion zone: line %d", promptIndex)
 	}
-	if !strings.Contains(lines[promptIndex+1], "command failed") {
-		t.Fatalf("the error is not displayed just below the prompt: %q", lines[promptIndex+1])
+	// the error is displayed as an alert overlaid at the bottom center,
+	// without displacing the prompt or the footer
+	if !model.alert.HasActiveAlert() || !strings.Contains(view.Content, "command failed") {
+		t.Fatalf("the error is not displayed as an alert: %q", view.Content)
 	}
 }
 
@@ -915,7 +946,7 @@ func TestPromptSoftWrapsLongTranscriptLines(t *testing.T) {
 	}
 }
 
-func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
+func TestPromptDisplaysCommandErrorAsAlert(t *testing.T) {
 	failing := true
 	var model *promptModel
 	model = newPromptModel("[project]> ", nil, func(string) (bool, error) {
@@ -926,30 +957,27 @@ func TestPromptDisplaysCommandErrorBelowPromptUntilNextSubmit(t *testing.T) {
 	})
 
 	model.input.SetValue("start router1")
-	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(*promptModel)
+	if cmd == nil {
+		t.Fatal("no alert command returned for the command error")
+	}
+	// the batch of a single alert command is collapsed: cmd() sends the
+	// alert message directly, as the program would deliver it
+	updated, _ = model.Update(cmd())
 	model = updated.(*promptModel)
 
-	lines := strings.Split(model.View().Content, "\n")
-	promptIndex := -1
-	for i, line := range lines {
-		if strings.Contains(line, "[project]> ") {
-			promptIndex = i
-			break
-		}
-	}
-	if promptIndex == -1 || promptIndex+1 >= len(lines) {
-		t.Fatalf("prompt input line is missing: %q", model.View().Content)
-	}
-	if !strings.Contains(lines[promptIndex+1], "node router1 is not running") {
-		t.Fatalf("returned error is not displayed just below the prompt: %q", model.View().Content)
+	view := model.View().Content
+	if !model.alert.HasActiveAlert() || !strings.Contains(view, "node router1 is not running") {
+		t.Fatalf("returned error is not displayed as an alert: %q", view)
 	}
 
-	failing = false
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// esc closes a displayed error alert
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(*promptModel)
 
-	if strings.Contains(model.View().Content, "node router1 is not running") {
-		t.Fatalf("error is still displayed after a new submission: %q", model.View().Content)
+	if model.alert.HasActiveAlert() {
+		t.Fatal("esc does not close the error alert")
 	}
 }
 

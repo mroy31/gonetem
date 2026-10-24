@@ -15,10 +15,9 @@ import (
 	"go.dalton.dog/bubbleup/v2"
 )
 
-type promptErrorMsg string
-
-// promptAlertMsg carries message to be displayed as an alert
-// it can be async command output or errors
+// promptAlertMsg carries a message to display as an alert, of the given
+// bubbleup alert kind (InfoKey, WarnKey, ErrorKey...): asynchronous command
+// outputs, warnings and errors, instead of inline transcript or error lines.
 type promptAlertMsg struct {
 	alertType string
 	alertMsg  string
@@ -57,7 +56,7 @@ type promptQuitMsg struct{}
 
 // editorFinishedMsg is sent to the prompt when the external editor spawned
 // by a command (like edit) exits. finish uploads or discards the edited
-// data and may return an error to display below the prompt.
+// data and may return an error to display as an alert.
 type editorFinishedMsg struct {
 	err    error
 	finish func(error) error
@@ -94,10 +93,7 @@ type promptModel struct {
 	history      []string
 	historyIndex int
 	historyDraft string
-	// promptError holds the last command error, rendered in red just below
-	// the prompt line until the next submission
-	promptError string
-	transcript  []string
+	transcript   []string
 	// transcriptVP scrolls the command history in the space left between
 	// the history banner and the footer: it windows the transcript lines,
 	// soft wraps the long ones and keeps the scroll position
@@ -138,7 +134,7 @@ func newStyledTextInput(prefix string) textinput.Model {
 }
 
 func newStyledAlert() bubbleup.AlertModel {
-	return bubbleup.NewAlertModel(70, true, 6*time.Second).
+	return bubbleup.NewAlertModel(70, false, 6*time.Second).
 		WithMinWidth(20). // Dynamic width: alerts will size 20-70 chars
 		WithPosition(bubbleup.BottomCenterPosition).
 		WithAllowEscToClose()
@@ -170,12 +166,8 @@ func (m *promptModel) Init() tea.Cmd {
 
 func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case promptErrorMsg:
-		m.promptError = string(msg)
-		return m, nil
 	case promptAlertMsg:
-		alertCmd := m.alert.NewAlertCmd(msg.alertType, string(msg.alertMsg))
-		return m, alertCmd
+		return m, m.alert.NewAlertCmd(msg.alertType, msg.alertMsg)
 	case promptProgressMsg:
 		m.progress = string(msg)
 		return m, nil
@@ -198,14 +190,16 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.input.Focus()
 	case editorFinishedMsg:
+		var alertCmd tea.Cmd
 		if msg.finish != nil {
 			err := msg.finish(msg.err)
 			if err != nil {
-				m.promptError = err.Error()
+				// the finish failure is displayed as an alert
+				alertCmd = m.alert.NewAlertCmd(bubbleup.ErrorKey, err.Error())
 			}
 		}
 		m.drainOutput()
-		return m, nil
+		return m, alertCmd
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
@@ -239,17 +233,17 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// clear error
-			m.promptError = ""
 			m.resetInput()
-			return m, nil
+			// esc also closes a displayed alert, the alert model handles it
+			outAlert, alertCmd := m.alert.Update(msg)
+			m.alert = outAlert.(bubbleup.AlertModel)
+			return m, alertCmd
 		case "enter":
 			value := m.input.Value()
 			if m.subPrompt != nil {
 				request := m.subPrompt
 				echo := m.input.Prompt + value
 				m.endSubPrompt()
-				m.promptError = ""
 				m.transcriptToBottom = true
 				if value != "" {
 					m.transcript = append(m.transcript, echo)
@@ -261,14 +255,15 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.result = value
 			if m.onSubmit != nil {
-				m.promptError = ""
 				m.transcriptToBottom = true
 				if value != "" {
 					m.transcript = append(m.transcript, m.input.Prompt+value)
 				}
 				done, err := m.onSubmit(value)
+				var alertCmd tea.Cmd
 				if err != nil {
-					m.promptError = err.Error()
+					// the command error is displayed as an alert
+					alertCmd = m.alert.NewAlertCmd(bubbleup.ErrorKey, err.Error())
 				}
 				if done {
 					m.done = true
@@ -283,7 +278,7 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// terminal back, or a message back to the model
 				nextCmd := m.pendingCmd
 				m.pendingCmd = nil
-				return m, nextCmd
+				return m, tea.Batch(nextCmd, alertCmd)
 			}
 			if value != "" {
 				m.transcript = append(m.transcript, m.input.Prompt+value)
@@ -504,13 +499,6 @@ func (m *promptModel) View() tea.View {
 		inputLines = append(inputLines, m.input.View())
 	}
 
-	var errorLines []string
-	if !m.done && m.promptError != "" {
-		for _, line := range strings.Split(m.promptError, "\n") {
-			errorLines = append(errorLines, lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(line))
-		}
-	}
-
 	// the project path, displayed on the last line of the terminal
 	footer := ""
 	if m.showHeader && !m.done {
@@ -542,7 +530,7 @@ func (m *promptModel) View() tea.View {
 	// and the footer, windowed and scrolled in its viewport
 	transcriptSpace := len(m.transcript)
 	if m.height > 0 {
-		transcriptSpace = max(0, m.height-1-len(topLines)-len(inputLines)-len(errorLines)-
+		transcriptSpace = max(0, m.height-1-len(topLines)-len(inputLines)-
 			1-footerLines)
 	}
 	indicatorLines, transcript := m.renderTranscript(transcriptSpace)
@@ -551,7 +539,6 @@ func (m *promptModel) View() tea.View {
 	lines = append(lines, titleLine)
 	lines = append(lines, topLines...)
 	lines = append(lines, inputLines...)
-	lines = append(lines, errorLines...)
 	lines = append(lines, banner)
 	lines = append(lines, indicatorLines...)
 	lines = append(lines, transcript...)
