@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -94,9 +95,13 @@ type promptModel struct {
 	// the prompt line until the next submission
 	promptError string
 	transcript  []string
-	// scrollOffset is the number of transcript lines hidden below the
-	// bottom of the screen, used to scroll back through a long history
-	scrollOffset int
+	// transcriptVP scrolls the command history in the space left between
+	// the history banner and the footer: it windows the transcript lines,
+	// soft wraps the long ones and keeps the scroll position
+	transcriptVP viewport.Model
+	// transcriptToBottom is set when new output, a submission or a clear
+	// asks the transcript view to snap back to its last line
+	transcriptToBottom bool
 	progress     string
 	// busy is set while an asynchronous command (run, reload) runs: the
 	// input is frozen and only the transcript keeps scrolling
@@ -137,7 +142,7 @@ func newStyledAlert() bubbleup.AlertModel {
 }
 
 func newPromptModel(prefix string, completions func(string) []Completion, onSubmit func(string) (bool, error)) *promptModel {
-	return &promptModel{
+	model := &promptModel{
 		input:        newStyledTextInput(prefix),
 		alert:        newStyledAlert(),
 		prefix:       prefix,
@@ -146,6 +151,14 @@ func newPromptModel(prefix string, completions func(string) []Completion, onSubm
 		historyIndex: -1,
 		showMatches:  true,
 	}
+	// long transcript lines soft wrap in the viewport instead of overflowing
+	// and corrupting the fixed-height layout; New also sets the scroll step
+	// defaults, as the wheel delta
+	model.transcriptVP = viewport.New()
+	model.transcriptVP.SoftWrap = true
+	// the first view shows the bottom of the history, where the prompt is
+	model.transcriptToBottom = true
+	return model
 }
 
 func (m *promptModel) Init() tea.Cmd {
@@ -197,10 +210,10 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
-			m.scrollBy(3)
+			m.transcriptVP.ScrollUp(m.transcriptVP.MouseWheelDelta)
 			return m, nil
 		case tea.MouseWheelDown:
-			m.scrollBy(-3)
+			m.transcriptVP.ScrollDown(m.transcriptVP.MouseWheelDelta)
 			return m, nil
 		}
 	case tea.KeyPressMsg:
@@ -209,9 +222,9 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// only scrolling the transcript keeps working
 			switch msg.String() {
 			case "pgup":
-				m.scrollBy(m.transcriptPageHeight())
+				m.transcriptVP.PageUp()
 			case "pgdown":
-				m.scrollBy(-m.transcriptPageHeight())
+				m.transcriptVP.PageDown()
 			}
 			return m, nil
 		}
@@ -234,7 +247,7 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				echo := m.input.Prompt + value
 				m.endSubPrompt()
 				m.promptError = ""
-				m.scrollOffset = 0
+				m.transcriptToBottom = true
 				if value != "" {
 					m.transcript = append(m.transcript, echo)
 					request.submit(value)
@@ -246,7 +259,7 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = value
 			if m.onSubmit != nil {
 				m.promptError = ""
-				m.scrollOffset = 0
+				m.transcriptToBottom = true
 				if value != "" {
 					m.transcript = append(m.transcript, m.input.Prompt+value)
 				}
@@ -275,10 +288,10 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.done = true
 			return m, tea.Quit
 		case "pgup":
-			m.scrollBy(m.transcriptPageHeight())
+			m.transcriptVP.PageUp()
 			return m, nil
 		case "pgdown":
-			m.scrollBy(-m.transcriptPageHeight())
+			m.transcriptVP.PageDown()
 			return m, nil
 		case "tab":
 			if strings.TrimSpace(m.input.Value()) != "" && m.completions != nil {
@@ -335,27 +348,47 @@ func (m *promptModel) endSubPrompt() {
 	m.resetInput()
 }
 
-// scrollBy scrolls the transcript back (positive delta shows older lines) or
-// forward. The offset is kept in [0, len(transcript)] here, and clamped
-// again in View to the number of lines that really overflow the screen.
-func (m *promptModel) scrollBy(delta int) {
-	m.scrollOffset += delta
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
+// renderTranscript windows the transcript in its viewport, sized to the
+// space left between the history banner and the footer. The viewport keeps
+// its scrolled position across content refreshes, unless transcriptToBottom
+// is set by new output or a submission, which snaps back to the last line.
+// A scrolled view spends one line of the space for the hint about the
+// hidden lines. It returns the hint and viewport lines, top to bottom.
+func (m *promptModel) renderTranscript(space int) (hintLines, viewportLines []string) {
+	if space <= 0 {
+		return nil, nil
 	}
-}
+	vp := &m.transcriptVP
+	if m.width <= 0 {
+		// the terminal size is still unknown, and the viewport renders
+		// nothing without a width: display the lines unwindowed
+		return nil, m.transcript
+	}
+	yOffset := vp.YOffset()
+	vp.SetWidth(m.width)
+	vp.SetHeight(space)
+	// the copy keeps the transcript safe from the in place line splitting
+	// the viewport applies on multi line entries
+	vp.SetContentLines(append([]string(nil), m.transcript...))
+	if m.transcriptToBottom {
+		vp.GotoBottom()
+		m.transcriptToBottom = false
+	} else {
+		vp.SetYOffset(yOffset)
+	}
 
-// transcriptPageHeight approximates the number of transcript lines visible
-// without scrolling, to scroll by whole pages with pgup/pgdown.
-func (m *promptModel) transcriptPageHeight() int {
-	footerLines := 0
-	if m.showHeader {
-		footerLines = 1
+	hiddenBelow := vp.TotalLineCount() - vp.VisibleLineCount() - vp.YOffset()
+	if hiddenBelow > 0 {
+		// one line of the space pays for the hint about the hidden lines
+		vp.SetHeight(space - 1)
+		vp.SetYOffset(vp.YOffset()) // re-clamp to the reduced space
+		hidden := vp.TotalLineCount() - vp.VisibleLineCount()
+		hiddenBelow = max(0, hidden-vp.YOffset())
+		hintLines = append(hintLines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+			fmt.Sprintf("  ↑ %d/%d lines above (pgup/pgdown, wheel to scroll)",
+				hiddenBelow, hidden)))
 	}
-	// one page is what View makes visible in the history: the terminal minus
-	// the title, the suggestion zone, the prompt line, the history banner
-	// and the footer
-	return max(1, m.height-promptSuggestionLines-4-footerLines)
+	return hintLines, strings.Split(vp.View(), "\n")
 }
 
 func (m *promptModel) moveHistory(direction int) bool {
@@ -420,14 +453,14 @@ func (m *promptModel) appendOutput(output string) {
 	}
 	m.transcript = append(m.transcript, strings.Split(output, "\n")...)
 	// new output brings the user back to the bottom of the transcript
-	m.scrollOffset = 0
+	m.transcriptToBottom = true
 }
 
 // clearTranscript empties the transcript and resets scrolling, as requested
 // by the clear command.
 func (m *promptModel) clearTranscript() {
 	m.transcript = nil
-	m.scrollOffset = 0
+	m.transcriptToBottom = true
 }
 
 func (m *promptModel) View() tea.View {
@@ -503,33 +536,13 @@ func (m *promptModel) View() tea.View {
 		strings.Repeat("─", leftDashes) + label + strings.Repeat("─", rightDashes))
 
 	// the history takes the place left on screen between the prompt area
-	// and the footer
+	// and the footer, windowed and scrolled in its viewport
 	transcriptSpace := len(m.transcript)
 	if m.height > 0 {
 		transcriptSpace = max(0, m.height-1-len(topLines)-len(inputLines)-len(errorLines)-
 			1-footerLines)
 	}
-
-	// window the transcript into the visible space, scrolled by scrollOffset
-	// lines from its end; a scrolled view spends one line for the hint about
-	// the hidden lines
-	scrollOffset := m.scrollOffset
-	var indicatorLines []string
-	if m.height > 0 {
-		if scrollOffset > 0 {
-			transcriptSpace = max(0, transcriptSpace-1)
-			scrollOffset = min(scrollOffset, max(0, len(m.transcript)-transcriptSpace))
-		}
-		if scrollOffset > 0 {
-			indicatorLines = append(indicatorLines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-				fmt.Sprintf("  ↑ %d/%d lines above (pgup/pgdown, wheel to scroll)",
-					scrollOffset, len(m.transcript)-transcriptSpace)))
-		} else {
-			scrollOffset = 0
-		}
-	}
-	transcriptEnd := max(0, len(m.transcript)-scrollOffset)
-	transcript := m.transcript[max(0, transcriptEnd-transcriptSpace):transcriptEnd]
+	indicatorLines, transcript := m.renderTranscript(transcriptSpace)
 
 	lines := make([]string, 0, max(m.height, 13))
 	lines = append(lines, titleLine)

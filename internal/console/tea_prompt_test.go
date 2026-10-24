@@ -327,10 +327,11 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	model = updated.(*promptModel)
 
 	// at the bottom, the tail of the transcript is visible, the head is not
-	// (exact line match: line 1 would otherwise match line 10 or line 19)
+	// (exact line match, trimmed of the viewport width padding: line 1
+	// would otherwise match line 10 or line 19)
 	visible := func(view, line string) bool {
 		for _, text := range strings.Split(view, "\n") {
-			if text == line {
+			if strings.TrimRight(text, " ") == line {
 				return true
 			}
 		}
@@ -363,7 +364,7 @@ func TestPromptScrollsTranscriptWithPgUpPgDownAndWheel(t *testing.T) {
 	// the mouse wheel scrolls by a few lines
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(*promptModel)
-	if model.scrollOffset == 0 {
+	if model.transcriptVP.YOffset() == 0 {
 		t.Fatal("mouse wheel down did not move the scroll offset back to the bottom")
 	}
 
@@ -428,7 +429,7 @@ func TestPromptBusyFreezesInputButKeepsScrolling(t *testing.T) {
 	// transcript scrolling keeps working, and output keeps arriving
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
 	model = updated.(*promptModel)
-	if model.scrollOffset == 0 {
+	if model.transcriptVP.YOffset() == 0 {
 		t.Fatal("pgup must keep scrolling while busy")
 	}
 	updated, cmd := model.Update(promptOutputMsg("warning from the running command"))
@@ -477,10 +478,11 @@ func TestPromptNewOutputResetsScrollToBottom(t *testing.T) {
 	model.appendOutput("fresh command output\n")
 
 	view := model.View().Content
-	if model.scrollOffset != 0 {
-		t.Fatalf("scroll offset after new output = %d, want 0", model.scrollOffset)
+	if !model.transcriptVP.AtBottom() {
+		t.Fatalf("viewport is not back at the bottom after new output: yOffset %d",
+			model.transcriptVP.YOffset())
 	}
-	if !strings.Contains(view, "fresh command output") || !strings.Contains(view, "output line 30\n") {
+	if !strings.Contains(view, "fresh command output") || !strings.Contains(view, "output line 30") {
 		t.Fatalf("new output does not bring back the bottom of the transcript: %q", view)
 	}
 }
@@ -627,7 +629,7 @@ func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 		return false, nil
 	})
 	model.appendOutput("first output\nsecond output")
-	model.scrollBy(3)
+	model.transcriptVP.ScrollUp(3)
 
 	// the submitted clear line is echoed, then the command run by the
 	// program sends the clear message back to the model
@@ -647,8 +649,8 @@ func TestPromptClearTranscriptResetsScroll(t *testing.T) {
 	if len(model.transcript) != 0 {
 		t.Fatalf("transcript not cleared: %v", model.transcript)
 	}
-	if model.scrollOffset != 0 {
-		t.Fatalf("scroll offset after clear = %d, want 0", model.scrollOffset)
+	if model.transcriptVP.YOffset() != 0 {
+		t.Fatalf("scroll offset after clear = %d, want 0", model.transcriptVP.YOffset())
 	}
 	if view := model.View().Content; strings.Contains(view, "output") {
 		t.Fatalf("cleared transcript is still rendered: %q", view)
@@ -877,6 +879,33 @@ func TestPromptKeepsSuggestionsAboveFixedPrompt(t *testing.T) {
 	}
 	if waitAt, barAt := strings.Index(zone, waiting), strings.Index(zone, "Node - Start:"); waitAt == -1 || waitAt > barAt {
 		t.Fatalf("the waiting message is not above the progress bars: %q", zone)
+	}
+}
+
+// TestPromptSoftWrapsLongTranscriptLines covers the viewport soft wrapping:
+// a transcript line wider than the terminal is displayed on several display
+// lines without overflowing the fixed-height layout.
+func TestPromptSoftWrapsLongTranscriptLines(t *testing.T) {
+	model := newPromptModel("[project]> ", nil, func(string) (bool, error) { return false, nil })
+	model.fullscreen = true
+	model.transcript = []string{strings.Repeat("x", 200), "after"}
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(*promptModel)
+
+	view := model.View()
+	if got := len(strings.Split(view.Content, "\n")); got != 20 {
+		t.Fatalf("the long line overflowed the fixed layout: %d lines, want terminal height 20", got)
+	}
+	if !strings.Contains(view.Content, strings.Repeat("x", 80)) {
+		t.Fatal("the long line is not displayed")
+	}
+	if !strings.Contains(view.Content, "after") {
+		t.Fatal("the line after the long one is not displayed")
+	}
+	if model.transcriptVP.TotalLineCount() <= len(model.transcript) {
+		t.Fatalf("the long line was not soft wrapped: total %d for %d transcript lines",
+			model.transcriptVP.TotalLineCount(), len(model.transcript))
 	}
 }
 
