@@ -272,6 +272,12 @@ func (p *NetemPrompt) RegisterCommands() {
 		Args:  []string{},
 		Run:   clientExec(p.Status),
 	}
+	p.commands["topo"] = &NetemCommand{
+		Desc:  "Display the network topology as an interactive graph",
+		Usage: "topo",
+		Args:  []string{},
+		Run:   clientExec(p.topoExec),
+	}
 	p.commands["viewConfig"] = &NetemCommand{
 		Desc:  "Display the current configuration of a node",
 		Usage: "viewConfig <node_name>",
