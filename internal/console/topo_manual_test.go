@@ -165,3 +165,51 @@ func TestTopoView_SugiyamaMulticast(t *testing.T) {
 		t.Fatalf("sugiyama multicast layout is not deterministic")
 	}
 }
+
+func TestTopoView_RootPickerModal(t *testing.T) {
+	model, err := newTopoModel([]byte(sampleTopologyYAML))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	model.Update(tea.WindowSizeMsg{Width: 200, Height: 60})
+
+	// r opens the modal and the view carries the panel without panicking
+	model.Update(tea.KeyPressMsg{Text: "r", Code: 'r'})
+	if !model.rootPickerOpen {
+		t.Fatalf("r did not open the root picker")
+	}
+	content := ansi.Strip(model.View().Content)
+	if !strings.Contains(content, "Select the node at the top") {
+		t.Fatalf("view missing the root picker modal\n%s", content)
+	}
+
+	// esc closes it without changing the root
+	model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.rootPickerOpen {
+		t.Fatalf("esc did not close the root picker")
+	}
+	if model.graph.root != nil {
+		t.Fatalf("cancelling changed the root to %s", model.graph.root.name)
+	}
+
+	// picking a node pins it and moves it to the top layer
+	model.Update(tea.KeyPressMsg{Text: "r", Code: 'r'})
+	target := model.graph.nodes[3]
+	model.pickerIdx = 3
+	model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.rootPickerOpen {
+		t.Fatalf("enter did not close the root picker")
+	}
+	if model.graph.root != target {
+		t.Fatalf("root not pinned: want %s got %v", target.name, model.graph.root)
+	}
+	minY := model.canvas.height
+	for _, n := range model.graph.nodes {
+		if n.y < minY {
+			minY = n.y
+		}
+	}
+	if target.y != minY {
+		t.Fatalf("pinned root %s is not at the top (y=%d, min=%d)", target.name, target.y, minY)
+	}
+}

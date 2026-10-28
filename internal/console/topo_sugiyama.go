@@ -47,12 +47,21 @@ func (g *topoGraph) layoutSugiyama() {
 // sugiyamaComponent lays out one connected component with its cells
 // starting at column xOff and returns its width in cells.
 func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff int) int {
-	// root: highest degree, deterministic tie-break on name
+	// root: highest degree, deterministic tie-break on name, unless the
+	// user pinned a specific node at the top with the root picker
 	root := comp[0]
 	for _, n := range comp[1:] {
 		dn, dr := len(g.neighbors(n)), len(g.neighbors(root))
 		if dn > dr || (dn == dr && n.name < root.name) {
 			root = n
+		}
+	}
+	if g.root != nil {
+		for _, n := range comp {
+			if n == g.root {
+				root = n
+				break
+			}
 		}
 	}
 

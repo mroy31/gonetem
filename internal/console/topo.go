@@ -170,6 +170,10 @@ func sortedKeys[V any](m map[string]V) []string {
 type topoGraph struct {
 	nodes []*topoGraphNode
 	links []topoGraphLink
+
+	// root optionally pins the node placed at the top of the hierarchy
+	// by the layout; nil keeps the default highest-degree heuristic.
+	root *topoGraphNode
 }
 
 func (g *topoGraph) neighbors(n *topoGraphNode) []*topoGraphNode {
@@ -825,6 +829,59 @@ func (c *graphCanvas) stamp(x, y int, text string, style lipgloss.Style) {
 	}
 }
 
+// panelLine is one row of a modal panel: plain text plus the style to
+// render each of its characters with.
+type panelLine struct {
+	text  string
+	style lipgloss.Style
+}
+
+// overlay stamps a modal panel of styled lines centered on (cx, cy) of the
+// canvas. The rectangle it covers is blanked first so the panel reads
+// cleanly over whatever the graph drew underneath.
+func (c *graphCanvas) overlay(cx, cy int, lines []panelLine) {
+	if len(lines) == 0 {
+		return
+	}
+	w := 0
+	for _, l := range lines {
+		if n := utf8.RuneCountInString(l.text); n > w {
+			w = n
+		}
+	}
+	x0, y0 := cx-w/2, cy-len(lines)/2
+	if x0+w > c.width {
+		x0 = c.width - w
+	}
+	if x0 < 0 {
+		x0 = 0
+	}
+	if y0+len(lines) > c.height {
+		y0 = c.height - len(lines)
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	for i, l := range lines {
+		y := y0 + i
+		if y < 0 || y >= c.height {
+			continue
+		}
+		runes := []rune(l.text)
+		for j := 0; j < w; j++ {
+			x := x0 + j
+			if x < 0 || x >= c.width {
+				continue
+			}
+			cell := &c.cells[y][x]
+			*cell = gridCell{s: " "}
+			if j < len(runes) {
+				cell.s = l.style.Render(string(runes[j]))
+			}
+		}
+	}
+}
+
 func (c *graphCanvas) lines() []string {
 	lines := make([]string, c.height)
 	for y, row := range c.cells {
@@ -882,6 +939,11 @@ type topoModel struct {
 	offsetX int
 	offsetY int
 	sel     int // index into graph.nodes
+
+	// root picker modal, opened with r: choose the node placed at the
+	// top of the hierarchy
+	rootPickerOpen bool
+	pickerIdx      int // cursor in the node list
 }
 
 func newTopoModel(data []byte) (*topoModel, error) {
@@ -905,6 +967,13 @@ func (m *topoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		if m.rootPickerOpen {
+			m.updateRootPicker(msg)
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -922,9 +991,95 @@ func (m *topoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab", "p":
 			m.moveSelection(-1)
 			m.canvas = renderGraph(m.graph)
+		case "r":
+			m.openRootPicker()
 		}
 	}
 	return m, nil
+}
+
+// openRootPicker shows the modal listing every node, with the cursor on
+// the current selection or the pinned root.
+func (m *topoModel) openRootPicker() {
+	m.rootPickerOpen = true
+	m.pickerIdx = m.sel
+	if m.graph.root != nil {
+		for i, n := range m.graph.nodes {
+			if n == m.graph.root {
+				m.pickerIdx = i
+				break
+			}
+		}
+	}
+}
+
+// updateRootPicker routes keys while the modal is open.
+func (m *topoModel) updateRootPicker(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "esc", "r":
+		m.rootPickerOpen = false
+	case "up", "k":
+		if m.pickerIdx > 0 {
+			m.pickerIdx--
+		}
+	case "down", "j":
+		if m.pickerIdx < len(m.graph.nodes)-1 {
+			m.pickerIdx++
+		}
+	case "enter":
+		m.graph.root = m.graph.nodes[m.pickerIdx]
+		m.rootPickerOpen = false
+		m.canvas = renderGraph(m.graph)
+		m.offsetX, m.offsetY = 0, 0
+	}
+}
+
+// rootPickerPanel builds the modal listing every node, the highlighted
+// line being the one enter will place at the top of the hierarchy.
+func (m *topoModel) rootPickerPanel() []panelLine {
+	nodes := m.graph.nodes
+	title := "Select the node at the top"
+	footer := "↑↓ move   enter select   esc cancel"
+
+	w := utf8.RuneCountInString(title)
+	if l := utf8.RuneCountInString(footer); l > w {
+		w = l
+	}
+	entries := make([]string, len(nodes))
+	for i, n := range nodes {
+		if m.graph.root == n {
+			entries[i] = n.name + "  · top"
+		} else {
+			entries[i] = n.name
+		}
+		if l := utf8.RuneCountInString(entries[i]) + 2; l > w {
+			w = l
+		}
+	}
+
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	bold := lipgloss.NewStyle().Bold(true)
+	pad := func(text string) string {
+		return "│ " + text + strings.Repeat(" ", w-utf8.RuneCountInString(text)) + " │"
+	}
+
+	lines := make([]panelLine, 0, len(nodes)+4)
+	lines = append(lines,
+		panelLine{"┌" + strings.Repeat("─", w+2) + "┐", dim},
+		panelLine{pad(title), bold})
+	for i, e := range entries {
+		mark := "  "
+		style := lipgloss.NewStyle()
+		if i == m.pickerIdx {
+			mark = "▸ "
+			style = lipgloss.NewStyle().Bold(true).Foreground(nodeColor(nodes[i].typ))
+		}
+		lines = append(lines, panelLine{pad(mark + e), style})
+	}
+	lines = append(lines,
+		panelLine{"└" + strings.Repeat("─", w+2) + "┘", dim},
+		panelLine{footer, dim})
+	return lines
 }
 
 func (m *topoModel) scrollX(delta int) {
@@ -983,7 +1138,13 @@ func (m *topoModel) View() tea.View {
 	detail = strings.Replace(detail, node.name,
 		lipgloss.NewStyle().Bold(true).Foreground(nodeColor(node.typ)).Render(node.name), 1)
 
-	status := fmt.Sprintf("↑↓←→ scroll   tab/n/p next node   q quit")
+	status := fmt.Sprintf("↑↓←→ scroll   tab/n/p next node   r top node   q quit")
+
+	// the root picker modal is stamped over the canvas, centred in the
+	// visible viewport
+	if m.rootPickerOpen {
+		m.canvas.overlay(m.offsetX+m.width/2, m.offsetY+m.viewRows()/2, m.rootPickerPanel())
+	}
 
 	// window the canvas cells (each cell is one display column), safe
 	// against cutting ANSI escapes
