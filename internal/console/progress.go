@@ -8,7 +8,7 @@ import (
 )
 
 // progressBarWidth is the size of the bar rendered by progressText.
-const progressBarWidth = 50
+const progressBarWidth = 45
 
 // progressText renders a simple text progress bar, as displayed inside the
 // TUI prompt: bubbletea owns the terminal, so the bars must go through it.
