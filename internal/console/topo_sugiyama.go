@@ -325,24 +325,15 @@ func (g *topoGraph) assignGapRows() {
 // (topY+3 .. topY+7). The horizontal segment runs on the row chosen by
 // assignGapRows (topY+4..+6, collision free), while the outer rows stay
 // free for the interface labels, painted on the stub right next to each
-// node's own border.
-//
-// Links between layers leave the upper frame south and enter the lower
-// frame north; flat links (same layer) leave both frames south.
+// node's own border. The attachment arms and points come from
+// assignLinkIndices, where north and south borders are spread separately.
 func routeHierarchical(l *topoGraphLink) {
 	xA := attachPointX(l.a, l.indexA, l.degreeA)
 	xB := attachPointX(l.b, l.indexB, l.degreeB)
 
-	var armA, armB, topY int
-	switch {
-	case l.a.y == l.b.y:
-		armA, armB = armS, armS
-		topY = l.a.y
-	case l.a.y < l.b.y:
-		armA, armB = armS, armN
-		topY = l.a.y
-	default:
-		armA, armB = armN, armS
+	armA, armB := l.armA, l.armB
+	topY := l.a.y
+	if l.b.y < topY {
 		topY = l.b.y
 	}
 	row := l.row
@@ -366,28 +357,61 @@ func routeHierarchical(l *topoGraphLink) {
 	l.armA, l.armB = armA, armB
 }
 
-// assignLinkIndices computes link indices for each endpoint of each link,
-// enabling distributed attachment points across node edges.
-// Indices are assigned per-node based on order, not globally.
-func (g *topoGraph) assignLinkIndices() {
-	// Count degrees for each node
-	degree := make(map[*topoGraphNode]int)
-	for _, l := range g.links {
-		degree[l.a]++
-		degree[l.b]++
+// sideArms returns the frame sides a link attaches to on each of its
+// endpoints: links between layers leave the upper frame south and enter the
+// lower frame north; flat links (same layer) leave both frames south.
+func sideArms(a, b *topoGraphNode) (int, int) {
+	switch {
+	case a.y == b.y:
+		return armS, armS
+	case a.y < b.y:
+		return armS, armN
+	default:
+		return armN, armS
 	}
-	
-	// Assign index to each link endpoint, per node
-	// This ensures attachment positions are based on actual node degree, not global order
-	linkIndex := make(map[*topoGraphNode]int)
+}
+
+// assignLinkIndices computes the attachment arms and per-side indices of
+// every link endpoint, once the nodes are placed. North and south borders
+// are numbered independently: a link entering the top of a node never
+// competes for attachment slots with links leaving its bottom, so each
+// border can spread its own links across the full frame width.
+func (g *topoGraph) assignLinkIndices() {
+	southDeg := map[*topoGraphNode]int{}
+	northDeg := map[*topoGraphNode]int{}
 	for i := range g.links {
 		l := &g.links[i]
-		l.degreeA = degree[l.a]
-		l.degreeB = degree[l.b]
-		l.indexA = linkIndex[l.a]
-		l.indexB = linkIndex[l.b]
-		linkIndex[l.a]++
-		linkIndex[l.b]++
+		l.armA, l.armB = sideArms(l.a, l.b)
+		if l.armA == armS {
+			southDeg[l.a]++
+		} else {
+			northDeg[l.a]++
+		}
+		if l.armB == armS {
+			southDeg[l.b]++
+		} else {
+			northDeg[l.b]++
+		}
+	}
+
+	southIdx := map[*topoGraphNode]int{}
+	northIdx := map[*topoGraphNode]int{}
+	for i := range g.links {
+		l := &g.links[i]
+		if l.armA == armS {
+			l.indexA, l.degreeA = southIdx[l.a], southDeg[l.a]
+			southIdx[l.a]++
+		} else {
+			l.indexA, l.degreeA = northIdx[l.a], northDeg[l.a]
+			northIdx[l.a]++
+		}
+		if l.armB == armS {
+			l.indexB, l.degreeB = southIdx[l.b], southDeg[l.b]
+			southIdx[l.b]++
+		} else {
+			l.indexB, l.degreeB = northIdx[l.b], northDeg[l.b]
+			northIdx[l.b]++
+		}
 	}
 }
 
