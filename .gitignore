@@ -1,4 +1,6 @@
 *.gnet
+.opencode
+gonetem-console
 bin/*
 docs/build/*
 docs/source/_build/*
