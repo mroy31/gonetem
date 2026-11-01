@@ -1,6 +1,7 @@
 package console
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/mroy31/gonetem/internal/options"
 	"github.com/mroy31/gonetem/internal/proto"
 	"go.dalton.dog/bubbleup/v2"
+	"google.golang.org/grpc"
 )
 
 func TestPromptErrorDoesNotClearInput(t *testing.T) {
@@ -606,6 +608,54 @@ func TestClearCommandQueuesClearMessage(t *testing.T) {
 	}
 }
 
+// fakeTopologyCheckClient is a server client stub only implementing the
+// TopologyCheck call used by the check command.
+type fakeTopologyCheckClient struct {
+	proto.NetemClient
+	ack *proto.AckResponse
+}
+
+func (f *fakeTopologyCheckClient) TopologyCheck(
+	ctx context.Context, in *proto.ProjectRequest, opts ...grpc.CallOption,
+) (*proto.AckResponse, error) {
+	return f.ack, nil
+}
+
+func TestCheckCommandQueuesInfoAlertNotModal(t *testing.T) {
+	p := &NetemPrompt{prjID: "demo"}
+
+	client := &fakeTopologyCheckClient{ack: &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_OK},
+	}}
+	if err := p.Check(client, nil); err != nil {
+		t.Fatalf("check command failed: %v", err)
+	}
+	if outputs := p.takePromptOutput(); len(outputs) != 0 {
+		t.Fatalf("check queued a modal output instead of an alert: %q", outputs)
+	}
+	cmd := p.takePendingCmd()
+	if cmd == nil {
+		t.Fatal("check did not queue an alert command")
+	}
+	msg, ok := cmd().(promptAlertMsg)
+	if !ok {
+		t.Fatalf("the queued command does not send a promptAlertMsg: %T", msg)
+	}
+	if msg.alertType != bubbleup.InfoKey || msg.alertMsg != "Network is OK" {
+		t.Fatalf("unexpected alert: %s %q", msg.alertType, msg.alertMsg)
+	}
+
+	// a topology reported in error returns an error instead, displayed as an
+	// error alert by the prompt submission
+	failing := &fakeTopologyCheckClient{ack: &proto.AckResponse{
+		Status: &proto.Status{Code: proto.StatusCode_ERROR, Error: "link r1-r2 is invalid"},
+	}}
+	err := p.Check(failing, nil)
+	if err == nil || err.Error() != "link r1-r2 is invalid" {
+		t.Fatalf("check on a broken topology returned %v, want the topology error", err)
+	}
+}
+
 func TestPromptRunsStartCmdOnStartup(t *testing.T) {
 	model := newPromptModel("[demo]> ", nil, func(string) (bool, error) { return false, nil })
 	// like NewPrompt starting the topology of an opened project
@@ -1041,5 +1091,66 @@ func TestAlertStaysCenteredOverShortBottomLines(t *testing.T) {
 	if left, right := starts[0], termWidth-starts[0]-boxWidth; left-right > 1 {
 		t.Fatalf("the alert is not centered: left margin %d, right margin %d, box width %d",
 			left, right, boxWidth)
+	}
+}
+
+func TestPromptCommandResultOpensModalClosedWithEscape(t *testing.T) {
+	var queued []string
+	var model *promptModel
+	model = newPromptModel("[project]> ", nil, func(string) (bool, error) {
+		// the submit callback drains the output queued by the command, as
+		// NewPrompt does
+		model.drainOutput()
+		return false, nil
+	})
+	model.fullscreen = true
+	model.showHeader = true
+	model.takeOutput = func() []string {
+		output := queued
+		queued = nil
+		return output
+	}
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(*promptModel)
+
+	queued = []string{"Project demo\n- State: Running\n"}
+	model.input.SetValue("status")
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(*promptModel)
+
+	// the result is displayed as a bordered modal over the UI
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "State: Running") {
+		t.Fatalf("the command result is not displayed: %q", view)
+	}
+	if !strings.Contains(view, "╭") || !strings.Contains(view, "esc close") {
+		t.Fatalf("the command result is not displayed in a modal box: %q", view)
+	}
+	// it is not appended to the history transcript, only the command echo is
+	if len(model.transcript) != 1 || model.transcript[0] != "[project]> status" {
+		t.Fatalf("the history transcript should only hold the command echo: %v", model.transcript)
+	}
+
+	// while the modal is open, the prompt input is frozen behind it
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	model = updated.(*promptModel)
+	if model.input.Value() != "" {
+		t.Fatalf("typing is not frozen while the modal is open: %q", model.input.Value())
+	}
+
+	// escape closes the modal and frees the prompt again
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(*promptModel)
+	if model.modal != nil {
+		t.Fatal("escape does not close the result modal")
+	}
+	if strings.Contains(ansi.Strip(model.View().Content), "State: Running") {
+		t.Fatalf("the closed modal is still displayed: %q", model.View().Content)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+	model = updated.(*promptModel)
+	if model.input.Value() != "s" {
+		t.Fatalf("the prompt is not usable after closing the modal: %q", model.input.Value())
 	}
 }

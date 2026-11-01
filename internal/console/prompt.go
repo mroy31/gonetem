@@ -157,7 +157,7 @@ func (p *NetemPrompt) RegisterCommands() {
 		Run:   clientExec(p.Check),
 	}
 	p.commands["clear"] = &NetemCommand{
-		Desc:  "Clear the command and output history displayed above the prompt",
+		Desc:  "Clear the command history displayed below the prompt",
 		Usage: "clear",
 		Args:  []string{},
 		Run:   (*NetemPrompt).Clear,
@@ -226,7 +226,7 @@ func (p *NetemPrompt) RegisterCommands() {
 		Desc:  "Restart a node",
 		Usage: "restart <node_name>",
 		Args:  []string{`^\w+$`},
-		Run:   clientExec(p.Restart),
+		Run:   (*NetemPrompt).Restart,
 	}
 	p.commands["run"] = &NetemCommand{
 		Desc:  "Start the project",
@@ -587,6 +587,16 @@ func (p *NetemPrompt) sendPromptError(message string) {
 	p.program.Send(promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: message})
 }
 
+// queuePromptAlert asks the prompt to display an alert once the command
+// returns: commands run inside the event loop, where a direct Program.Send
+// would deadlock, so the alert travels as a message carried by a pending
+// program command.
+func (p *NetemPrompt) queuePromptAlert(alertType, message string) {
+	p.pendingCmd = func() tea.Msg {
+		return promptAlertMsg{alertType: alertType, alertMsg: message}
+	}
+}
+
 func (p *NetemPrompt) IfState(client proto.NetemClient, cmdArgs []string) error {
 	state, found := map[string]proto.IfState{
 		"up":   proto.IfState_UP,
@@ -621,7 +631,7 @@ func (p *NetemPrompt) Check(client proto.NetemClient, cmdArgs []string) error {
 	if err := ackError("check topology", ack, nil); err != nil {
 		return err
 	}
-	p.queuePromptOutput(color.GreenString("Network is OK\n"))
+	p.queuePromptAlert(bubbleup.InfoKey, "Network is OK")
 	return nil
 }
 
@@ -817,9 +827,30 @@ func (p *NetemPrompt) StopAll(client proto.NetemClient, cmdArgs []string) error 
 	return ackError("stop all nodes", ack, err)
 }
 
-func (p *NetemPrompt) Restart(client proto.NetemClient, cmdArgs []string) error {
-	ack, err := client.NodeRestart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
-	return ackError("restart node", ack, err)
+func (p *NetemPrompt) Restart(cmdArgs []string) error {
+	client, err := NewClient(p.server)
+	if err != nil {
+		return fmt.Errorf("Unable to connect to gonetem server: %v", err)
+	}
+
+	go func() {
+		defer client.Conn.Close()
+		defer p.program.Send(promptBusyMsg{})
+
+		// freeze the prompt input for the whole duration of the node restart
+		p.program.Send(promptBusyMsg{busy: true, message: fmt.Sprintf("Wait while node %s is restarting...", cmdArgs[0])})
+
+		ack, err := client.Client.NodeRestart(context.Background(), &proto.NodeRequest{PrjId: p.prjID, Node: cmdArgs[0]})
+
+		if err = ackError("restart node", ack, err); err != nil {
+			p.sendPromptError(fmt.Sprintf("%v", err))
+			return
+		}
+
+		p.program.Send(promptAlertMsg{alertType: bubbleup.InfoKey, alertMsg: fmt.Sprintf("Node %s has been restarted", cmdArgs[0])})
+	}()
+
+	return nil
 }
 
 func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) error {
@@ -863,8 +894,8 @@ func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) error {
 	return nil
 }
 
-// queuePromptOutput accumulates the command output to display in the TUI
-// transcript, drained by the prompt model once the command returns.
+// queuePromptOutput accumulates the command output to display as a modal
+// on top of the TUI, drained by the prompt model once the command returns.
 func (p *NetemPrompt) queuePromptOutput(output string) {
 	p.pendingOutput = append(p.pendingOutput, output)
 }

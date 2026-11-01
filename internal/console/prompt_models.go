@@ -101,7 +101,14 @@ type promptModel struct {
 	// transcriptToBottom is set when new output, a submission or a clear
 	// asks the transcript view to snap back to its last line
 	transcriptToBottom bool
-	progress           string
+	// modal displays the command result as a bordered box overlaid on the
+	// UI, instead of appending it to the history: the windowed lines, nil
+	// when the modal is closed
+	modal []string
+	// modalVP windows and scrolls the modal content when it does not fit
+	// the screen
+	modalVP  viewport.Model
+	progress string
 	// busy is set while an asynchronous command (run, reload) runs: the
 	// input is frozen and only the transcript keeps scrolling
 	busy bool
@@ -205,6 +212,18 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		return m, nil
 	case tea.MouseWheelMsg:
+		if m.modal != nil {
+			// the wheel scrolls the modal content while it is open
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				m.modalVP.ScrollUp(m.modalVP.MouseWheelDelta)
+				return m, nil
+			case tea.MouseWheelDown:
+				m.modalVP.ScrollDown(m.modalVP.MouseWheelDelta)
+				return m, nil
+			}
+		}
+
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			m.transcriptVP.ScrollUp(m.transcriptVP.MouseWheelDelta)
@@ -222,6 +241,22 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.transcriptVP.PageUp()
 			case "pgdown":
 				m.transcriptVP.PageDown()
+			}
+			return m, nil
+		}
+
+		if m.modal != nil {
+			// while the modal is displayed, it takes the screen: escape
+			// closes it and the page keys scroll its content, the other
+			// keys are ignored until then
+			switch msg.String() {
+			case "esc":
+				m.modal = nil
+				return m, m.input.Focus()
+			case "pgup":
+				m.modalVP.PageUp()
+			case "pgdown":
+				m.modalVP.PageDown()
 			}
 			return m, nil
 		}
@@ -256,7 +291,8 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.result = value
 			if m.onSubmit != nil {
 				m.transcriptToBottom = true
-				if value != "" {
+				if value != "" && value != "quit" && value != "exit" {
+					// record command in history
 					m.transcript = append(m.transcript, m.input.Prompt+value)
 				}
 				done, err := m.onSubmit(value)
@@ -425,15 +461,35 @@ func (m *promptModel) resetInput() {
 	m.updateCompletions()
 }
 
-// drainOutput moves the outputs queued by a command, or by its sub prompt
-// callback, into the transcript.
+// drainOutput displays the outputs queued by a command, or by its sub
+// prompt callback, as a modal on top of the UI, instead of appending them
+// to the history. A new command result replaces the previous modal.
 func (m *promptModel) drainOutput() {
 	if m.takeOutput == nil {
 		return
 	}
+	var lines []string
 	for _, output := range m.takeOutput() {
-		m.appendOutput(output)
+		output = strings.TrimSuffix(output, "\n")
+		if output == "" {
+			continue
+		}
+		lines = append(lines, strings.Split(output, "\n")...)
 	}
+	if len(lines) > 0 {
+		m.openModal(lines)
+	}
+}
+
+// openModal displays the command result lines in the modal box overlaid on
+// the UI, scrolled back to the top, and freezes the prompt input until
+// escape closes it.
+func (m *promptModel) openModal(lines []string) {
+	m.modal = lines
+	m.modalVP = viewport.New()
+	// long result lines soft wrap in the modal viewport instead of
+	// overflowing the box
+	m.modalVP.SoftWrap = true
 }
 
 func (m *promptModel) updateCompletions() {
@@ -542,6 +598,11 @@ func (m *promptModel) View() tea.View {
 	lines = append(lines, banner)
 	lines = append(lines, indicatorLines...)
 	lines = append(lines, transcript...)
+	if m.modal != nil && m.width <= 0 {
+		// the terminal size is still unknown: the modal cannot be centered
+		// and overlaid, display its lines unwindowed below the transcript
+		lines = append(lines, m.modal...)
+	}
 	if m.height > 0 {
 		// the history area fills the screen, keeping the footer on the last
 		// line of the terminal
@@ -553,13 +614,18 @@ func (m *promptModel) View() tea.View {
 		lines = append(lines, footer)
 	}
 
-	// when an alert is displayed, pad all lines to the terminal width before
-	// the overlay: bubbleup centers each alert row against the content line
-	// below it and, when that line is shorter than the centering offset,
-	// pastes the row at column 0, which tears the alert box apart at center
-	// positions. uniform line widths keep the box whole.
-	if m.alert.HasActiveAlert() && m.width > 0 {
+	// when an alert or the command result modal is displayed, pad all lines
+	// to the terminal width before the overlays: bubbleup centers each
+	// alert row against the content line below it and, when that line is
+	// shorter than the centering offset, pastes the row at column 0, which
+	// tears the alert box apart at center positions. the modal splice keeps
+	// both sides of every row it pastes over. uniform line widths keep both
+	// boxes whole.
+	if (m.alert.HasActiveAlert() || m.modal != nil) && m.width > 0 {
 		lines = padLinesWidth(lines, m.width)
+	}
+	if m.modal != nil && m.width > 0 && m.height > 0 && !m.done {
+		lines = m.overlayModal(lines)
 	}
 	content := strings.Join(lines, "\n")
 	view := tea.NewView(m.alert.Render(content))
@@ -590,6 +656,63 @@ func padLinesWidth(lines []string, width int) []string {
 		}
 	}
 	return padded
+}
+
+// modalBorderCells is the number of columns and rows a modal box spends for
+// its border and horizontal padding, beyond its content area, and
+// modalHintLines the one hint line displayed below the box.
+const (
+	modalBorderCells = 4
+	modalHintLines   = 1
+)
+
+// overlayModal centers the command result box at the middle of the screen
+// and splices its rows, and the hint line below them, into the padded
+// content lines, keeping the styling of the lines outside of the box.
+func (m *promptModel) overlayModal(lines []string) []string {
+	widest := 0
+	for _, line := range m.modal {
+		if width := ansi.StringWidth(line); width > widest {
+			widest = width
+		}
+	}
+	contentWidth := min(widest, m.width-modalBorderCells)
+	contentHeight := min(len(m.modal),
+		max(1, m.height-modalBorderCells-modalHintLines))
+
+	vp := &m.modalVP
+	vp.SetWidth(contentWidth)
+	vp.SetHeight(contentHeight)
+	// the copy keeps the modal lines safe from the in place line splitting
+	// the viewport applies on multi line entries
+	vp.SetContentLines(append([]string(nil), m.modal...))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(0, 1).
+		Width(contentWidth + modalBorderCells).
+		Height(contentHeight + 2).
+		Render(vp.View())
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
+		Width(contentWidth + modalBorderCells).Align(lipgloss.Center).
+		Render("esc close   pgup/pgdown scroll")
+
+	x := max(0, (m.width-contentWidth-modalBorderCells)/2)
+	y := max(0, (len(lines)-contentHeight-2-modalHintLines)/2)
+	splice := func(row string, at int) {
+		if at >= len(lines) {
+			return
+		}
+		left := ansi.Truncate(lines[at], x, "")
+		right := ansi.TruncateLeft(lines[at], x+ansi.StringWidth(row), "")
+		lines[at] = left + row + right
+	}
+	for i, row := range strings.Split(box, "\n") {
+		splice(row, y+i)
+	}
+	splice(hint, y+contentHeight+2)
+	return lines
 }
 
 // centerText pads the text with spaces so it is displayed centered in a
