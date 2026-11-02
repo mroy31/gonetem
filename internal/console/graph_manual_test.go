@@ -122,8 +122,6 @@ func TestTopoView_SugiyamaLayout(t *testing.T) {
 	}
 }
 
-
-
 func TestTopoView_SugiyamaMulticast(t *testing.T) {
 	data, err := os.ReadFile("../../networks/multicast_network.yml")
 	if err != nil {
@@ -171,7 +169,7 @@ func TestGraphCanvas_LabelsNeverMirrored(t *testing.T) {
 	for x := 2; x <= 10; x++ {
 		c.setLink(x, 0, '─', nil)
 	}
-	c.placeLabel([]topoPoint{{x: 10, y: 0}, {x: 2, y: 0}}, true, "10", nil)
+	c.placeLabel([]graphPoint{{x: 10, y: 0}, {x: 2, y: 0}}, true, "10", nil)
 	var horiz strings.Builder
 	for x := 0; x < c.width; x++ {
 		horiz.WriteRune(firstRune(c.at(x, 0)))
@@ -183,7 +181,7 @@ func TestGraphCanvas_LabelsNeverMirrored(t *testing.T) {
 	for y := 1; y <= 5; y++ {
 		c.setLink(0, y, '│', nil)
 	}
-	c.placeLabel([]topoPoint{{x: 0, y: 5}, {x: 0, y: 1}}, true, "10", nil)
+	c.placeLabel([]graphPoint{{x: 0, y: 5}, {x: 0, y: 1}}, true, "10", nil)
 	var vert strings.Builder
 	for y := 0; y < c.height; y++ {
 		vert.WriteRune(firstRune(c.at(0, y)))

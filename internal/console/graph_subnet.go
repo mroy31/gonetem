@@ -18,7 +18,7 @@ func isSwitch(typ string) bool { return typ == "ovs" || strings.HasPrefix(typ, "
 // name.
 type subnet struct {
 	name  string
-	nodes []*topoGraphNode
+	nodes []*graphNode
 }
 
 // subnets returns the distinct subnet clusters of the graph. Each switch
@@ -26,15 +26,15 @@ type subnet struct {
 // node attached to several switches belongs to several subnets. Nodes not
 // attached to any switch form a singleton "misc" subnet so the whole graph
 // is covered. Clusters are ordered deterministically by switch name.
-func (g *topoGraph) subnets() []*subnet {
+func (g *graph) subnets() []*subnet {
 	// member: nodes belonging to at least one switch subnet
-	member := map[*topoGraphNode]bool{}
+	member := map[*graphNode]bool{}
 	bySwitch := map[string]*subnet{}
 	for _, n := range g.nodes {
 		if !isSwitch(n.typ) {
 			continue
 		}
-		s := &subnet{name: n.name, nodes: []*topoGraphNode{n}}
+		s := &subnet{name: n.name, nodes: []*graphNode{n}}
 		bySwitch[n.name] = s
 		for _, nb := range g.neighbors(n) {
 			member[nb] = true
@@ -48,7 +48,7 @@ func (g *topoGraph) subnets() []*subnet {
 	}
 
 	// singleton subnet for the nodes of no switch subnet
-	var misc []*topoGraphNode
+	var misc []*graphNode
 	for _, n := range g.nodes {
 		if !member[n] {
 			misc = append(misc, n)
@@ -63,13 +63,13 @@ func (g *topoGraph) subnets() []*subnet {
 
 // subnetMap returns a deterministic ordered list of subnet names plus a
 // lookup from node to the sorted names of every subnet it belongs to.
-func (g *topoGraph) subnetMap() ([]string, map[*topoGraphNode][]string) {
+func (g *graph) subnetMap() ([]string, map[*graphNode][]string) {
 	subs := g.subnets()
 	names := make([]string, 0, len(subs))
 	for _, s := range subs {
 		names = append(names, s.name)
 	}
-	byName := make(map[*topoGraphNode][]string, len(g.nodes))
+	byName := make(map[*graphNode][]string, len(g.nodes))
 	for _, s := range subs {
 		for _, n := range s.nodes {
 			byName[n] = append(byName[n], s.name)
@@ -82,7 +82,7 @@ func (g *topoGraph) subnetMap() ([]string, map[*topoGraphNode][]string) {
 }
 
 // shareSubnet reports whether two distinct nodes belong to a common subnet.
-func shareSubnet(a, b *topoGraphNode, byName map[*topoGraphNode][]string) bool {
+func shareSubnet(a, b *graphNode, byName map[*graphNode][]string) bool {
 	for _, sa := range byName[a] {
 		for _, sb := range byName[b] {
 			if sa == sb {
@@ -96,7 +96,7 @@ func shareSubnet(a, b *topoGraphNode, byName map[*topoGraphNode][]string) bool {
 // firstSubnet returns the deterministically ordered first subnet a node
 // belongs to, or "" if it belongs to none (should not happen since every
 // node is covered by subnets()).
-func firstSubnet(n *topoGraphNode, byName map[*topoGraphNode][]string) string {
+func firstSubnet(n *graphNode, byName map[*graphNode][]string) string {
 	if ns := byName[n]; len(ns) > 0 {
 		return ns[0]
 	}
@@ -108,12 +108,12 @@ func firstSubnet(n *topoGraphNode, byName map[*topoGraphNode][]string) string {
 // of each subnet it belongs to by a fraction `strength` of the separation
 // from that centre. Multi-homed nodes are pulled toward all their subnets
 // and naturally settle in between, acting as bridges.
-func (g *topoGraph) pullSubnets(pos map[*topoGraphNode][2]float64, strength float64) {
+func (g *graph) pullSubnets(pos map[*graphNode][2]float64, strength float64) {
 	subs := g.subnets()
 	if len(subs) < 2 {
 		return
 	}
-	delta := make(map[*topoGraphNode][2]float64, len(g.nodes))
+	delta := make(map[*graphNode][2]float64, len(g.nodes))
 	for _, s := range subs {
 		if len(s.nodes) < 2 {
 			continue

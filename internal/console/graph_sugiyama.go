@@ -18,7 +18,7 @@ import (
 // towards the mean x of their neighbours, and components are placed side
 // by side. Links use short orthogonal routes through the gap rows
 // between layers.
-func (g *topoGraph) layoutSugiyama() {
+func (g *graph) layoutSugiyama() {
 	if len(g.nodes) == 0 {
 		return
 	}
@@ -46,7 +46,7 @@ func (g *topoGraph) layoutSugiyama() {
 
 // sugiyamaComponent lays out one connected component with its cells
 // starting at column xOff and returns its width in cells.
-func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff int) int {
+func (g *graph) sugiyamaComponent(comp []*graphNode, cellW, cellH, xOff int) int {
 	// root: highest degree, deterministic tie-break on name, unless the
 	// user pinned a specific node at the top with the root picker
 	root := comp[0]
@@ -66,8 +66,8 @@ func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff 
 	}
 
 	// BFS layering: depth from the root
-	depth := map[*topoGraphNode]int{root: 0}
-	queue := []*topoGraphNode{root}
+	depth := map[*graphNode]int{root: 0}
+	queue := []*graphNode{root}
 	maxDepth := 0
 	for len(queue) > 0 {
 		cur := queue[0]
@@ -82,13 +82,13 @@ func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff 
 			}
 		}
 	}
-	layers := make([][]*topoGraphNode, maxDepth+1)
+	layers := make([][]*graphNode, maxDepth+1)
 	for _, n := range comp {
 		layers[depth[n]] = append(layers[depth[n]], n)
 	}
 
 	// order index per node (deterministic within layers)
-	pos := map[*topoGraphNode]float64{}
+	pos := map[*graphNode]float64{}
 	reindex := func() {
 		for _, layer := range layers {
 			for i, n := range layer {
@@ -101,12 +101,12 @@ func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff 
 	// barycenter crossing reduction: alternate down/up sweeps ordering
 	// each layer by the mean position of its neighbours in the reference
 	// layer (ties keep the current order, then break on name)
-	sortByBary := func(layer, ref []*topoGraphNode) {
-		refSet := make(map[*topoGraphNode]bool, len(ref))
+	sortByBary := func(layer, ref []*graphNode) {
+		refSet := make(map[*graphNode]bool, len(ref))
 		for _, r := range ref {
 			refSet[r] = true
 		}
-		key := make(map[*topoGraphNode]float64, len(layer))
+		key := make(map[*graphNode]float64, len(layer))
 		for _, n := range layer {
 			sum, count := 0.0, 0
 			for _, nb := range g.neighbors(n) {
@@ -141,14 +141,14 @@ func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff 
 	// straighten x: start from the order index and pull each node to the
 	// mean x of its upper (then up-pass: lower) neighbours while keeping
 	// the layer order and at least one cell of horizontal spacing
-	x := map[*topoGraphNode]float64{}
+	x := map[*graphNode]float64{}
 	for _, layer := range layers {
 		for i, n := range layer {
 			x[n] = float64(i)
 		}
 	}
-	straighten := func(layer, ref []*topoGraphNode, forward bool) {
-		refSet := make(map[*topoGraphNode]bool, len(ref))
+	straighten := func(layer, ref []*graphNode, forward bool) {
+		refSet := make(map[*graphNode]bool, len(ref))
 		for _, r := range ref {
 			refSet[r] = true
 		}
@@ -253,11 +253,11 @@ func (g *topoGraph) sugiyamaComponent(comp []*topoGraphNode, cellW, cellH, xOff 
 // (topY+4, +5, +6) whose already-reserved intervals leave its span free.
 // When every row would overlap, the row with the smallest overlap is kept so
 // the layout stays deterministic.
-func (g *topoGraph) assignGapRows() {
+func (g *graph) assignGapRows() {
 	type gapLink struct {
-		link       *topoGraphLink
-		topY, loX  int
-		hiX        int
+		link      *graphLink
+		topY, loX int
+		hiX       int
 	}
 	groups := map[int][]*gapLink{}
 	var tops []int
@@ -327,7 +327,7 @@ func (g *topoGraph) assignGapRows() {
 // free for the interface labels, painted on the stub right next to each
 // node's own border. The attachment arms and points come from
 // assignLinkIndices, where north and south borders are spread separately.
-func routeHierarchical(l *topoGraphLink) {
+func routeHierarchical(l *graphLink) {
 	xA := attachPointX(l.a, l.indexA, l.degreeA)
 	xB := attachPointX(l.b, l.indexB, l.degreeB)
 
@@ -338,20 +338,20 @@ func routeHierarchical(l *topoGraphLink) {
 	}
 	row := l.row
 
-	var pts []topoPoint
+	var pts []graphPoint
 	if armA == armS {
-		pts = addPt(pts, topoPoint{xA, topY + 2}) // south border
+		pts = addPt(pts, graphPoint{xA, topY + 2}) // south border
 	} else {
-		pts = addPt(pts, topoPoint{xA, topY + 7}) // north border of the lower frame
+		pts = addPt(pts, graphPoint{xA, topY + 7}) // north border of the lower frame
 	}
 	if xA != xB {
-		pts = addPt(pts, topoPoint{xA, row})
-		pts = addPt(pts, topoPoint{xB, row})
+		pts = addPt(pts, graphPoint{xA, row})
+		pts = addPt(pts, graphPoint{xB, row})
 	}
 	if armB == armS {
-		pts = addPt(pts, topoPoint{xB, topY + 2}) // south border
+		pts = addPt(pts, graphPoint{xB, topY + 2}) // south border
 	} else {
-		pts = addPt(pts, topoPoint{xB, topY + 7}) // north border of the lower frame
+		pts = addPt(pts, graphPoint{xB, topY + 7}) // north border of the lower frame
 	}
 	l.pts = pts
 	l.armA, l.armB = armA, armB
@@ -360,7 +360,7 @@ func routeHierarchical(l *topoGraphLink) {
 // sideArms returns the frame sides a link attaches to on each of its
 // endpoints: links between layers leave the upper frame south and enter the
 // lower frame north; flat links (same layer) leave both frames south.
-func sideArms(a, b *topoGraphNode) (int, int) {
+func sideArms(a, b *graphNode) (int, int) {
 	switch {
 	case a.y == b.y:
 		return armS, armS
@@ -376,9 +376,9 @@ func sideArms(a, b *topoGraphNode) (int, int) {
 // are numbered independently: a link entering the top of a node never
 // competes for attachment slots with links leaving its bottom, so each
 // border can spread its own links across the full frame width.
-func (g *topoGraph) assignLinkIndices() {
-	southDeg := map[*topoGraphNode]int{}
-	northDeg := map[*topoGraphNode]int{}
+func (g *graph) assignLinkIndices() {
+	southDeg := map[*graphNode]int{}
+	northDeg := map[*graphNode]int{}
 	for i := range g.links {
 		l := &g.links[i]
 		l.armA, l.armB = sideArms(l.a, l.b)
@@ -394,8 +394,8 @@ func (g *topoGraph) assignLinkIndices() {
 		}
 	}
 
-	southIdx := map[*topoGraphNode]int{}
-	northIdx := map[*topoGraphNode]int{}
+	southIdx := map[*graphNode]int{}
+	northIdx := map[*graphNode]int{}
 	for i := range g.links {
 		l := &g.links[i]
 		if l.armA == armS {
@@ -420,7 +420,7 @@ func (g *topoGraph) assignLinkIndices() {
 // connected to that node: a single link uses the frame centre, two links
 // spread to the inner edges, and denser nodes distribute proportionally
 // across the frame width.
-func attachPointX(n *topoGraphNode, index, degree int) int {
+func attachPointX(n *graphNode, index, degree int) int {
 	left := n.x
 	right := n.x + n.w() - 1
 	if degree <= 1 {

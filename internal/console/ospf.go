@@ -88,13 +88,13 @@ func ospfSubnet(addr string, maskLen int) string {
 	return prefix.Masked().String()
 }
 
-// buildOspfGraph turns the two FRR database JSON documents into a topoGraph:
+// buildOspfGraph turns the two FRR database JSON documents into a graph:
 // router vertices labeled by router-id, transit network vertices labeled by
 // subnet prefix, point-to-point adjacencies as direct router edges, costs as
 // router-side edge labels. All areas merge into one graph — a router-id
 // appearing in several areas yields a single shared vertex — and the
 // queried router is pinned as layout root.
-func buildOspfGraph(routerDBJson, networkDBJson []byte) (*topoGraph, error) {
+func buildOspfGraph(routerDBJson, networkDBJson []byte) (*graph, error) {
 	routerId, err := ospfRouterId(routerDBJson)
 	if err != nil {
 		return nil, err
@@ -109,13 +109,13 @@ func buildOspfGraph(routerDBJson, networkDBJson []byte) (*topoGraph, error) {
 		return nil, fmt.Errorf("unable to parse OSPF network database: %w", err)
 	}
 
-	g := &topoGraph{}
-	byName := make(map[string]*topoGraphNode)
-	vertex := func(name, typ string) *topoGraphNode {
+	g := &graph{}
+	byName := make(map[string]*graphNode)
+	vertex := func(name, typ string) *graphNode {
 		if n, ok := byName[name]; ok {
 			return n
 		}
-		n := &topoGraphNode{name: name, typ: typ}
+		n := &graphNode{name: name, typ: typ}
 		byName[name] = n
 		g.nodes = append(g.nodes, n)
 		return n
@@ -172,7 +172,7 @@ func buildOspfGraph(routerDBJson, networkDBJson []byte) (*topoGraph, error) {
 						continue
 					}
 					transitSeen[key] = true
-					g.links = append(g.links, topoGraphLink{a: owner, b: net, ia: cost, ib: "", labelBeside: true})
+					g.links = append(g.links, graphLink{a: owner, b: net, ia: cost, ib: "", labelBeside: true})
 
 				case strings.HasPrefix(link.LinkType, "another Router"):
 					if link.NeighborRouterId == "" {
@@ -192,7 +192,7 @@ func buildOspfGraph(routerDBJson, networkDBJson []byte) (*topoGraph, error) {
 						continue
 					}
 					p2pSeen[key] = true
-					g.links = append(g.links, topoGraphLink{
+					g.links = append(g.links, graphLink{
 						a: owner, b: neighbor,
 						ia: cost, ib: link.RouterInterfaceAddress,
 						labelBeside: true,
@@ -235,14 +235,14 @@ func OspfAreaViewText(routerDBJson, networkDBJson []byte) (string, error) {
  * OSPF graph viewer
  *********************************/
 
-// ospfTopoView adapts the shared graph viewer to the OSPF area view: the
+// ospfView adapts the shared graph viewer to the OSPF area view: the
 // root stays pinned to the queried router (r is inert), and the header
 // names vertices by their protocol role with the link costs.
-func ospfTopoView() topoViewConfig {
-	return topoViewConfig{
+func ospfView() graphViewConfig {
+	return graphViewConfig{
 		rootPicker: false,
 		status:     "↑↓←→ scroll   tab/n/p next vertex   q quit",
-		detail: func(n *topoGraphNode, g *topoGraph) string {
+		detail: func(n *graphNode, g *graph) string {
 			role := "Router"
 			if n.typ == "ospf.transit" {
 				role = "Transit network"
@@ -265,14 +265,14 @@ func ospfTopoView() topoViewConfig {
 	}
 }
 
-// newOspfTopoModel builds the area view model from the two database JSON
+// newOspfModel builds the area view model from the two database JSON
 // documents of a router.
-func newOspfTopoModel(routerDBJson, networkDBJson []byte) (*topoModel, error) {
+func newOspfModel(routerDBJson, networkDBJson []byte) (*graphModel, error) {
 	g, err := buildOspfGraph(routerDBJson, networkDBJson)
 	if err != nil {
 		return nil, err
 	}
-	return newPlacedTopoModel(g, ospfTopoView()), nil
+	return newPlacedGraphModel(g, ospfView()), nil
 }
 
 // ospfExec is the console command implementation: the target must exist in
@@ -304,12 +304,12 @@ func (p *NetemPrompt) ospfExec(client proto.NetemClient, cmdArgs []string) error
 		return fmt.Errorf("Node %s: type %s does not run OSPF", nodeName, typ)
 	}
 
-	return ospfTopoExec(p, client, nodeName)
+	return ospfViewExec(p, client, nodeName)
 }
 
-// ospfTopoExec fetches the router and network link-state databases from the
+// ospfViewExec fetches the router and network link-state databases from the
 // node with one-shot execs and opens the area view.
-func ospfTopoExec(p *NetemPrompt, client proto.NetemClient, nodeName string) error {
+func ospfViewExec(p *NetemPrompt, client proto.NetemClient, nodeName string) error {
 	ctx := p.getCancelContext()
 	fetch := func(db string) ([]byte, error) {
 		res, err := client.NodeExecOnce(ctx, &proto.NodeExecOnceRequest{
@@ -340,19 +340,19 @@ func ospfTopoExec(p *NetemPrompt, client proto.NetemClient, nodeName string) err
 // runOspfView builds and runs the OSPF area view, handing over the terminal
 // from the console TUI the same way the topology view does.
 func runOspfView(p *NetemPrompt, routerJson, networkJson []byte) error {
-	model, err := newOspfTopoModel(routerJson, networkJson)
+	model, err := newOspfModel(routerJson, networkJson)
 	if err != nil {
 		return err
 	}
 	if p.program == nil {
-		return runTopoModel(model)
+		return runGraphModel(model)
 	}
 	program := p.program
 	p.pendingCmd = func() tea.Msg {
 		if err := program.ReleaseTerminal(); err != nil {
 			return promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: fmt.Sprintf("Unable to release terminal: %v", err)}
 		}
-		viewErr := runTopoModel(model)
+		viewErr := runGraphModel(model)
 		if err := program.RestoreTerminal(); err != nil {
 			return promptAlertMsg{alertType: bubbleup.ErrorKey, alertMsg: fmt.Sprintf("Unable to restore terminal: %v", err)}
 		}

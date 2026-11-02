@@ -162,8 +162,8 @@ func TestOspfVertexColorsAndLegend(t *testing.T) {
 		t.Errorf("ospf.transit color = %v, want %v", got, want)
 	}
 
-	g := &topoGraph{
-		nodes: []*topoGraphNode{
+	g := &graph{
+		nodes: []*graphNode{
 			{name: "1.1.1.1", typ: "ospf.router"},
 			{name: "10.0.12.0/24", typ: "ospf.transit"},
 		},
@@ -174,7 +174,7 @@ func TestOspfVertexColorsAndLegend(t *testing.T) {
 	}
 }
 
-// ---- 3.2 database JSON to topoGraph ----
+// ---- 3.2 database JSON to graph ----
 
 func TestBuildOspfGraph_AbrFixtures(t *testing.T) {
 	g, err := buildOspfGraph(
@@ -387,7 +387,7 @@ func TestOspfAreaViewText_Readable(t *testing.T) {
 }
 
 func TestOspfView_RootPickerInert(t *testing.T) {
-	model, err := newOspfTopoModel(
+	model, err := newOspfModel(
 		readFixture(t, "ospf_abr_lsdb_router.json"),
 		readFixture(t, "ospf_abr_lsdb_network.json"))
 	if err != nil {
@@ -402,7 +402,7 @@ func TestOspfView_RootPickerInert(t *testing.T) {
 	}
 }
 
-func nodeNames(g *topoGraph) []string {
+func nodeNames(g *graph) []string {
 	out := make([]string, 0, len(g.nodes))
 	for _, n := range g.nodes {
 		out = append(out, n.name)
@@ -410,7 +410,7 @@ func nodeNames(g *topoGraph) []string {
 	return out
 }
 
-func linkKeys(g *topoGraph) string {
+func linkKeys(g *graph) string {
 	var b strings.Builder
 	for _, l := range g.links {
 		b.WriteString(l.a.name + "|" + l.b.name + "|" + l.ia + "|" + l.ib + ";")
