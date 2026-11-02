@@ -611,7 +611,14 @@ func makeLabelSeg(a, b topoPoint) labelSeg {
 
 func (c *graphCanvas) paintLabel(s labelSeg, start int, rText []rune, col color.Color) {
 	style := lipgloss.NewStyle().Foreground(col).Italic(true)
+	// A segment walked leftward or upward would mirror the text on screen
+	// ("10" reading as "01"): emit the runes in reverse so they always read
+	// left-to-right / top-to-bottom.
+	backward := s.dx < 0 || s.dy < 0
 	for k, r := range rText {
+		if backward {
+			r = rText[len(rText)-1-k]
+		}
 		cx, cy := s.x+s.dx*(start+k), s.y+s.dy*(start+k)
 		if cx < 0 || cy < 0 || cx >= c.width || cy >= c.height {
 			return

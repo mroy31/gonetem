@@ -166,6 +166,33 @@ func TestTopoView_SugiyamaMulticast(t *testing.T) {
 	}
 }
 
+func TestGraphCanvas_LabelsNeverMirrored(t *testing.T) {
+	c := newGraphCanvas(12, 6)
+	for x := 2; x <= 10; x++ {
+		c.setLink(x, 0, '─', nil)
+	}
+	c.placeLabel([]topoPoint{{x: 10, y: 0}, {x: 2, y: 0}}, true, "10", nil)
+	var horiz strings.Builder
+	for x := 0; x < c.width; x++ {
+		horiz.WriteRune(firstRune(c.at(x, 0)))
+	}
+	if !strings.Contains(horiz.String(), "10") || strings.Contains(horiz.String(), "01") {
+		t.Fatalf("leftward label mirrored, row reads %q", horiz.String())
+	}
+
+	for y := 1; y <= 5; y++ {
+		c.setLink(0, y, '│', nil)
+	}
+	c.placeLabel([]topoPoint{{x: 0, y: 5}, {x: 0, y: 1}}, true, "10", nil)
+	var vert strings.Builder
+	for y := 0; y < c.height; y++ {
+		vert.WriteRune(firstRune(c.at(0, y)))
+	}
+	if !strings.Contains(vert.String(), "10") || strings.Contains(vert.String(), "01") {
+		t.Fatalf("upward label mirrored, column reads %q", vert.String())
+	}
+}
+
 func TestTopoView_RootPickerModal(t *testing.T) {
 	model, err := newTopoModel([]byte(sampleTopologyYAML))
 	if err != nil {
