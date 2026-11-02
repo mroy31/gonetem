@@ -93,6 +93,7 @@ type INetemNode interface {
 	ConfigureInterfaces() error
 	LoadConfig(confPath string, timeout int) ([]string, error)
 	ExecCommand(cmd []string, in io.ReadCloser, out io.Writer, tty bool, ttyHeight uint, ttyWidth uint, resizeCh chan term.Winsize) error
+	ExecOnce(cmd []string) (stdout []byte, stderr []byte, exitCode int, err error)
 	GetConsoleCmd(shell bool) ([]string, error)
 	Capture(ifIndex int, out io.Writer) error
 	CopyFrom(srcPath, destPath string) error

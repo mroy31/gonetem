@@ -41,6 +41,7 @@ service Netem {
     rpc NodeCopyTo(stream CopyMsg) returns (AckResponse) {}
     rpc NodeGetConsoleCmd(ConsoleCmdRequest) returns (ConsoleCmdResponse) {}
     rpc NodeExec(stream ExecCltMsg) returns (stream ExecSrvMsg) {}
+    rpc NodeExecOnce(NodeExecOnceRequest) returns (ExecOnceResponse) {}
 
     // Link actions
     rpc LinkUpdate(LinkRequest) returns (AckResponse) {}
@@ -222,6 +223,12 @@ message NodeRequest {
     string node = 2;
 }
 
+message NodeExecOnceRequest {
+    string prjId = 1;
+    string node = 2;
+    repeated string cmd = 3;
+}
+
 message ConsoleCmdRequest {
     string prjId = 1;
     string node = 2;
@@ -266,6 +273,13 @@ message VersionResponse {
 message ConsoleCmdResponse {
     Status status = 1;
     repeated string cmd = 2;
+}
+
+message ExecOnceResponse {
+    Status status = 1;
+    bytes stdout = 2;
+    int32 exitCode = 3;
+    bytes stderr = 4;
 }
 
 message StatusResponse {

@@ -307,6 +307,23 @@ func (n *DockerNode) ExecCommand(
 		resizeCh)
 }
 
+func (n *DockerNode) ExecOnce(cmd []string) ([]byte, []byte, int, error) {
+	if !n.Running {
+		return nil, nil, 0, errors.New("not running")
+	}
+
+	client, err := NewDockerClient()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer client.Close()
+
+	return client.ExecExit(
+		context.Background(),
+		n.ID,
+		cmd)
+}
+
 func (n *DockerNode) GetConsoleCmd(shell bool) ([]string, error) {
 	cmd := n.Config.Commands.Console
 	if shell {

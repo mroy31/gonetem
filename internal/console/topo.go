@@ -44,6 +44,11 @@ type topoGraphLink struct {
 	a, b   *topoGraphNode
 	ia, ib string // interface names, e.g. "R1.2" -> "2"
 
+	// labelBeside paints the end labels horizontally beside the frame
+	// instead of along the first segment: multi-character labels (link
+	// costs, interface IPs) stay readable on short segments.
+	labelBeside bool
+
 	// route computed by the layout: waypoints of the orthogonal path,
 	// starting next to a's frame and ending next to b's frame, plus the
 	// frame sides (arm bitmask) where the path attaches.
@@ -673,9 +678,54 @@ func (c *graphCanvas) drawRoute(l *topoGraphLink, col color.Color) {
 	}
 
 	if len(pts) > 1 {
-		c.placeLabel(pts, true, l.ia, col)
-		c.placeLabel(pts, false, l.ib, col)
+		if l.labelBeside {
+			c.placeLabelBeside(pts, true, l.ia, col)
+			c.placeLabelBeside(pts, false, l.ib, col)
+		} else {
+			c.placeLabel(pts, true, l.ia, col)
+			c.placeLabel(pts, false, l.ib, col)
+		}
 	}
+}
+
+// placeLabelBeside paints a label horizontally on the anchor end's row,
+// starting next to the node frame: rightward if the space is free, then
+// leftward; it falls back to along-segment placement as a last resort.
+// Node content is never overwritten.
+func (c *graphCanvas) placeLabelBeside(pts []topoPoint, fromEnd bool, text string, col color.Color) {
+	if text == "" || len(pts) < 2 {
+		return
+	}
+	rText := []rune(text)
+	anchor := pts[0]
+	if !fromEnd {
+		anchor = pts[len(pts)-1]
+	}
+	free := func(x0, dx int) bool {
+		for k := range len(rText) {
+			x, y := x0+dx*k, anchor.y
+			if x < 0 || y < 0 || x >= c.width || y >= c.height {
+				return false
+			}
+			cell := &c.cells[y][x]
+			if cell.s != " " && !cell.link {
+				return false
+			}
+		}
+		return true
+	}
+	if free(anchor.x+2, 1) {
+		c.paintLabel(labelSeg{x: anchor.x, y: anchor.y, dx: 1, n: c.width}, 2, rText, col)
+		return
+	}
+	if free(anchor.x-2, -1) {
+		// paint left-to-right from the start of the left run so the text
+		// never mirrors
+		c.paintLabel(labelSeg{x: anchor.x - 1 - len(rText), y: anchor.y, dx: 1,
+			n: len(rText) + 1}, 0, rText, col)
+		return
+	}
+	c.placeLabel(pts, fromEnd, text, col)
 }
 
 // drawNode paints a node as a framed box, e.g.
@@ -805,7 +855,11 @@ func nodeColor(typ string) color.Color {
 		return lipgloss.Color("4") // blue
 	case strings.HasPrefix(typ, "docker.host"):
 		return lipgloss.Color("2") // green
+	case strings.HasPrefix(typ, "ospf.router"):
+		return lipgloss.Color("4") // blue
 	case typ == "ovs" || strings.HasPrefix(typ, "ovs"):
+		return lipgloss.Color("3") // yellow
+	case strings.HasPrefix(typ, "ospf.transit"):
 		return lipgloss.Color("3") // yellow
 	default:
 		return lipgloss.Color("6") // cyan
@@ -930,6 +984,29 @@ func (c *graphCanvas) window(offsetX, offsetY, viewW, viewH int) []string {
  * Bubble Tea model
  *********************************/
 
+// topoViewConfig adapts the interactive graph viewer to a data source:
+// the detail header line, the key-hint status line, and whether the r key
+// may re-pin the layout root (the OSPF view has a pinned root by design).
+type topoViewConfig struct {
+	rootPicker bool
+	status     string
+	detail     func(n *topoGraphNode, g *topoGraph) string
+}
+
+func defaultTopoView() topoViewConfig {
+	return topoViewConfig{
+		rootPicker: true,
+		status:     "↑↓←→ scroll   tab/n/p next node   r top node   q quit",
+		detail: func(n *topoGraphNode, g *topoGraph) string {
+			detail := "Node " + n.name + "  [" + n.typ + "]"
+			if nLinks := g.linksOf(n); nLinks != "" {
+				detail += "  ·  " + nLinks
+			}
+			return detail
+		},
+	}
+}
+
 // topoModel presents the network topology as an interactive graph.
 type topoModel struct {
 	graph   *topoGraph
@@ -940,10 +1017,23 @@ type topoModel struct {
 	offsetY int
 	sel     int // index into graph.nodes
 
+	view topoViewConfig
+
 	// root picker modal, opened with r: choose the node placed at the
 	// top of the hierarchy
 	rootPickerOpen bool
 	pickerIdx      int // cursor in the node list
+}
+
+// newPlacedTopoModel takes an already built graph and its view config and
+// prepares the first render.
+func newPlacedTopoModel(g *topoGraph, view topoViewConfig) *topoModel {
+	m := &topoModel{graph: g, view: view}
+	if len(g.nodes) > 0 {
+		g.nodes[0].selected = true
+	}
+	m.canvas = renderGraph(g)
+	return m
 }
 
 func newTopoModel(data []byte) (*topoModel, error) {
@@ -951,12 +1041,7 @@ func newTopoModel(data []byte) (*topoModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &topoModel{graph: g}
-	if len(g.nodes) > 0 {
-		g.nodes[0].selected = true
-	}
-	m.canvas = renderGraph(g)
-	return m, nil
+	return newPlacedTopoModel(g, defaultTopoView()), nil
 }
 
 func (m *topoModel) Init() tea.Cmd { return nil }
@@ -992,7 +1077,9 @@ func (m *topoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveSelection(-1)
 			m.canvas = renderGraph(m.graph)
 		case "r":
-			m.openRootPicker()
+			if m.view.rootPicker {
+				m.openRootPicker()
+			}
 		}
 	}
 	return m, nil
@@ -1128,17 +1215,14 @@ func (m *topoModel) View() tea.View {
 	}
 
 	node := m.graph.nodes[m.sel]
-	detail := "Node " + node.name + "  [" + node.typ + "]"
-	if nLinks := m.graph.linksOf(node); nLinks != "" {
-		detail += "  ·  " + nLinks
-	}
+	detail := m.view.detail(node, m.graph)
 	if utf8.RuneCountInString(detail) > m.width {
 		detail = string([]rune(detail)[:m.width-1]) + "…"
 	}
 	detail = strings.Replace(detail, node.name,
 		lipgloss.NewStyle().Bold(true).Foreground(nodeColor(node.typ)).Render(node.name), 1)
 
-	status := fmt.Sprintf("↑↓←→ scroll   tab/n/p next node   r top node   q quit")
+	status := m.view.status
 
 	// the root picker modal is stamped over the canvas, centred in the
 	// visible viewport
@@ -1177,8 +1261,14 @@ func runTopoView(data []byte) error {
 	if err != nil {
 		return err
 	}
+	return runTopoModel(model)
+}
+
+// runTopoModel runs any configured graph viewer (topology or OSPF) as a
+// nested program in the alternate screen buffer.
+func runTopoModel(model *topoModel) error {
 	p := tea.NewProgram(model)
-	_, err = p.Run()
+	_, err := p.Run()
 	return err
 }
 

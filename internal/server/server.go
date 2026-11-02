@@ -875,6 +875,41 @@ func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
 	return g.Wait()
 }
 
+// NodeExecOnce runs a command on a running node without a tty and without
+// interactive input, returning its captured stdout and exit status. A
+// non-zero exit status is delivered as response data, not as a failure:
+// callers need the command's output even when it failed inside the node.
+func (s *netemServer) NodeExecOnce(ctx context.Context, request *proto.NodeExecOnceRequest) (*proto.ExecOnceResponse, error) {
+	project := ProjectGetOne(request.GetPrjId())
+	if project == nil {
+		return nil, &ProjectNotFoundError{request.GetPrjId()}
+	}
+
+	node := project.Topology.GetNode(request.GetNode())
+	if node == nil {
+		return nil, &NodeNotFoundError{
+			prjId: request.GetPrjId(),
+			name:  request.GetNode(),
+		}
+	}
+
+	if !node.IsRunning() {
+		return nil, fmt.Errorf("Node %s: not running", request.GetNode())
+	}
+
+	stdout, stderr, exitCode, err := node.ExecOnce(request.GetCmd())
+	if err != nil {
+		return nil, fmt.Errorf("Node %s: unable to exec command: %w", node.GetName(), err)
+	}
+
+	return &proto.ExecOnceResponse{
+		Status:   &proto.Status{Code: proto.StatusCode_OK},
+		Stdout:   stdout,
+		ExitCode: int32(exitCode),
+		Stderr:   stderr,
+	}, nil
+}
+
 func (s *netemServer) NodeGetConsoleCmd(ctx context.Context, request *proto.ConsoleCmdRequest) (*proto.ConsoleCmdResponse, error) {
 	// get project
 	project := ProjectGetOne(request.GetPrjId())

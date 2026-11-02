@@ -76,6 +76,23 @@ func (o *OvsNode) ExecCommand(
 		resizeCh)
 }
 
+func (o *OvsNode) ExecOnce(cmd []string) ([]byte, []byte, int, error) {
+	if !o.Running {
+		return nil, nil, 0, errors.New("not running")
+	}
+
+	client, err := docker.NewDockerClient()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer client.Close()
+
+	return client.ExecExit(
+		context.Background(),
+		o.OvsInstance.containerId,
+		cmd)
+}
+
 func (o *OvsNode) GetConsoleCmd(shell bool) ([]string, error) {
 	cmd := []string{"/bin/bash"}
 	if !shell {

@@ -1,0 +1,32 @@
+{
+  "routerId":"1.1.1.1",
+  "networkLinkStates":{
+    "areas":{
+      "0.0.0.0":[
+        {
+          "lsaAge":35,
+          "options":"*|-|-|-|-|-|E|-",
+          "lsaFlags":6,
+          "lsaType":"network-LSA",
+          "linkStateId":"10.0.12.13",
+          "advertisingRouter":"3.3.3.3",
+          "lsaSeqNumber":"80000002",
+          "checksum":"f01d",
+          "length":36,
+          "networkMask":24,
+          "attchedRouters":{
+            "1.1.1.1":{
+              "attachedRouterId":"1.1.1.1"
+            },
+            "2.2.2.2":{
+              "attachedRouterId":"2.2.2.2"
+            },
+            "3.3.3.3":{
+              "attachedRouterId":"3.3.3.3"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

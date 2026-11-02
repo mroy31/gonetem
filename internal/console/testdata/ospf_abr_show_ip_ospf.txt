@@ -1,0 +1,53 @@
+ OSPF Routing Process, Router ID: 2.2.2.2
+ Supports only single TOS (TOS0) routes
+ This implementation conforms to RFC2328
+ RFC1583Compatibility flag is disabled
+ OpaqueCapability flag is disabled
+ Initial SPF scheduling delay 0 millisec(s)
+ Minimum hold time between consecutive SPFs 50 millisec(s)
+ Maximum hold time between consecutive SPFs 5000 millisec(s)
+ Hold time multiplier is currently 2
+ SPF algorithm last executed 16.431s ago
+ Last SPF duration 154 usecs
+ SPF timer is inactive
+ LSA minimum interval 5000 msecs
+ LSA minimum arrival 1000 msecs
+ Write Multiplier set to 20 
+ Refresh timer 10 secs
+ Maximum multiple paths(ECMP) supported 256
+ Administrative distance 110
+ This router is an ABR, ABR type is: Alternative Cisco
+ Number of external LSA 0. Checksum Sum 0x00000000
+ Number of opaque AS LSA 0. Checksum Sum 0x00000000
+ Number of areas attached to this router: 2
+ Area ID: 0.0.0.0 (Backbone)
+   Number of interfaces in this area: Total: 1, Active: 1
+   Number of fully adjacent neighbors in this area: 2
+   Area has no authentication
+   SPF algorithm executed 7 times
+   Number of LSA 5
+   Number of router LSA 3. Checksum Sum 0x00022da3
+   Number of network LSA 1. Checksum Sum 0x0000f01d
+   Number of summary LSA 1. Checksum Sum 0x00006cb2
+   Number of ASBR summary LSA 0. Checksum Sum 0x00000000
+   Number of NSSA LSA 0. Checksum Sum 0x00000000
+   Number of opaque link LSA 0. Checksum Sum 0x00000000
+   Number of opaque area LSA 0. Checksum Sum 0x00000000
+
+ Area ID: 0.0.0.1
+   Shortcutting mode: Default, S-bit consensus: no
+   Number of interfaces in this area: Total: 1, Active: 1
+   Number of fully adjacent neighbors in this area: 1
+   Area has no authentication
+   Number of full virtual adjacencies going through this area: 0
+   SPF algorithm executed 6 times
+   Number of LSA 3
+   Number of router LSA 2. Checksum Sum 0x0000ee5c
+   Number of network LSA 0. Checksum Sum 0x00000000
+   Number of summary LSA 1. Checksum Sum 0x00008aa9
+   Number of ASBR summary LSA 0. Checksum Sum 0x00000000
+   Number of NSSA LSA 0. Checksum Sum 0x00000000
+   Number of opaque link LSA 0. Checksum Sum 0x00000000
+   Number of opaque area LSA 0. Checksum Sum 0x00000000
+
+

@@ -400,6 +400,61 @@ func (c *DockerClient) ExecOutStream(ctx context.Context, containerId string, cm
 	return nil
 }
 
+// ExecExit runs a command non-interactively without a tty and demultiplexes
+// its output. Unlike Exec it returns the command's exit status as data:
+// a non-zero status is not an error, transport failures are.
+func (c *DockerClient) ExecExit(ctx context.Context, containerId string, cmd []string) ([]byte, []byte, int, error) {
+	config := container.ExecOptions{
+		AttachStderr: true,
+		AttachStdout: true,
+		Cmd:          cmd,
+	}
+
+	execID, err := c.cli.ContainerExecCreate(ctx, containerId, config)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	resp, err := c.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	defer resp.Close()
+
+	var outBuf, errBuf bytes.Buffer
+	outputDone := make(chan error)
+
+	go func() {
+		_, err = stdcopy.StdCopy(&outBuf, &errBuf, resp.Reader)
+		outputDone <- err
+	}()
+
+	select {
+	case err := <-outputDone:
+		if err != nil {
+			return nil, nil, 0, err
+		}
+	case <-ctx.Done():
+		return nil, nil, 0, ctx.Err()
+	}
+
+	stdout, err := io.ReadAll(&outBuf)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	stderr, err := io.ReadAll(&errBuf)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	res, err := c.cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	return stdout, stderr, res.ExitCode, nil
+}
+
 func (c *DockerClient) ExecTty(
 	ctx context.Context,
 	containerId string,
