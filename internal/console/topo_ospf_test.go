@@ -59,21 +59,24 @@ var errStopped = errors.New("Node R1: not running")
 func TestOspfCommandRegisteredAndCompleted(t *testing.T) {
 	p := testPrompt()
 	p.RegisterCommands()
-	cmd, ok := p.commands["ospf"]
+	cmd, ok := p.commands["ospfGraph"]
 	if !ok {
-		t.Fatal("ospf command not registered")
+		t.Fatal("ospfGraph command not registered")
 	}
-	if cmd.Usage != "ospf <node_name>" || len(cmd.Args) != 1 {
-		t.Fatalf("unexpected ospf command shape: %+v", cmd)
+	if cmd.Usage != "ospfGraph <node_name>" || len(cmd.Args) != 1 {
+		t.Fatalf("unexpected ospfGraph command shape: %+v", cmd)
+	}
+	if _, legacy := p.commands["ospf"]; legacy {
+		t.Fatal("legacy ospf command still registered")
 	}
 	found := false
 	for _, c := range NewPromptCompleter(p).Complete("osp") {
-		if strings.Contains(c.Text, "ospf") {
+		if strings.Contains(c.Text, "ospfGraph") {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("completer does not offer ospf")
+		t.Fatal("completer does not offer ospfGraph")
 	}
 }
 

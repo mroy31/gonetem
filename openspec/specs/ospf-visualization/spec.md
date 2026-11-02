@@ -6,22 +6,26 @@ Visualize the link-state view of a routing engine: an interactive graph of the O
 
 ## Requirements
 
-### Requirement: ospf command
-The console SHALL provide an `ospf <node_name>` command that opens an interactive graph showing the OSPF area as seen by the named node, presented in the same in-terminal viewer style and terminal hand-off as the topology graph view.
+### Requirement: ospfGraph command
+The console SHALL provide an `ospfGraph <node_name>` command that opens an interactive graph showing the OSPF area as seen by the named node, presented in the same in-terminal viewer style and terminal hand-off as the topology graph view. The former command name `ospf` SHALL NOT be accepted.
 
 #### Scenario: View a running router
-- **WHEN** a user runs `ospf R1` on a project whose topology is running and R1 is a running router with OSPF configured
+- **WHEN** a user runs `ospfGraph R1` on a project whose topology is running and R1 is a running router with OSPF configured
 - **THEN** an interactive OSPF graph opens in the terminal
 - **AND** quitting it returns the console to its prompt with the terminal restored as before
 
 #### Scenario: Stopped or unknown node
-- **WHEN** a user runs `ospf` naming a node that does not exist, is stopped, or is not a router
+- **WHEN** a user runs `ospfGraph` naming a node that does not exist, is stopped, or is not a router
 - **THEN** the console reports an error and remains usable
 - **AND** no graph opens
 
 #### Scenario: Router without OSPF
-- **WHEN** a user runs `ospf` on a running router that has no OSPF instance configured
+- **WHEN** a user runs `ospfGraph` on a running router that has no OSPF instance configured
 - **THEN** the console reports an error identifying that the node exposes no usable OSPF data
+
+#### Scenario: Old command name rejected
+- **WHEN** a user runs `ospf` at the console prompt
+- **THEN** the console reports the command as unknown
 
 ### Requirement: Area view content
 The graph SHALL be built from the named router's link-state database and SHALL label vertices with protocol identities only: routers by their router-id address and transit networks by their subnet prefix. Point-to-point adjacencies SHALL appear as direct edges between the two router vertices. The graph SHALL NOT display emulator node names.

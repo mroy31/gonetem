@@ -608,6 +608,31 @@ func TestClearCommandQueuesClearMessage(t *testing.T) {
 	}
 }
 
+func TestTopoGraphCommandRegisteredAndCompleted(t *testing.T) {
+	p := &NetemPrompt{commands: make(map[string]*NetemCommand)}
+	p.RegisterCommands()
+
+	cmd, ok := p.commands["topoGraph"]
+	if !ok {
+		t.Fatal("topoGraph command not registered")
+	}
+	if cmd.Usage != "topoGraph" || len(cmd.Args) != 0 {
+		t.Fatalf("unexpected topoGraph command shape: %+v", cmd)
+	}
+	if _, legacy := p.commands["topo"]; legacy {
+		t.Fatal("legacy topo command still registered")
+	}
+	found := false
+	for _, c := range NewPromptCompleter(p).Complete("topo") {
+		if strings.Contains(c.Text, "topoGraph") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("completer does not offer topoGraph")
+	}
+}
+
 // fakeTopologyCheckClient is a server client stub only implementing the
 // TopologyCheck call used by the check command.
 type fakeTopologyCheckClient struct {
