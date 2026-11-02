@@ -3,7 +3,7 @@
 Commands
 ========
 
-This page lists all commands available in the gonetem prompt.
+This page lists all commands available in the gonetem console UI.
 
 capture
 -------
@@ -17,6 +17,10 @@ Usage:
   capture <node_name>.<if_number>
   # example
   capture R1.0
+
+clear
+-----
+Clear the commands history 
 
 check
 -----
@@ -58,18 +62,6 @@ edit
 ----
 Edit the topology. The editor used to open the topology file is vim.
 
-exec
-----
-Execute a command on a specific node
-
-Usage:
-
-.. code-block:: bash
-
-  exec <node_name> "<cmd>"
-  # example
-  exec host1 "ip addr show"
-
 ifState
 -------
 Enable/disable a node interface.
@@ -81,6 +73,16 @@ Usage:
   ifState <node_name>/<if_number> up|down
   # example
   ifState R1.0 down
+
+ospfGraph
+---------
+View the content of OSPF database as a graph for the specified router.
+An error is retourned is OSPF protocol is not configured.
+
+.. code-block:: bash
+
+  ospfGraph <router_name>
+
 
 quit | exit
 -----------
@@ -153,6 +155,10 @@ Usage:
   stop <node_name>
   # stop all the nodes
   stop all
+
+topoGraph
+---------
+View the topology of the network as a graph
 
 viewConfig
 ----------
