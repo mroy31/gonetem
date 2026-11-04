@@ -253,10 +253,14 @@ func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.modal = nil
 				return m, m.input.Focus()
+			case "up":
+				m.modalVP.ScrollUp(1)
 			case "pgup":
 				m.modalVP.PageUp()
 			case "pgdown":
 				m.modalVP.PageDown()
+			case "down":
+				m.modalVP.ScrollDown(1)
 			}
 			return m, nil
 		}
