@@ -1,7 +1,6 @@
 package console
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -38,6 +37,67 @@ links:
 - {peer1: R11.0, peer2: R13.1}
 - {peer1: PC11.0, peer2: R11.2}
 - {peer1: PC12.0, peer2: R12.2}
+`
+
+// multicastTopologyYAML is the network.yml extracted from the
+// networks/multicast.gnet demo project, kept as a frozen fixture of the
+// Sugiyama layout test below.
+const multicastTopologyYAML = `
+bridges: {}
+links:
+- peer1: source.0
+  peer2: sw1.0
+- peer1: abonne1.0
+  peer2: sw2.0
+- peer1: abonne2.0
+  peer2: sw3.0
+- peer1: R1.0
+  peer2: sw1.1
+- peer1: R1.1
+  peer2: R4.1
+- peer1: R1.2
+  peer2: sw4.0
+- peer1: R2.0
+  peer2: sw1.2
+- peer1: R2.1
+  peer2: R5.1
+- peer1: R2.2
+  peer2: sw4.1
+- peer1: R3.0
+  peer2: R4.2
+- peer1: R3.1
+  peer2: R5.2
+- peer1: R3.2
+  peer2: sw4.2
+- peer1: R4.0
+  peer2: sw2.1
+- peer1: R5.0
+  peer2: sw3.1
+nodes:
+  R1:
+    type: docker.router
+  R2:
+    type: docker.router
+  R3:
+    type: docker.router
+  R4:
+    type: docker.router
+  R5:
+    type: docker.router
+  abonne1:
+    type: docker.host
+  abonne2:
+    type: docker.host
+  source:
+    type: docker.host
+  sw1:
+    type: ovs
+  sw2:
+    type: ovs
+  sw3:
+    type: ovs
+  sw4:
+    type: ovs
 `
 
 func TestTopoView_RendersNodesAndLinks(t *testing.T) {
@@ -123,11 +183,7 @@ func TestTopoView_SugiyamaLayout(t *testing.T) {
 }
 
 func TestTopoView_SugiyamaMulticast(t *testing.T) {
-	data, err := os.ReadFile("../../networks/multicast_network.yml")
-	if err != nil {
-		t.Fatalf("read topology: %v", err)
-	}
-	model, err := newTopoModel(data)
+	model, err := newTopoModel([]byte(multicastTopologyYAML))
 	if err != nil {
 		t.Fatalf("new model: %v", err)
 	}

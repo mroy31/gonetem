@@ -44,9 +44,9 @@ make proto    # requires protoc + protoc-gen-go + protoc-gen-go-grpc
 make test               # runs: sudo go test ./...
 ```
 
-Tests must run with sudo: many touch Docker, netlink, OVS or tc. Some are
-manual (e.g. `internal/console/topo_manual_test.go`). For quick checks without
-root, run targeted packages, e.g. `go test ./internal/utils/...`.
+Tests must run with sudo: many touch Docker, netlink, OVS or tc. For quick
+checks without root, run targeted packages, e.g. `go test ./internal/utils/...`
+or `go test ./internal/console/...`.
 
 ## Layout
 

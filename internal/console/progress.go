@@ -7,8 +7,10 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 )
 
-// progressBarWidth is the size of the bar rendered by progressText.
-const progressBarWidth = 45
+// progressBarWidth is the size of the bar rendered by progressText. It is
+// kept even so that a half finished phase splits into equal filled and empty
+// halves, as displayed and checked by the tests.
+const progressBarWidth = 44
 
 // progressText renders a simple text progress bar, as displayed inside the
 // TUI prompt: bubbletea owns the terminal, so the bars must go through it.
