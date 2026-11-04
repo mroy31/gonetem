@@ -3,6 +3,7 @@ package console
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -41,6 +42,11 @@ type ospfRouterLink struct {
 	RouterInterfaceAddress  string `json:"routerInterfaceAddress"`
 	NeighborRouterId        string `json:"neighborRouterId"`
 	Tos0Metric              int    `json:"tos0Metric"`
+
+	// Stub Network links carry the leaf subnet as an address plus a dotted
+	// string mask (network LSAs above use an integer prefix length).
+	NetworkAddress string `json:"networkAddress"`
+	NetworkMask    string `json:"networkMask"`
 }
 
 type ospfNetworkDB struct {
@@ -86,6 +92,23 @@ func ospfSubnet(addr string, maskLen int) string {
 		return addr
 	}
 	return prefix.Masked().String()
+}
+
+// ospfStubSubnet renders the subnet prefix of a stub-network link: the
+// router-LSA carries the network address and a dotted string mask (the
+// BSD-notation forms of net.ParseCIDR were removed from Go). The prefix
+// length comes along for the /32 hiding rule. Unparsable input - address,
+// mask, or a mask with no valid CIDR size such as the non-contiguous or
+// zero masks - labels with the bare address and an unusable prefix
+// length, so the stub stays visible instead of being silently hidden.
+func ospfStubSubnet(addr, mask string) (string, int) {
+	ip, maskIP := net.ParseIP(addr), net.ParseIP(mask)
+	v4, ipMask := ip.To4(), net.IPMask(maskIP.To4())
+	ones, _ := ipMask.Size() // (0, 0) for nil and non-contiguous masks
+	if v4 == nil || ipMask == nil || ones == 0 {
+		return addr, -1
+	}
+	return v4.Mask(ipMask).String() + "/" + strconv.Itoa(ones), ones
 }
 
 // buildOspfGraph turns the two FRR database JSON documents into a graph:
@@ -198,7 +221,41 @@ func buildOspfGraph(routerDBJson, networkDBJson []byte) (*graph, error) {
 						labelBeside: true,
 					})
 				}
-				// Stub Network and other link types carry no topology edge
+				// Stub Network links are leaves handled in a second pass
+			}
+		}
+	}
+
+	// Stub-network links in a dedicated second pass: every transit vertex
+	// is interned by now, so a subnet that is transit somewhere keeps its
+	// transit typing when another router advertises it as a stub. A /32
+	// stub is a loopback duplicating the router-id vertex label and stays
+	// hidden; there is no way to show it. Several routers (or areas)
+	// advertising the same prefix merge into one vertex, one edge each.
+	stubSeen := make(map[[2]string]bool)
+	for _, area := range sortedKeys(routerDB.States.Areas) {
+		for _, lsa := range routerDB.States.Areas[area] {
+			owner, ok := byName[lsa.AdvertisingRouter]
+			if !ok {
+				continue
+			}
+			for _, li := range sortedKeys(lsa.Links) {
+				link := lsa.Links[li]
+				if !strings.HasPrefix(link.LinkType, "Stub Network") || link.NetworkAddress == "" {
+					continue
+				}
+				name, prefixLen := ospfStubSubnet(link.NetworkAddress, link.NetworkMask)
+				if prefixLen == 32 {
+					continue
+				}
+				net := vertex(name, "ospf.stub")
+				key := [2]string{owner.name, net.name}
+				if stubSeen[key] {
+					continue
+				}
+				stubSeen[key] = true
+				g.links = append(g.links, graphLink{a: owner, b: net,
+					ia: strconv.Itoa(link.Tos0Metric), ib: "", labelBeside: true})
 			}
 		}
 	}
@@ -244,8 +301,11 @@ func ospfView() graphViewConfig {
 		status:     "↑↓←→ scroll   tab/n/p next vertex   q quit",
 		detail: func(n *graphNode, g *graph) string {
 			role := "Router"
-			if n.typ == "ospf.transit" {
+			switch n.typ {
+			case "ospf.transit":
 				role = "Transit network"
+			case "ospf.stub":
+				role = "Stub network"
 			}
 			var parts []string
 			for _, l := range g.links {

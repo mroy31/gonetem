@@ -269,6 +269,8 @@ func nodeColor(typ string) color.Color {
 		return lipgloss.Color("3") // yellow
 	case strings.HasPrefix(typ, "ospf.transit"):
 		return lipgloss.Color("3") // yellow
+	case strings.HasPrefix(typ, "ospf.stub"):
+		return lipgloss.Color("6") // cyan
 	default:
 		return lipgloss.Color("6") // cyan
 	}

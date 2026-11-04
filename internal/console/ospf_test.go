@@ -166,11 +166,223 @@ func TestOspfVertexColorsAndLegend(t *testing.T) {
 		nodes: []*graphNode{
 			{name: "1.1.1.1", typ: "ospf.router"},
 			{name: "10.0.12.0/24", typ: "ospf.transit"},
+			{name: "10.0.24.0/24", typ: "ospf.stub"},
 		},
 	}
 	leg := g.legend()
-	if !strings.Contains(leg, "router") || !strings.Contains(leg, "transit") {
+	if !strings.Contains(leg, "router") || !strings.Contains(leg, "transit") ||
+		!strings.Contains(leg, "stub") {
 		t.Errorf("legend missing ospf chips: %q", leg)
+	}
+}
+
+func TestOspfStubVertexColor(t *testing.T) {
+	if got, want := nodeColor("ospf.stub"), lipgloss.Color("6"); got != want {
+		t.Errorf("ospf.stub color = %v, want %v", got, want)
+	}
+}
+
+func TestOspfStubDetailRole(t *testing.T) {
+	stub := &graphNode{name: "10.0.24.0/24", typ: "ospf.stub"}
+	router := &graphNode{name: "2.2.2.2", typ: "ospf.router"}
+	g := &graph{nodes: []*graphNode{router, stub},
+		links: []graphLink{{a: router, b: stub, ia: "20"}}}
+	d := ospfView().detail(stub, g)
+	if !strings.HasPrefix(d, "Stub network 10.0.24.0/24") {
+		t.Errorf("stub detail = %q, want the Stub network header", d)
+	}
+	if !strings.Contains(d, "↔ 2.2.2.2 (cost 20)") {
+		t.Errorf("stub detail missing its edge line: %q", d)
+	}
+}
+
+func TestOspfAreaViewText_StubVertices(t *testing.T) {
+	out, err := OspfAreaViewText(
+		readFixture(t, "ospf_abr_lsdb_router.json"),
+		readFixture(t, "ospf_abr_lsdb_network.json"))
+	if err != nil {
+		t.Fatalf("view: %v", err)
+	}
+	if !strings.Contains(out, "vertex: 10.0.24.0/24 [ospf.stub]") {
+		t.Fatalf("merged stub vertex missing from the area view:\n%s", out)
+	}
+
+	// a synthesized /32 loopback stays hidden end to end
+	router := `{"routerId":"3.3.3.3","routerLinkStates":{"areas":{"0.0.0.0":[
+	  {"linkStateId":"3.3.3.3","advertisingRouter":"3.3.3.3","routerLinks":{
+	    "link0":{"linkType":"Stub Network",
+	             "networkAddress":"3.3.3.3","networkMask":"255.255.255.255",
+	             "tos0Metric":1}}}]}}}`
+	out, err = OspfAreaViewText([]byte(router),
+		[]byte(`{"routerId":"3.3.3.3","networkLinkStates":{"areas":{}}}`))
+	if err != nil {
+		t.Fatalf("view: %v", err)
+	}
+	if strings.Contains(out, "[ospf.stub]") {
+		t.Fatalf("a /32 stub leaked into the area view:\n%s", out)
+	}
+}
+
+// ---- stub network links: label rendering ----
+
+func TestOspfStubSubnet(t *testing.T) {
+	cases := []struct {
+		addr, mask string
+		want       string
+		wantBits   int
+	}{
+		{"10.0.24.0", "255.255.255.0", "10.0.24.0/24", 24},
+		{"3.3.3.3", "255.255.255.255", "3.3.3.3/32", 32},
+		// the network address is masked, so a host part cannot leak in
+		{"10.0.24.14", "255.255.255.0", "10.0.24.0/24", 24},
+		// unparsable masks keep the stub visible with a degraded label
+		{"10.0.24.0", "bogus", "10.0.24.0", -1},
+		{"10.0.24.0", "", "10.0.24.0", -1},
+	}
+	for _, c := range cases {
+		name, bits := ospfStubSubnet(c.addr, c.mask)
+		if name != c.want || bits != c.wantBits {
+			t.Errorf("ospfStubSubnet(%q, %q) = (%q, %d), want (%q, %d)",
+				c.addr, c.mask, name, bits, c.want, c.wantBits)
+		}
+	}
+}
+
+// ---- stub network links: leaf vertices in the graph ----
+
+func TestBuildOspfGraph_StubSubnetDisplayed(t *testing.T) {
+	router := `{"routerId":"1.1.1.1","routerLinkStates":{"areas":{"0.0.0.0":[
+	  {"linkStateId":"1.1.1.1","advertisingRouter":"1.1.1.1","routerLinks":{
+	    "link0":{"linkType":"Stub Network",
+	             "networkAddress":"10.0.9.0","networkMask":"255.255.255.0",
+	             "tos0Metric":10}}}]}}}`
+	g, err := buildOspfGraph([]byte(router),
+		[]byte(`{"routerId":"1.1.1.1","networkLinkStates":{"areas":{}}}`))
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	found := false
+	for _, n := range g.nodes {
+		if n.name == "10.0.9.0/24" && n.typ == "ospf.stub" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("stub leaf vertex missing: %v", nodeNames(g))
+	}
+	if len(g.links) != 1 {
+		t.Fatalf("stub edges = %d, want 1", len(g.links))
+	}
+	l := g.links[0]
+	if !(l.a.name == "1.1.1.1" && l.b.name == "10.0.9.0/24") {
+		t.Fatalf("unexpected stub edge %s↔%s", l.a.name, l.b.name)
+	}
+	if l.ia != "10" || l.ib != "" {
+		t.Errorf("stub edge labels (%q, %q), want cost 10 on the router end", l.ia, l.ib)
+	}
+}
+
+func TestBuildOspfGraph_LoopbackStubHidden(t *testing.T) {
+	router := `{"routerId":"3.3.3.3","routerLinkStates":{"areas":{"0.0.0.0":[
+	  {"linkStateId":"3.3.3.3","advertisingRouter":"3.3.3.3","routerLinks":{
+	    "link0":{"linkType":"Stub Network",
+	             "networkAddress":"3.3.3.3","networkMask":"255.255.255.255",
+	             "tos0Metric":1}}}]}}}`
+	g, err := buildOspfGraph([]byte(router),
+		[]byte(`{"routerId":"3.3.3.3","networkLinkStates":{"areas":{}}}`))
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	for _, n := range g.nodes {
+		if n.name != "3.3.3.3" {
+			t.Fatalf("/32 stub leaked a vertex: %v", nodeNames(g))
+		}
+	}
+	if len(g.links) != 0 {
+		t.Fatalf("loopback stub edge leaked: %d links", len(g.links))
+	}
+}
+
+func TestBuildOspfGraph_SharedStubMerges(t *testing.T) {
+	// The ABR fixtures carry one 10.0.24.0/24 advertised as a stub by both
+	// 2.2.2.2 and 4.4.4.4, which also share a direct p2p edge over it.
+	g, err := buildOspfGraph(
+		readFixture(t, "ospf_abr_lsdb_router.json"),
+		readFixture(t, "ospf_abr_lsdb_network.json"))
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	stub := 0
+	for _, n := range g.nodes {
+		if n.name == "10.0.24.0/24" {
+			stub++
+			if n.typ != "ospf.stub" {
+				t.Errorf("stub vertex typ %q, want ospf.stub", n.typ)
+			}
+		}
+	}
+	if stub != 1 {
+		t.Fatalf("10.0.24.0/24 vertices = %d, want one merged vertex: %v", stub, nodeNames(g))
+	}
+	edges := map[string]bool{}
+	p2p := 0
+	for _, l := range g.links {
+		pair := map[string]bool{l.a.name: true, l.b.name: true}
+		if pair["10.0.24.0/24"] {
+			edges[l.a.name] = true
+			if l.a.name == "10.0.24.0/24" {
+				edges[l.b.name] = true
+			}
+			if l.ia != "20" || l.ib != "" {
+				t.Errorf("stub edge %s↔%s labels (%q, %q), want cost 20 on the router end",
+					l.a.name, l.b.name, l.ia, l.ib)
+			}
+		}
+		if pair["2.2.2.2"] && pair["4.4.4.4"] && !pair["10.0.24.0/24"] {
+			p2p++
+		}
+	}
+	if !edges["2.2.2.2"] || !edges["4.4.4.4"] || len(edges) != 2 {
+		t.Fatalf("stub edges attach %v, want exactly 2.2.2.2 and 4.4.4.4", edges)
+	}
+	if p2p != 1 {
+		t.Errorf("the shared stub must not replace the direct p2p edge: %d p2p edges, want 1", p2p)
+	}
+}
+
+func TestBuildOspfGraph_TransitWinsOverStub(t *testing.T) {
+	// 2.2.2.2 advertises 10.0.5.0/24 as a stub in area 0; 3.3.3.3 attaches
+	// it as a transit network in the later area 1. The subnet must appear
+	// once, typed transit.
+	router := `{"routerId":"2.2.2.2","routerLinkStates":{"areas":{
+	  "0.0.0.0":[{"linkStateId":"2.2.2.2","advertisingRouter":"2.2.2.2","routerLinks":{
+	    "link0":{"linkType":"Stub Network",
+	             "networkAddress":"10.0.5.0","networkMask":"255.255.255.0",
+	             "tos0Metric":10}}}],
+	  "0.0.0.1":[{"linkStateId":"3.3.3.3","advertisingRouter":"3.3.3.3","routerLinks":{
+	    "link0":{"linkType":"a Transit Network",
+	             "designatedRouterAddress":"10.0.5.3",
+	             "routerInterfaceAddress":"10.0.5.13","tos0Metric":10}}}]}}}`
+	network := `{"routerId":"2.2.2.2","networkLinkStates":{"areas":{"0.0.0.1":[
+	  {"linkStateId":"10.0.5.3","advertisingRouter":"3.3.3.3","networkMask":24}]}}}`
+	g, err := buildOspfGraph([]byte(router), []byte(network))
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	seen := 0
+	for _, n := range g.nodes {
+		if n.name == "10.0.5.0/24" {
+			seen++
+			if n.typ != "ospf.transit" {
+				t.Errorf("shared subnet typ %q, want the transit identity to win", n.typ)
+			}
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("10.0.5.0/24 vertices = %d, want 1: %v", seen, nodeNames(g))
+	}
+	if len(g.links) != 2 {
+		t.Fatalf("edges = %d, want stub edge + transit edge into the shared vertex", len(g.links))
 	}
 }
 
@@ -190,6 +402,7 @@ func TestBuildOspfGraph_AbrFixtures(t *testing.T) {
 		"3.3.3.3":      "ospf.router",
 		"4.4.4.4":      "ospf.router",
 		"10.0.12.0/24": "ospf.transit",
+		"10.0.24.0/24": "ospf.stub",
 	}
 	if len(g.nodes) != len(wantNodes) {
 		t.Fatalf("node count %d, want %d (%v)", len(g.nodes), len(wantNodes), nodeNames(g))
@@ -240,6 +453,21 @@ func TestBuildOspfGraph_AbrFixtures(t *testing.T) {
 	}
 	if p2p != 1 {
 		t.Errorf("p2p edges = %d, want exactly 1", p2p)
+	}
+
+	// the merged 10.0.24.0/24 stub vertex carries exactly two edges and
+	// coexists with the direct p2p edge above
+	stubEdges := 0
+	for _, l := range g.links {
+		if l.a.name == "10.0.24.0/24" || l.b.name == "10.0.24.0/24" {
+			stubEdges++
+		}
+	}
+	if stubEdges != 2 {
+		t.Errorf("stub edges = %d, want 2", stubEdges)
+	}
+	if len(g.links) != 6 {
+		t.Errorf("total links = %d, want 6 (3 transit + 1 p2p + 2 stub)", len(g.links))
 	}
 
 	// 4.4.4.4 is reachable only through 2.2.2.2: the areas merged at the ABR
@@ -383,6 +611,22 @@ func TestOspfAreaViewText_Readable(t *testing.T) {
 	}
 	if !strings.Contains(out, "10.0.24.12") {
 		t.Fatalf("the p2p interface label must read horizontally:\n%s", out)
+	}
+}
+
+func TestOspfAreaViewText_R1ByteIdentical(t *testing.T) {
+	out, err := OspfAreaViewText(
+		readFixture(t, "ospf_r1_lsdb_router.json"),
+		readFixture(t, "ospf_r1_lsdb_network.json"))
+	if err != nil {
+		t.Fatalf("view: %v", err)
+	}
+	golden, err := os.ReadFile("testdata/ospf_r1_area_view.txt")
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if out != string(golden) {
+		t.Fatalf("the ospf_r1 area view must stay byte-identical: its LSDB has no stub link")
 	}
 }
 
