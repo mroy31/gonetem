@@ -294,6 +294,7 @@ func (s *netemServer) ProjectGetStatus(ctx context.Context, request *proto.Proje
 	for _, node := range project.Topology.GetAllNodes() {
 		nodeStatus := &proto.StatusResponse_NodeStatus{
 			Name:    node.GetName(),
+			Type:    node.GetFullType(),
 			Running: node.IsRunning(),
 		}
 		if project.Topology.IsRunning() {
@@ -661,7 +662,7 @@ func (s *netemServer) NodeCapture(request *proto.NodeInterfaceRequest, stream pr
 	if project == nil {
 		return stream.Send(&proto.CaptureSrvMsg{
 			Code: proto.CaptureSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Project %s not found", request.PrjId)),
+			Data: fmt.Appendf(nil, "Project %s not found", request.PrjId),
 		})
 	}
 
@@ -669,7 +670,7 @@ func (s *netemServer) NodeCapture(request *proto.NodeInterfaceRequest, stream pr
 	if node == nil {
 		return stream.Send(&proto.CaptureSrvMsg{
 			Code: proto.CaptureSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Node %s not found", request.GetNode())),
+			Data: fmt.Appendf(nil, "Node %s not found", request.GetNode()),
 		})
 	}
 
@@ -780,7 +781,7 @@ func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
 	if project == nil {
 		return stream.Send(&proto.ExecSrvMsg{
 			Code: proto.ExecSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Project %s not found", msg.PrjId)),
+			Data: fmt.Appendf(nil, "Project %s not found", msg.PrjId),
 		})
 	}
 
@@ -789,7 +790,7 @@ func (s *netemServer) NodeExec(stream proto.Netem_NodeExecServer) error {
 	if node == nil {
 		return stream.Send(&proto.ExecSrvMsg{
 			Code: proto.ExecSrvMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Node %s not found in project %s", msg.GetNode(), msg.GetPrjId())),
+			Data: fmt.Appendf(nil, "Node %s not found in project %s", msg.GetNode(), msg.GetPrjId()),
 		})
 	}
 
@@ -942,7 +943,7 @@ func (s *netemServer) NodeCopyFrom(request *proto.CopyMsg, stream proto.Netem_No
 	if project == nil {
 		return stream.Send(&proto.CopyMsg{
 			Code: proto.CopyMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Project %s not found", request.PrjId)),
+			Data: fmt.Appendf(nil, "Project %s not found", request.PrjId),
 		})
 	}
 
@@ -951,7 +952,7 @@ func (s *netemServer) NodeCopyFrom(request *proto.CopyMsg, stream proto.Netem_No
 	if node == nil {
 		return stream.Send(&proto.CopyMsg{
 			Code: proto.CopyMsg_ERROR,
-			Data: []byte(fmt.Sprintf("Node %s not found in project %s", request.GetNode(), request.GetPrjId())),
+			Data: fmt.Appendf(nil, "Node %s not found in project %s", request.GetNode(), request.GetPrjId()),
 		})
 	}
 

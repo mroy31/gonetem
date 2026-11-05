@@ -12,6 +12,7 @@ import (
 	"github.com/mroy31/gonetem/internal/proto"
 	"github.com/vishvananda/netns"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type fakeExecNode struct {
@@ -84,8 +85,7 @@ func registerExecTestProject(t *testing.T, id string, node INetemNode) {
 
 func execOnceClient(t *testing.T) proto.NetemClient {
 	t.Helper()
-	ctx := context.Background()
-	conn, err := grpc.DialContext(ctx, "", grpc.WithInsecure(), grpc.WithContextDialer(dialer()))
+	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialer()))
 	if err != nil {
 		t.Fatalf("Unable to dial: %v", err)
 	}

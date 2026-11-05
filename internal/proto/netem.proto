@@ -290,7 +290,8 @@ message StatusResponse {
 
     message NodeStatus {
         string name = 1;
-        bool running = 2;
+        string type = 2;
+        bool running = 3;
         repeated IfStatus interfaces = 10;
     }
 
