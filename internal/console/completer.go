@@ -60,9 +60,22 @@ func (c *PromptCompleter) Complete(input string) []Completion {
 		sort.Slice(matches, func(i, j int) bool {
 			return matches[i].Text < matches[j].Text
 		})
-		if previousArgs[0] != "restart" && strings.HasPrefix("all", word) {
+		if previousArgs[0] != "restart" && previousArgs[0] != "viewConfig" && strings.HasPrefix("all", word) {
 			matches = append(matches, Completion{Text: prefix + "all"})
 		}
+	case "ospfGraph":
+		for _, node := range c.prt.nodeList() {
+			if node.Type != "docker.router" {
+				continue
+			}
+
+			if strings.HasPrefix(node.Name, word) {
+				matches = append(matches, Completion{Text: prefix + node.Name})
+			}
+		}
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].Text < matches[j].Text
+		})
 	case "capture":
 		// capture <node_name>.<if_number>
 		matches = c.ifCompletions(prefix, word)

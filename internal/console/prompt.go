@@ -75,6 +75,7 @@ func splitCopyArg(arg string) (container, path string) {
 
 type NetemNode struct {
 	Name       string
+	Type       string
 	Interfaces []string
 }
 
@@ -362,6 +363,7 @@ func (p *NetemPrompt) refreshNodeList() {
 	for _, node := range status.GetNodes() {
 		nStatus := NetemNode{
 			Name:       node.GetName(),
+			Type:       node.GetType(),
 			Interfaces: make([]string, 0),
 		}
 		for _, ifStatus := range node.GetInterfaces() {
@@ -879,7 +881,7 @@ func (p *NetemPrompt) Status(client proto.NetemClient, cmdArgs []string) error {
 	if len(response.GetNodes()) > 0 {
 		fmt.Fprintln(&output, "- Nodes:")
 		for _, nodeInfo := range response.GetNodes() {
-			fmt.Fprint(&output, "   - "+nodeInfo.GetName()+": ")
+			fmt.Fprint(&output, "   - "+nodeInfo.GetName()+" ("+nodeInfo.GetType()+"): ")
 			if nodeInfo.GetRunning() {
 				fmt.Fprintln(&output, color.GreenString("Running"))
 				for _, i := range nodeInfo.GetInterfaces() {
