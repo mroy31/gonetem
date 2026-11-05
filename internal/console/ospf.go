@@ -292,10 +292,10 @@ func OspfAreaViewText(routerDBJson, networkDBJson []byte) (string, error) {
  * OSPF graph viewer
  *********************************/
 
-// ospfView adapts the shared graph viewer to the OSPF area view: the
+// ospfViewConfig adapts the shared graph viewer to the OSPF area view: the
 // root stays pinned to the queried router (r is inert), and the header
 // names vertices by their protocol role with the link costs.
-func ospfView() graphViewConfig {
+func ospfViewConfig() graphViewConfig {
 	return graphViewConfig{
 		rootPicker: false,
 		status:     "↑↓←→ scroll   tab/n/p next vertex   q quit",
@@ -332,7 +332,7 @@ func newOspfModel(routerDBJson, networkDBJson []byte) (*graphModel, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newPlacedGraphModel(g, ospfView()), nil
+	return newPlacedGraphModel(g, ospfViewConfig()), nil
 }
 
 // ospfExec is the console command implementation: the target must exist in

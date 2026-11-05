@@ -187,7 +187,7 @@ func TestOspfStubDetailRole(t *testing.T) {
 	router := &graphNode{name: "2.2.2.2", typ: "ospf.router"}
 	g := &graph{nodes: []*graphNode{router, stub},
 		links: []graphLink{{a: router, b: stub, ia: "20"}}}
-	d := ospfView().detail(stub, g)
+	d := ospfViewConfig().detail(stub, g)
 	if !strings.HasPrefix(d, "Stub network 10.0.24.0/24") {
 		t.Errorf("stub detail = %q, want the Stub network header", d)
 	}

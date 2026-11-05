@@ -311,7 +311,9 @@ type graphModel struct {
 // prepares the first render.
 func newPlacedGraphModel(g *graph, view graphViewConfig) *graphModel {
 	m := &graphModel{graph: g, view: view}
-	if len(g.nodes) > 0 {
+	if g.root != nil {
+		g.root.selected = true
+	} else if len(g.nodes) > 0 {
 		g.nodes[0].selected = true
 	}
 	m.canvas = renderGraph(g)
